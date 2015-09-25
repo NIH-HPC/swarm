@@ -53,6 +53,7 @@ report();
 writeCommandFiles() unless $OPT{'no-scripts'};
 writeBatchScript() unless $OPT{'no-scripts'};
 submitSlurm();
+createSymlink() unless $OPT{'no-scripts'};
 writeLog() unless $OPT{'no-run'};
 
 #===============================================================================
@@ -62,7 +63,11 @@ sub setDefaults
   $PAR->{user} = (getpwuid($>))[0]; # who is this?
   chomp($PAR->{host} = `/bin/hostname`); # where am I?
   $PAR->{pwd} = $ENV{'PWD'}; # what directory is this?
-  (undef,$PAR->{tempname}) = tempfile('XXXXXXXX',OPEN => 0);
+
+# Create a temporary name for the batch script and command script directory
+  (undef,$PAR->{tempname}) = tempfile('tmpXXXXXXXX',OPEN => 0);
+
+# Create the basedir where the batch script and command scripts will be written
   $PAR->{basedir} = "/spin1/swarm/$PAR->{user}";
   isDirCreateable($PAR->{basedir}) || dieWithError("can't write to $PAR->{basedir}");
   if (!-d $PAR->{basedir}) {
@@ -70,10 +75,14 @@ sub setDefaults
   }
   $PAR->{tempdir} = "$PAR->{basedir}/$PAR->{tempname}";
   $PAR->{batchfile} = $PAR->{tempdir}.".batch";
+
+# Other defaults
   $PAR->{shell} = "/bin/bash";
   $PAR->{date} = strftime("%b %d %Y %T", (localtime)[0 .. 5]);
-  $PAR->{logfile} = "/usr/local/logs/swarm_on_slurm.log";
   $PAR->{commentChar} = '#';
+
+# The logfile which will be updated
+  $PAR->{logfile} = "/usr/local/logs/swarm_on_slurm.log";
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 # There is no need to keep track of MaxSubmit because swarm will now submit jobarrays.  Each swarm
@@ -321,13 +330,8 @@ sub writeBatchScript
   print FILE <<EOF1;
 #!/bin/bash
 
-# When started, migrate the directory name to something more pleasing
+# Determine the jobid and task id on the fly
 d=$PAR->{basedir}/\${SLURM_ARRAY_JOB_ID}
-while [[ -d $PAR->{tempdir} ]]; do
-  mv $PAR->{tempdir} \${d} 2>/dev/null
-  mv $PAR->{tempdir}.batch \${d}.batch 2>/dev/null
-done
-
 z=\$(printf '%0${len}d' \${SLURM_ARRAY_TASK_ID}) 
 EOF1
 
@@ -453,7 +457,7 @@ sub submitSlurm
     $PAR->{sbatch_options} .= " ".$SBATCHOPT;
   }
 
-  print "sbatch $PAR->{sbatch_options} $PAR->{tempdir}.batch\n" if ($OPT{verbose} > 1);
+  print "sbatch $PAR->{sbatch_options} $PAR->{batchfile}\n" if ($OPT{verbose} > 1);
   unless ($OPT{'no-run'}) {
     if (!-d $OPT{logdir}) {
       make_path($OPT{logdir}) || dieWithError("can't create logdir $OPT{logdir}");
@@ -461,7 +465,7 @@ sub submitSlurm
     elsif (!-w $OPT{logdir}) {
       dieWithError("can't write to logdir $OPT{logdir}");
     }
-    my $slurm_response = `sbatch $PAR->{sbatch_options} $PAR->{tempdir}.batch`;
+    my $slurm_response = `sbatch $PAR->{sbatch_options} $PAR->{batchfile}`;
     print $slurm_response;
     if ($slurm_response=~/^(\d+)$/) {
     #if ($slurm_response=~/Submitted batch job (\d+)/) {
@@ -471,6 +475,29 @@ sub submitSlurm
       dieWithError("Something went wrong with sbatch!  I don't know the jobid!");
     }
   }
+}
+#==============================================================================
+sub createSymlink
+# Create a symlink to the temporary directory with the jobid
+{
+  my $num;
+  if ($PAR->{jobid}) { $num = $PAR->{jobid}; }
+  else { $num = fakeJobId(); }
+  symlink ("$PAR->{batchfile}","$PAR->{basedir}/$num.batch");
+  symlink ("$PAR->{tempdir}","$PAR->{basedir}/$num");
+}
+#==============================================================================
+sub fakeJobId
+# Generate a number that will never be a jobid; this was determined by running
+# scontrol show conf | grep MaxJobId.
+{
+  my $x = 0;
+  my $maxjobid = 1000000000000;
+  while ($x < $maxjobid) {
+    $x .= int(rand(100));
+  }
+  $x = "9".substr($x,-12,11);
+  return $x
 }
 #==============================================================================
 sub evaluateBundling
