@@ -1,0 +1,1068 @@
+#!/usr/bin/perl
+
+# ===========================================================================
+#
+#                            PUBLIC DOMAIN NOTICE
+#                     Center for Information Technology (CIT)
+#
+#  This software/database is a "United States Government Work" under the
+#  terms of the United States Copyright Act.  It was written as part of
+#  the author's official duties as a United States Government employee and
+#  thus cannot be copyrighted.  This software is freely available
+#  to the public for use.  The Center for Information Technologyand the U.S.
+#  Government have not placed any restriction on its use or reproduction.
+#
+#  Although all reasonable efforts have been taken to ensure the accuracy
+#  and reliability of the software and data, CIT and the U.S.
+#  Government do not and cannot warrant the performance or results that
+#  may be obtained by using this software or data. CIT and the U.S.
+#  Government disclaim all warranties, express or implied, including
+#  warranties of performance, merchantability or fitness for any particular
+#  purpose.
+#
+#  Please cite the author and the "NIH Biowulf Cluster" in any work or product
+#  based on this material.
+#
+# ===========================================================================
+
+# This script is an adaptation of the swarm script for use with SLURM.
+use Getopt::Long qw(:config no_ignore_case);
+use POSIX qw(strftime floor ceil);
+use File::Temp qw/tempfile tempdir/;
+use File::Basename qw/basename/;
+use File::Spec;
+require File::Spec::Unix;
+use File::Path qw(make_path);
+use lib "/usr/local/slurm/lib/perl5/site_perl/5.18.2/x86_64-linux-thread-multi-ld";
+use Slurm;
+use strict;
+
+my $PAR;
+my $SWARM;
+setDefaults();
+
+my %OPT;
+my %SLURMOPT;
+my $SBATCHOPT;
+getCommandLineOptions();
+parseCommands();
+evaluateBundling();
+adjustTime();
+distributeCommands();
+report();
+writeCommandFiles() unless $OPT{'no-scripts'};
+writeBatchScript() unless $OPT{'no-scripts'};
+submitSlurm();
+writeLog() unless $OPT{'no-run'};
+
+#===============================================================================
+sub setDefaults
+{
+  $PAR->{b} = 1; # bundle value of 1
+  $PAR->{user} = (getpwuid($>))[0]; # who is this?
+  chomp($PAR->{host} = `/bin/hostname`); # where am I?
+  $PAR->{pwd} = $ENV{'PWD'}; # what directory is this?
+  (undef,$PAR->{tempname}) = tempfile('XXXXXXXX',OPEN => 0);
+  $PAR->{basedir} = "/spin1/swarm/$PAR->{user}";
+  isDirCreateable($PAR->{basedir}) || dieWithError("can't write to $PAR->{basedir}");
+  if (!-d $PAR->{basedir}) {
+    make_path($PAR->{basedir}, { mode => 0700, }) || dieWithError("Can't create swarm script basedir!");
+  }
+  $PAR->{tempdir} = "$PAR->{basedir}/$PAR->{tempname}";
+  $PAR->{batchfile} = $PAR->{tempdir}.".batch";
+  $PAR->{shell} = "/bin/bash";
+  $PAR->{date} = strftime("%b %d %Y %T", (localtime)[0 .. 5]);
+  $PAR->{logfile} = "/usr/local/logs/swarm_on_slurm.log";
+  $PAR->{commentChar} = '#';
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+# There is no need to keep track of MaxSubmit because swarm will now submit jobarrays.  Each swarm
+# is a single job, so it either submits, or doesn't submit.  The value of interest is MaxArraySize, 
+# which limits the number of subjobs per swarm, er, job.
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+  $PAR->{maxarraysize} = 1000;
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+# In addition, we will not be concerned with QOS, as this will be handled downstream by slurm itself.
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+
+# Make sure sbatch is accessible
+  my $sbatch_check = `which sbatch 2>/dev/null`;
+  die "Can't find sbatch.  Is slurm in your path?\n" unless $sbatch_check;
+}
+#==============================================================================
+sub distributeCommands
+# The commands have been parsed into an array, and the number of processes per node has been determined.  Now figure
+# out how to distribute the commands to the command scripts.
+{
+  my $tmp;
+  my $cheat = $PAR->{b};
+  $cheat *= $OPT{p} if ($OPT{p}); 
+  foreach my $i (0 .. $#{$SWARM->{COMMANDS}}) {
+    $PAR->{commands}++;
+    push @{$tmp},$i;
+    if ((($i+1) % $cheat) == 0) {
+      push @{$SWARM->{CMDLISTS}},$tmp;
+      undef $tmp;
+      $PAR->{subjobs}++;
+    }
+  }
+  push @{$SWARM->{CMDLISTS}},$tmp if (defined $tmp);
+
+}
+#==============================================================================
+sub report
+{
+# Report where the command files are written
+  print "Command files written to $PAR->{tempdir}\n" if (($OPT{verbose} > 1) && (!$OPT{'no-scripts'}));
+  my $len1 = length($#{$SWARM->{CMDLISTS}});
+  my $len2 = length($#{$SWARM->{COMMANDS}});
+
+# Report what modules will be loaded
+  print "Loading modules $OPT{module}\n" if (($OPT{verbose} > 2) && ($OPT{module}));
+
+# Report what modules will be loaded
+  print "Using comment character $OPT{commentChar}\n" if (($OPT{verbose} > 2) && ($OPT{commentChar}));
+
+# Fix OPT{p} and OPT{b} for single subjobs
+  if ($PAR->{subjobs} == 1) {
+    $OPT{p} = $PAR->{commands} if (defined $OPT{p});
+    $PAR->{b} = $PAR->{commands} if ($PAR->{b} > $PAR->{commands});
+  }
+
+# update cpus-per-task and mem for single-threaded swarms
+  if (defined $OPT{p}) {
+    $SLURMOPT{binary}{"cpus-per-task"} = $OPT{p};
+    $SLURMOPT{binary}{"mem"} = $SLURMOPT{binary}{"mem"}*$OPT{p};
+  }
+
+# Calculate total number of cpus allocated
+  $PAR->{cpus} = $PAR->{subjobs};
+  if (defined $OPT{p}) {
+    $PAR->{cpus} *= $OPT{p};
+  }
+  elsif ($OPT{t}) {
+    $PAR->{cpus} *= $OPT{t};
+  }
+
+# Graphical representation of the swarm
+  my $top = "(0tqq (B";
+  my $pre = "(0x   ".$top;
+#(0x   mqq (Btext # maybe in the future
+#(0mqq (Btext
+
+  my $outputfiles;
+  print "-"x60,"\n"."SWARM\n" if ($OPT{verbose} > 3);
+  foreach my $i (0 .. $#{$SWARM->{CMDLISTS}}) {
+    if ($OPT{verbose} > 3) {
+      printf ("%ssubjob %${len1}d: %${len2}d command%s (%d cpu%s, %.2f gb)\n",
+        $top,
+        $i,
+        (scalar(@{${$SWARM->{CMDLISTS}}[$i]})),
+        write_s_if_needed(scalar(@{${$SWARM->{CMDLISTS}}[$i]})),
+        $SLURMOPT{binary}{"cpus-per-task"},
+        write_s_if_needed($SLURMOPT{binary}{"cpus-per-task"}),
+        ($SLURMOPT{binary}{"mem"}/1024),
+      );
+    }
+    if ($OPT{verbose} > 4) {
+      if ($PAR->{b} > 1) {
+        if (not defined $OPT{p}) {
+          print $pre;
+          foreach my $j (@{${$SWARM->{CMDLISTS}}[$i]}) {
+            if ($OPT{verbose} > 5) { print  ${$SWARM->{COMMANDS}}[$j]." ; "; }
+            else { print  "cmd $j ; "; }
+          }
+          print "\n";
+          $outputfiles++;
+        }
+        else {
+          my $k=-1;
+          my $clust;
+          foreach my $j (@{${$SWARM->{CMDLISTS}}[$i]}) {
+            if ($OPT{verbose} > 5) {
+              $clust .=  ${$SWARM->{COMMANDS}}[$j]." ; ";
+            }
+            else { $clust .= "cmd $j ; "; }
+            if ((($j+1) % $PAR->{b}) == 0) {
+              $k++;
+              print $pre.$clust."\n";
+              undef $clust;
+              $outputfiles++;
+            }
+          }
+          print $pre.$clust."\n" if ($clust);
+          $outputfiles++ if ($clust);
+        }
+      }
+      else {
+        foreach my $j (@{${$SWARM->{CMDLISTS}}[$i]}) {
+          if ($OPT{verbose} > 5) {
+            print  $pre.${$SWARM->{COMMANDS}}[$j]."\n";
+          }
+          else { print  $pre."cmd $j\n"; }
+          $outputfiles++;
+        }
+      }
+    }
+  }
+
+  $outputfiles = 1 if $OPT{singleout};
+  if ($OPT{verbose} > 3) {
+    print "-"x60,"\n";
+    printf "%${len1}d subjob%s, %${len2}d commands, %d output file%s\n",$PAR->{subjobs},write_s_if_needed($PAR->{subjobs}),$PAR->{commands},$outputfiles,write_s_if_needed($outputfiles);
+  }
+  if ($OPT{verbose} > 0) {
+    print "$PAR->{commands} commands run in $PAR->{subjobs} subjob".write_s_if_needed($PAR->{subjobs}).", ";
+    print "each command requiring $OPT{g} gb and $OPT{t} thread".write_s_if_needed($OPT{t});
+    if ($OPT{p}) {
+      print ", packing $OPT{p} processes per subjob";
+    }
+    if ($PAR->{b} > 1) {
+      print ", running $PAR->{b} processes serially per subjob";
+    }
+    elsif ((not defined $OPT{t}) || ($OPT{t} ne 'auto')) {
+# allocating by core, not by cpu
+      my $cpus = $SLURMOPT{binary}{"cpus-per-task"};
+      ($cpus%2) && $cpus++;
+      $cpus *= $PAR->{subjobs};
+      my $cores = $cpus/2;
+      print ", allocating $cores core".write_s_if_needed($cores)." and $cpus cpu".write_s_if_needed($cpus);
+    }
+    print "\n";
+  }
+
+}
+#==============================================================================
+sub write_s_if_needed
+{
+  if (shift > 1) { return "s"; }
+  else { return ""; }
+}
+#==============================================================================
+sub writeCommandFiles
+{
+  mkdir $PAR->{tempdir};
+  my $len = length($#{$SWARM->{CMDLISTS}});
+  my $len3 = length($OPT{p}) if $OPT{p};
+  foreach my $subjob (0 .. $#{$SWARM->{CMDLISTS}}) {
+    my $suffix = sprintf "%0${len}d",$subjob;
+    my $k=-1;
+    my $clust;
+    open FILE, ">$PAR->{tempdir}/cmd.$suffix" if (!$OPT{p});
+# STUPID STUPID STUPID
+# Under tcsh, 'module' is an alias, which means there is no valid exit status.
+    if ($OPT{module}) {
+      if ($PAR->{shell} eq '/bin/bash') {
+        print FILE "source /usr/local/lmod/lmod/lmod/init/bash\n";
+      }
+      elsif ($PAR->{shell} eq '/bin/tcsh') {
+        print FILE "source /usr/local/lmod/lmod/lmod/init/csh\n";
+      }
+      print FILE "module load $OPT{module}\n";
+    }
+    foreach my $comm (@{${$SWARM->{CMDLISTS}}[$subjob]}) {
+      if ($OPT{p}) {
+        $clust .= ${$SWARM->{COMMANDS}}[$comm]."\n";
+        if ((($comm+1) % $PAR->{b}) == 0) {
+          $k++;
+          my $tag = sprintf "%0${len3}d",$k;
+          open FILE, ">$PAR->{tempdir}/cmd.${suffix}_${tag}";
+          if ($OPT{module}) {
+            if ($PAR->{shell} eq '/bin/bash') {
+              print FILE "source /usr/local/lmod/lmod/lmod/init/bash\n";
+            }
+            elsif ($PAR->{shell} eq '/bin/tcsh') {
+              print FILE "source /usr/local/lmod/lmod/lmod/init/csh\n";
+            }
+            print FILE "module load $OPT{module}\n";
+          }
+          print FILE $clust;
+          close FILE;
+          undef $clust;
+        }
+      }
+      else {
+        print FILE ${$SWARM->{COMMANDS}}[$comm]."\n";
+      }
+    }
+    close FILE if (!$OPT{p});
+# don't lose the leftovers
+    if ($clust) {
+      $k++;
+      my $tag = sprintf "%0${len3}d",$k;
+      open FILE, ">$PAR->{tempdir}/cmd.${suffix}_${tag}";
+      if ($OPT{module}) {
+        if ($PAR->{shell} eq '/bin/bash') {
+          print FILE "source /usr/local/lmod/lmod/lmod/init/bash\n";
+        }
+        elsif ($PAR->{shell} eq '/bin/tcsh') {
+          print FILE "source /usr/local/lmod/lmod/lmod/init/csh\n";
+        }
+        print FILE "module load $OPT{module}\n";
+      }
+      print FILE $clust;
+      close FILE;
+      undef $clust;
+    }
+  }
+}
+#==============================================================================
+sub writeBatchScript
+#
+# This is the file that sbatch calls.  Commands are normally run as a simple
+# shell call, e.g.
+#
+#   bash [ commandfile ]
+{
+  open FILE, ">$PAR->{batchfile}";
+  my $len = length($#{$SWARM->{CMDLISTS}});
+  my $len3 = length($OPT{p}) if $OPT{p};
+  print FILE <<EOF1;
+#!/bin/bash
+
+# When started, migrate the directory name to something more pleasing
+d=$PAR->{basedir}/\${SLURM_ARRAY_JOB_ID}
+while [[ -d $PAR->{tempdir} ]]; do
+  mv $PAR->{tempdir} \${d} 2>/dev/null
+  mv $PAR->{tempdir}.batch \${d}.batch 2>/dev/null
+done
+
+z=\$(printf '%0${len}d' \${SLURM_ARRAY_TASK_ID}) 
+EOF1
+
+
+# Print out a start message to make things easier to understand
+  if ($OPT{singleout}) {
+    if ($OPT{p}) {
+      foreach my $i (0 .. $OPT{p}-1) {
+        my $tag = sprintf "%0${len3}d",$i;
+        print FILE "[[ -s \${d}/cmd.\${z}_$tag ]] && { ";
+        print FILE "echo \${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag started on \$HOSTNAME at \$(date +'\%F \%T') > $PAR->{singleoutbase}_$tag.o ; ";
+        print FILE "echo '++++++++++++++++++++++++++++++++++++++++++' >> $PAR->{singleoutbase}_$tag.o; }\n";
+      }
+    }
+    else {
+      print FILE "echo \${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID} started on \$HOSTNAME at \$(date +'\%F \%T')\n";
+      print FILE "echo '++++++++++++++++++++++++++++++++++++++++++'\n";
+    }  
+  }
+    
+
+# Run the commands in series on a single node
+  if ($OPT{p}) {
+    foreach my $i (0 .. $OPT{p}-1) {
+      my $tag = sprintf "%0${len3}d",$i;
+      print FILE "[[ -s \${d}/cmd.\${z}_$tag ]] && ( $PAR->{shell} \${d}/cmd.\${z}_$tag ";
+# Determine output/error redirects
+      if ($OPT{singleout}) {
+        print FILE "1>> $PAR->{singleoutbase}_$tag.o 2>> $PAR->{singleoutbase}_$tag.e ; ";
+        print FILE "echo '++++++++++++++++++++++++++++++++++++++++++' >> $PAR->{singleoutbase}_$tag.o ; ";
+        print FILE "echo \${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag finished on \$HOSTNAME at \$(date +'\%F \%T') 1>> $PAR->{singleoutbase}_$tag.o ) &\n";
+      }
+      else {
+        if ($OPT{noout}) {
+          print FILE "1> /dev/null ";
+        }
+        else {
+          print FILE "1> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag.o ";
+        }
+        if ($OPT{noerr}) {
+          print FILE "2> /dev/null ";
+        }
+        else {
+          print FILE "2> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag.e ";
+        }
+        print FILE ") &\n";
+      }
+    }
+    print FILE "wait\n";
+    print FILE "exitcode=0\n";
+  }
+  else {
+    print FILE "$PAR->{shell} \${d}/cmd.\${z}\n";
+# Capture final exit code
+    print FILE "exitcode=\$?\n";
+  }
+
+  if ($OPT{singleout}) {
+    if (!$OPT{p}) {
+      print FILE "echo '++++++++++++++++++++++++++++++++++++++++++'\n";
+      print FILE "echo \${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID} finished on \$HOSTNAME at \$(date +'\%F \%T')\n";
+    }
+
+    print FILE "lockfile $PAR->{basedir}/\${SLURM_ARRAY_JOB_ID}.lock\n";
+    if ($OPT{p}) {
+      foreach my $i (0 .. $OPT{p}-1) {
+        my $tag = sprintf "%0${len3}d",$i;
+        print FILE (generate_singleout_block("_$tag"));
+      }
+    }
+    else {
+      print FILE (generate_singleout_block());
+    }
+    print FILE "rm -f $PAR->{basedir}/\${SLURM_ARRAY_JOB_ID}.lock\n";
+  }
+
+  print FILE $OPT{'keep-scripts'}; # Don't do any clean up if told not to
+  print FILE "rm \${d}/cmd.\${z}\n"; # Force the script to self-delete
+  print FILE "exit \$exitcode\n"; # Exit with the final exit code from the given command
+
+  close FILE;
+}
+#==============================================================================
+sub submitSlurm
+{
+  $PAR->{sbatch_options} .= "--array=0-$#{$SWARM->{CMDLISTS}}";
+  $PAR->{sbatch_options} .= " --job-name=".$PAR->{"job-name"} unless ($SLURMOPT{binary}{"job-name"});
+
+# output and error handled in the batch script
+  if ($OPT{p}) {
+    $PAR->{sbatch_options} .= " --output=/dev/null";
+    $PAR->{sbatch_options} .= " --error=/dev/null";
+  }
+  else {
+    if ($OPT{singleout}) {
+      $PAR->{sbatch_options} .= " --output=$PAR->{basedir}/\%A_\%a.o";
+      $PAR->{sbatch_options} .= " --error=$PAR->{basedir}/\%A_\%a.e";
+    }
+    else {
+      if ($OPT{noout}) {
+        $PAR->{sbatch_options} .= " --output=/dev/null";
+      }
+      else {
+        $PAR->{sbatch_options} .= " --output=".$OPT{logdir}."/".$PAR->{"job-name"}."_\%A_\%a.o";
+      }
+      if ($OPT{noerr}) {
+        $PAR->{sbatch_options} .= " --error=/dev/null";
+      }
+      else {
+        $PAR->{sbatch_options} .= " --error=".$OPT{logdir}."/".$PAR->{"job-name"}."_\%A_\%a.e";
+      }
+    }
+  }
+
+# slurm options
+  foreach my $i (sort keys %{$SLURMOPT{unary}}) {
+    $PAR->{sbatch_options} .= " --$i" if ($SLURMOPT{unary}{$i});
+  }
+  foreach my $i (sort keys %{$SLURMOPT{binary}}) {
+    $PAR->{sbatch_options} .= " --${i}=$SLURMOPT{binary}{$i}" if ($SLURMOPT{binary}{$i});
+  }
+  if ($SBATCHOPT) {
+    $PAR->{sbatch_options} .= " ".$SBATCHOPT;
+  }
+
+  print "sbatch $PAR->{sbatch_options} $PAR->{tempdir}.batch\n" if ($OPT{verbose} > 1);
+  unless ($OPT{'no-run'}) {
+    if (!-d $OPT{logdir}) {
+      make_path($OPT{logdir}) || dieWithError("can't create logdir $OPT{logdir}");
+    }
+    elsif (!-w $OPT{logdir}) {
+      dieWithError("can't write to logdir $OPT{logdir}");
+    }
+    my $slurm_response = `sbatch $PAR->{sbatch_options} $PAR->{tempdir}.batch`;
+    print $slurm_response;
+    if ($slurm_response=~/^(\d+)$/) {
+    #if ($slurm_response=~/Submitted batch job (\d+)/) {
+      $PAR->{jobid} = $1;
+    }
+    else {
+      dieWithError("Something went wrong with sbatch!  I don't know the jobid!");
+    }
+  }
+}
+#==============================================================================
+sub evaluateBundling
+{
+# Determine minimal bundling value -- this is essential autobundle
+  $PAR->{b} = ceil((scalar(@{$SWARM->{COMMANDS}}))/$PAR->{maxarraysize});
+  $PAR->{b} = $OPT{b} if ($OPT{b} > $PAR->{b});
+}
+#==============================================================================
+sub parseCommands
+{
+  open(COMMANDFILE, "$PAR->{Commandfile}") || dieWithError("Can't read $PAR->{Commandfile}: $!");
+  my @COMMANDS = evaluateCommands(mergeLineContinuations(<COMMANDFILE>));
+  close COMMANDFILE;
+  foreach (@COMMANDS) {
+    chomp;
+    s/\r//g;         # remove carriage returns
+    next if /^\s*$/; # ignore blank lines
+    if (!$OPT{nocomment}) {
+      next if /^\s*$PAR->{commentChar}/; # remove comment lines
+      s/$PAR->{commentChar}.*//g; # remove comment lines
+    }
+    s/[\s;]+$//;     # don't allow final semicolons or spaces
+    push @{$SWARM->{COMMANDS}},$_;
+  }
+
+# Make sure that the swarmfile actually has commands in it!
+  if ((not defined $SWARM->{COMMANDS}) || (ref($SWARM->{COMMANDS}) != /ARRAY/) || (@{$SWARM->{COMMANDS}} < 1)) {
+    dieWithError("No commands in swarmfile $PAR->{Commandfile}");
+  }
+}
+#==============================================================================
+sub evaluateCommands
+{
+# evaluate test conditions if present
+  my @tmp = @_;
+  return @tmp unless $OPT{evaluate};
+  my @filtered;
+  foreach (@tmp) {
+    if (m/^(.*?)\s*#EVAL(.*)$/) {
+      my $line = $1;
+      my (undef,$fn) = tempfile('tmpXXXXXXXX',OPEN => 0,DIR=>'/tmp',SUFFIX=>'.sw');
+      my $eval = $2;
+      open FILE, ">$fn";
+      if ($PAR->{shell} eq '/bin/bash') {
+        print FILE "if [ $eval ] ; then echo 1 ; else echo 2 ; fi\n";
+      }
+      elsif ($PAR->{shell} eq '/bin/tcsh') {
+        print FILE "if ( $eval ) then\necho 1\nelse\necho 2\nendif\n";
+      }
+      close FILE;
+      chomp(my $ret = `$PAR->{shell} $fn 2>&1`);
+      unlink $fn;
+      if ($ret == 1) {
+        push @filtered,"$line\n";
+      }
+      elsif ($ret == 2) {
+# drop the command
+      }
+      else {
+        dieWithError("commandline evaluation failure:\n$ret");
+      }
+    }
+    else {
+      push @filtered,$_;
+    }
+  }
+  return @filtered;
+}
+#==============================================================================
+sub mergeLineContinuations
+# If a swarmfile has line continuation markers (one or more spaces, followed
+# by a single backslash, immediately followed by end-of-line), then the line
+# will be continued with the next line.  Suggested by Wolfgang Resch, 11/29/12.
+{
+  my @lines = @_;
+  my @merged;
+  my $cmd;
+  my $i;
+  foreach my $l (@lines) {
+    $i++;
+    chomp $l;
+    if ($l=~/\\\s*$/) { # attempt at line continuation
+      if ($l=~/ \\$/) { # only strict, proper format is allowed
+        $cmd .= " $`";
+      } else {
+        dieWithError("bad line continuation format: line $i of $OPT{f}"); 
+      }
+    }
+    else {
+      $cmd .= " $l";
+      dieWithError("last line of $OPT{f} cannot have line continuation") if ($cmd =~/\\$/); 
+      push @merged,$cmd;
+      undef $cmd;
+    }
+  }
+  dieWithError("last line of $OPT{f} cannot have line continuation") if (defined $cmd); 
+  return @merged;
+}
+#===============================================================================
+sub getCommandLineOptions
+{   
+# capture command line 
+    
+  $PAR->{commandLine} = $0;
+  foreach (@ARGV) { $PAR->{commandLine} .= " $_"; }
+
+  GetOptions(
+
+# standard swarm options
+    "f=s"               => \$OPT{f},
+    "file=s"            => \$OPT{f},
+    "b=i"               => \$OPT{b},
+    "bundle=i"          => \$OPT{b},
+    "autobundle"        => \$OPT{autobundle},
+    "g=f"               => \$OPT{g},
+    "gb-per-process=f"  => \$OPT{g},
+    "t=s"               => \$OPT{t},
+    "threads-per-process=s" => \$OPT{t},
+    "usecsh"            => \$OPT{usecsh},    # use tcsh shell instead of bash
+    "c=s"               => \$OPT{commentChar}, # comment character
+    "comment-char=s"    => \$OPT{commentChar}, # comment character
+    "no-comment"        => \$OPT{nocomment}, # no comment character
+    "evaluate"          => \$OPT{evaluate}, # only keep commands that evaluate as true
+    "noht"              => \$OPT{noht},     # no hyperthreading 
+    'm=s'               => \$OPT{module},  # modules are comma delimited 
+    'module=s'          => \$OPT{module},  # modules are comma delimited 
+
+# special stuff, handle with care
+    "singleout"         => \$OPT{singleout},# concatenate output and error
+    "noout"             => \$OPT{noout},#  completely throw away STDOUT
+    "noerr"             => \$OPT{noerr},#  completely throw away STDERR
+    "logdir=s"          => \$OPT{logdir},# directory to which .o and .e files are written
+
+# interactive stuff
+    "h"                 => \$OPT{h},
+    "help"              => \$OPT{h},
+    "k"                 => \$OPT{"keep-scripts"}, # don't remove command and control scripts
+    "keep-scripts"      => \$OPT{"keep-scripts"}, # don't remove command and control scripts
+    "no-scripts"        => \$OPT{'no-scripts'}, # don't print scripts (requires debug}
+    "debug"             => \$OPT{debug},     # --verbose=1, --no-run
+    "devel"             => \$OPT{devel},     # --verbose=2, --no-run, --no-scripts
+    "v=i"               => \$OPT{verbose},   # verbosity level, default = 1
+    "verbose=i"         => \$OPT{verbose},   # verbosity level, default = 1
+    "silent"            => \$OPT{silent},   # verbosity level = 0
+
+# hidden options
+    "user=s"            => \$OPT{user},      # test specific user
+    "no-run"            => \$OPT{'no-run'},  # don't actually run
+    "test"              => \$OPT{test},      # deprecated: the same as --debug 
+    "p=i"               => \$OPT{p},      # run 2 commands per core for single threaded bundled swarms 
+    "processes-per-subjob=i"  => \$OPT{p},      # run 2 commands per core for single threaded bundled swarms 
+
+# sbatch options (specific)
+    "hint=s"            => \$SLURMOPT{binary}{hint},
+    "dependency=s"      => \$SLURMOPT{binary}{dependency},
+    "partition=s"       => \$SLURMOPT{binary}{partition},
+    "time=s"            => \$SLURMOPT{binary}{time},
+    "exclusive"         => \$SLURMOPT{unary}{exclusive},
+    "L=s"               => \$SLURMOPT{binary}{licenses},
+    "licenses=s"        => \$SLURMOPT{binary}{licenses},
+    "J=s"               => \$SLURMOPT{binary}{"job-name"},
+    "job-name=s"        => \$SLURMOPT{binary}{"job-name"},
+    "gres=s"            => \$SLURMOPT{binary}{gres},
+    "qos=s"             => \$SLURMOPT{binary}{qos},
+ 
+# sbatch option (general)
+    "sbatch=s"          => \$SBATCHOPT, # a catch all for all other sbatch options
+
+  ) || exit 1;
+
+  print_options() if $OPT{h};
+
+  if ($OPT{autobundle}) { print STDERR "WARNING: --autobundle has been deprecated\n"; }
+
+# Default partition
+  if (not defined $SLURMOPT{binary}{partition}) {
+    if (defined $ENV{SBATCH_PARTITION}) {
+      $SLURMOPT{binary}{partition} = $ENV{SBATCH_PARTITION};
+    }
+    else {
+      $SLURMOPT{binary}{partition} = "norm";
+    }
+  }
+
+# Be quiet!
+  $OPT{verbose} = 0 if $OPT{silent};
+
+# development run
+  if ($OPT{devel}) {
+    $OPT{'no-scripts'} = 1 unless $OPT{"keep-scripts"};
+    $OPT{'no-run'} = 1;
+    $OPT{debug} = 1;
+    $OPT{verbose} = 3 unless (defined $OPT{verbose});
+  }
+  elsif ($OPT{debug}) {
+    $OPT{verbose} = 2;
+    $OPT{'no-run'} = 1;
+  }
+
+# Default verbosity
+  $OPT{verbose} = 0 if (not defined $OPT{verbose});
+
+  print "basedir = $PAR->{basedir}\n" if ($OPT{verbose} > 4);
+  print "script dir = $PAR->{tempdir}\n" if ($OPT{verbose} > 4);
+
+# avoid stupidness
+  $OPT{b}=1 if ((not defined $OPT{b}) || ($OPT{b} <= 1));
+
+# set cpus-per-task or ntasks-per-node
+  if ($OPT{t}) {
+    if ($OPT{t} eq "auto") {
+      $SLURMOPT{binary}{"ntasks-per-node"} = 1;
+      $SLURMOPT{unary}{exclusive} = 1;
+    }
+    else {
+# Don't be stupid
+      dieWithError("-t must be either a number or \"auto\"") if !($OPT{t}=~/^\d+$/ || $OPT{t} eq "auto");
+      dieWithError("-t must be either a number >=1") if ($OPT{t} < 1);
+      $SLURMOPT{binary}{"cpus-per-task"} = $OPT{t};
+    }
+  }
+  else {
+    $OPT{t} = 1;
+    $SLURMOPT{binary}{"cpus-per-task"} = 1;
+  }
+
+# And of course because we allocate per core, rather than per cpu, we need to adjust cpus-per-task
+  #$SLURMOPT{binary}{"cpus-per-task"} = 2 if ($SLURMOPT{binary}{"cpus-per-task"} == 1);
+
+# pack only allowed for single threaded swarms 
+  if ($OPT{t} && $OPT{p}) {
+    if (($OPT{t} > 1) && ($OPT{p} > 1)) {
+      dieWithError("-t is for multi-threaded commands, -p is for single-threaded commands.  Use one or the other!");
+    }
+  }
+  undef $OPT{p} if ($OPT{p} <= 1);
+# Don't allow p to be more than 2
+  dieWithError("-p can't be more than 2.") if ($OPT{p} > 2);
+
+# Don't allow hyperthreading, which implies no packing
+  $SLURMOPT{binary}{"threads-per-core"} = 1 if ($OPT{noht});
+
+# Set qos
+  if ($ENV{SBATCH_QOS} && (not defined $SLURMOPT{binary}{qos})) {
+     $SLURMOPT{binary}{qos} = $ENV{SBATCH_QOS};
+  }
+
+# Special for exclusivity
+  if ($SLURMOPT{unary}{exclusive}) {
+    $SLURMOPT{binary}{"ntasks-per-node"} = 1;
+  }
+  elsif ($ENV{SBATCH_EXCLUSIVE}) {
+    $SLURMOPT{unary}{exclusive}=1;
+    $SLURMOPT{binary}{"ntasks-per-node"} = 1;
+  }
+
+  if (defined $OPT{g}) { # assign to --mem, converted to MB
+    dieWithError("-g must be between 0.1 and 250") if (($OPT{g} <= 0.1) || ($OPT{g} >= 250));
+  }
+  else {
+    $OPT{g} = 1.5;
+  }
+  $SLURMOPT{binary}{"mem"} = ceil($OPT{g}*1024); 
+
+  $PAR->{user} = $OPT{user} if $OPT{user} && $OPT{debug};
+
+# After getopts, argv should be -1 for this script.
+  dieWithError("excess commandline arguments (@ARGV). See $PAR->{programname} --help") if ($#ARGV > -1 || $#ARGV < -1);
+
+# Also, swarm MUST be called with -f option
+  dieWithError("must specify '-f cmdfile'  See $PAR->{programname} --help") if !$OPT{f};
+
+  $PAR->{Commandfile} = $OPT{f};
+
+# Swarmfile must be a file
+  dieWithError("where is swarmfile?") if (! -f $OPT{f});
+
+# The swarmfile must not exceed 100MB in size.
+  #dieWithError("swarmfile must not exceed 100MB in size") if ((stat($OPT{f}))[7] > (100*1024*1024));
+
+# Check validity of $OPT{force}
+#  if (@{$OPT{force}}) {
+#    dieWithError("must specify processes per node (--force [nt] [ntasks-per-node])") if (${$OPT{force}}[1] !~/^\d+$/);
+#  } 
+
+# choose shell to run under
+  $PAR->{shell} = ($OPT{usecsh}) ? "/bin/tcsh" : "/bin/bash";
+
+# set commentChar
+  $PAR->{commentChar} = substr($OPT{commentChar},0,1) if $OPT{commentChar};
+
+# rewrite resource list
+#  if (defined $OPT{R}) {
+#    my @tmp;
+#    foreach my $i (split /,/,$OPT{R}) { 
+#      if ($i eq 'gpfs') { $PAR->{gpfs}=1; } # set gpfs resource
+#      elsif ($i eq 'gpu2050') { $PAR->{gpu2050}=1; } # set gpu resource
+#      else { push @tmp,$i; }
+#    }
+#    $OPT{R} = join ',',@tmp;
+#  }
+
+# comment out clean up lines if keep-scripts set
+  if ($OPT{"keep-scripts"} || $OPT{debug}) {
+    $OPT{"keep-scripts"}= '#';
+  }
+
+# Convert module from comma-delimited list to space-delimited list
+  if ($OPT{module}) {
+    my @tmp = split /,/,$OPT{module};
+    $OPT{module} = join " ",@tmp;
+  }
+
+# Determine job-name
+  if ($SLURMOPT{binary}{'job-name'}) {
+    $PAR->{"job-name"} = $SLURMOPT{binary}{'job-name'};
+  }
+  elsif ($ENV{SBATCH_JOB_NAME}) {
+    $SLURMOPT{binary}{'job-name'} = $ENV{SBATCH_JOB_NAME};
+    $PAR->{"job-name"} = $SLURMOPT{binary}{'job-name'};
+  }
+  else {
+    $PAR->{"job-name"} = "swarm";
+  }
+
+# Make sure that the logdir can be written to
+  if (defined $OPT{logdir}) {
+    isDirCreateable($OPT{logdir}) || dieWithError("can't write to $OPT{logdir}");
+  }
+  else {
+    $OPT{logdir} = $PAR->{pwd};
+  }
+
+# Set singleout final output and error file path
+  if ($OPT{singleout}) {
+    $PAR->{singleoutbase} = $PAR->{basedir}."/".'${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}';
+    $PAR->{singleoutfinal} = $OPT{logdir}."/".$PAR->{"job-name"}.'_${SLURM_ARRAY_JOB_ID}';
+  }
+
+# Set time
+  if (defined $ENV{SBATCH_TIMELIMIT}) {
+    $SLURMOPT{binary}{time}=$ENV{SBATCH_TIMELIMIT};
+  }
+}
+#==============================================================================
+sub print_options
+{
+  print <<EOF;
+Usage: swarm [swarm options] [sbatch options]
+
+  -f,--file [file]       name of file with list of command lines to execute,
+                         with a single command line per subjob
+
+  -g,--gb-per-process    gb per process (can be fractions of GB, e.g. 3.5)
+  [float]
+
+  -t,                    threads per process (can be an integer or the word
+  --threads-per-process  auto).  This option is only valid for multi-
+  [int]/"auto"           threaded swarms (-p 1).
+
+  -p,                    processes per subjob (default = 1).  This option is
+  --processes-per-subjob only valid for single-threaded swarms (-t 1).
+  [int]                  
+                      
+  --noht                 don't use hyperthreading, equivalent to slurm option
+                         --threads-per-core=1
+
+  -b,--bundle [int]      bundle more than one command line per subjob and run
+                         sequentially
+
+  --usecsh               use tcsh as the shell instead of bash
+  -m, --module           provide a list of environment modules to load
+                         prior to execution (comma delimited)
+
+NOTE: As of 7 am, Friday August 28th, --module will only accept a comma-
+delimited list, rather than a space-delimited list.
+
+  --no-comment           don't ignore text following comment character $PAR->{commentChar}
+  -c, --comment-char [chr]  
+                         use something other than $PAR->{commentChar} as the comment character
+
+  --singleout            concatenate STDOUT and STDERR to single files
+                         NOTE: This option is NOT appropriate for swarms of
+                         very short running commands, as the process of
+                         concatenating output can outlast command execution!
+
+  --logdir               directory to which .o and .e files are to be written
+                         (default is current working directory)
+
+Development options:
+
+  -h, --help             print this help message
+  --keep-scripts         don't remove temporary swarm scripts
+  --no-scripts           don't create temporary swarm scripts (with --debug
+                         or --devel)
+  --debug                don't actually run 
+  --devel                combine --debug and --no-scripts, and be very chatty
+  -v, --verbose [int]    can range from 0 to 4, with 4 the most verbose
+  --silent               don't give any feedback, just jobid
+
+sbatch options:
+
+  -J, --job-name [str]   set the name of the job
+  --dependency [str]     set up dependency (i.e. run swarm before or after)
+  --time [str]           change the walltime for each subjob (default is
+                         04:00:00, or 4 hours)
+  -L,--licenses [str]    obtain software licenses (e.g. --licenses=matlab)
+  --partition [str]      change the partition (default is norm)
+  --gres [str]           set generic resources for swarm
+  --qos [str]            set quality of service for swarm
+
+Other sbatch options
+
+  --sbatch [string]      add sbatch-specific options to swarm.  These options
+                         will be added last, which means that swarm options
+                         for allocation of cpus and memory take precedence.
+
+Environment variables
+
+  The following environment variables will affect how sbatch allocates
+  resources:
+
+  SBATCH_JOB_NAME        Same as --job-name
+  SBATCH_PARTITION       Same as --partition
+  SBATCH_QOS             Same as --qos
+  SBATCH_TIMELIMIT       Same as --time
+  SBATCH_EXCLUSIVE       Same as --exclusive
+
+EOF
+  exit;
+}
+#==============================================================================
+sub dieWithError
+{
+  my $message = shift;
+  die "ERROR: $message\n";
+}
+#==============================================================================
+sub writeLog
+{
+# log some useful information
+  open(LOG, ">>$PAR->{logfile}") || die "ERROR: Can't open logfile $PAR->{logfile} $!\n";
+  chmod 0666, $PAR->{logfile};
+
+# Make Susan happy
+  my $x = $PAR->{sbatch_options};
+  $x=~s/%A/$PAR->{jobid}/g;
+
+  print LOG "date="       .$PAR->{date}            ."; "
+          . "host="       .$PAR->{host}            ."; "
+          . "jobid="      .$PAR->{jobid}           ."; "
+          . "user="       .$PAR->{user}            ."; "
+          . "pwd="        .$PAR->{pwd}             ."; "
+          . "ncmds="      .$PAR->{commands}        ."; "
+          . "soptions="   .$x                      ."; "
+          . "njobs="      .$PAR->{subjobs}         ."; "
+          . "job-name="   .$PAR->{'job-name'}      ."; "
+          . "command="    .$PAR->{commandLine}     ."\n";
+  close(LOG);
+}
+#==============================================================================
+sub isDirCreateable
+{
+  my $path = shift;
+  my $str = File::Spec->rel2abs($path); # convert path to absolute
+  while (!-d $str) { $str =~s/\/[^\/]*$//; }
+  return 1 if (-w $str);
+}
+#==============================================================================
+sub generate_singleout_block
+{
+  my ($cpu) = shift;
+
+  my $base = $PAR->{singleoutbase}.$cpu;
+  my $final = $PAR->{singleoutfinal};
+
+# If the .e file is NOT empty, then prepend the content with the actual command for reference
+  my $string = <<EOF;
+if [[ -s "$base.o" ]]; then
+    echo ========================================== >> $final.o
+    echo -n "COMMAND: ">> $final.o
+    cat \${d}/cmd.\${z}${cpu} >> $final.o
+    echo ------------------------------------------ >> $final.o
+    cat $base.o >> $final.o
+    echo ========================================== >> $final.o
+fi
+rm -f $base.o
+touch $final.e
+if [[ -s "$base.e" ]]; then
+    echo ========================================== >> $final.e
+    echo -n "COMMAND: " >> $final.e
+    cat \${d}/cmd.\${z}${cpu} >> $final.e
+    echo ------------------------------------------ >> $final.e
+    cat $base.e >> $final.e
+    echo ========================================== >> $final.e
+fi
+rm -f $base.e
+EOF
+
+  return $string;
+}
+#==============================================================================
+sub adjustTime
+#
+# Multiply the default time by the bundle factor...
+{
+# Don't bother unless bundling
+  return if ($PAR->{b} == 1);
+
+# Don't bother if partition is unlimited
+  return if ($SLURMOPT{binary}{partition} eq "unlimited");
+
+# Get default_time from partition
+  my $slurm = Slurm::new();
+  my $partitions = $slurm->load_partitions();
+  foreach my $i (@{$partitions->{partition_array}}) {
+    if ($i->{name} eq $SLURMOPT{binary}{partition} ) {
+      $PAR->{default_time} = ($i->{default_time}*60); # time is in minutes
+      $PAR->{max_time} = ($i->{max_time}*60); # time is in minutes
+    }
+  }
+  (defined $PAR->{default_time}) || dieWithError("undefined time limit for $SLURMOPT{binary}{partition} partition!");
+
+# Find requested_time from user
+  if (defined $SLURMOPT{binary}{time}) {
+    $PAR->{requested_time} = clock_to_seconds($SLURMOPT{binary}{time});
+  }
+  else {
+    $PAR->{requested_time} = $PAR->{default_time};
+  } 
+
+  #print "requested_time = ".seconds_to_clock($PAR->{requested_time})."\n";
+  #print "max_time = ".seconds_to_clock($PAR->{max_time})."\n";
+  $PAR->{adjusted_time} = $PAR->{requested_time} * $PAR->{b};
+  dieWithError("Total time for bundled commands is greater than partition walltime limit.\nTry lowering the time per command (--time=".seconds_to_clock($PAR->{requested_time})."), lowering the bundle factor\n(if not autobundled), picking another partition, or splitting up the swarmfile.") if ($PAR->{adjusted_time} > $PAR->{max_time});
+
+  $SLURMOPT{binary}{time} = seconds_to_clock($PAR->{adjusted_time});
+}
+#==============================================================================
+sub seconds_to_clock
+# converts seconds to clock time (D*-HH:MM:SS)
+{
+  my($time) = @_;
+  my($sec) = 0;
+  my($min) = 0;
+  my($hrs) = 0;
+  my($day) = 0;
+  $sec = $time;
+  $min = $sec / 60;
+  $sec = $sec % 60;
+  if ($min > 60) {
+    $hrs = $min / 60;
+    $min = $min % 60;
+    if ($hrs > 24) {
+      $day = $hrs / 24;
+      $hrs = $hrs % 24;
+      return sprintf ("%d-%02d:%02d:%02d",$day,$hrs,$min,$sec);
+    }
+    else { return sprintf ("%02d:%02d:%02d",$hrs,$min,$sec); }
+  }
+  else { return sprintf ("%02d:%02d",$min,$sec); }
+}
+#==============================================================================
+sub clock_to_seconds
+# converts clock time (D*-HH:MM:SS) to seconds
+{
+  my($clock) = @_;
+# days-hours:minutes:seconds
+  if ($clock=~/(\d+)-(\d+):(\d+):(\d+)/) {
+    return ($1*86400)+($2*3600)+($3*60)+$4;
+  }
+# days-hours:minutes
+  elsif ($clock=~/(\d+)-(\d+):(\d+)/) {
+    return ($1*86400)+($2*3600)+($3*60);
+  }
+# days-hours
+  elsif ($clock=~/(\d+)-(\d+)/) {
+    return ($1*86400)+($2*3600);
+  }
+# hours:minutes:seconds
+  elsif ($clock=~/(\d+):(\d+):(\d+)/) {
+    return ($1*3600)+($2*60)+$3;
+  }
+# minutes:seconds
+  elsif ($clock=~/(\d+):(\d+)/) {
+    return ($1*60)+$2;
+  }
+# minutes
+  elsif ($clock=~/(\d+)/) {
+    return ($1*60);
+  }
+}
+#==============================================================================
+
