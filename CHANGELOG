@@ -1,0 +1,7 @@
+A recent issue (17982) revealed a problem with cleaning up swarm directories, the gist of which is that swarm_cleanup.pl can't always determine if a swarm has actually finished.
+
+To make the problem easier to deal with, the way in which swarm creates and handles batch and command scripts has been changed.  The temporary subdirectory that holds the command scripts now begins with the prefix 'tmp', while swarm runs in debug or devel mode begin with 'dev'.  Further, once the swarm has been submitted successfully, a symlink is created to associate the jobid with the temporary subdirectory.  All files (command scripts, the main batch script, and any temporary .o and .e files for --singleout) are written into the temporary subdirectory.
+
+Thus, all swarms that have been successfully placed in the slurm queue have a symlink pointing to the temporary directories, positively identifying the jobs to which the swarm belongs.
+
+This change should be essentially invisible to the user, but make it easier to deal with cleaning up.  It will also simplify retroactive recovery of temporary .o and .e files that remain after --singleout swarms either timeout or are cancelled, if attempted.
