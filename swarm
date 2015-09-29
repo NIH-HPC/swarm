@@ -74,7 +74,7 @@ sub setDefaults
     make_path($PAR->{basedir}, { mode => 0700, }) || dieWithError("Can't create swarm script basedir!");
   }
   $PAR->{tempdir} = "$PAR->{basedir}/$PAR->{tempname}";
-  $PAR->{batchfile} = $PAR->{tempdir}.".batch";
+  $PAR->{batchfile} = $PAR->{tempdir}."/swarm.batch";
 
 # Other defaults
   $PAR->{shell} = "/bin/bash";
@@ -259,6 +259,8 @@ sub writeCommandFiles
     my $k=-1;
     my $clust;
     open FILE, ">$PAR->{tempdir}/cmd.$suffix" if (!$OPT{p});
+    print FILE $OPT{'keep-scripts'} if (!$OPT{p}); # Don't do any clean up if told not to
+    print FILE "rm $PAR->{tempdir}/cmd.$suffix\n" if (!$OPT{p}); # Force the script to self-delete
 # STUPID STUPID STUPID
 # Under tcsh, 'module' is an alias, which means there is no valid exit status.
     if ($OPT{module}) {
@@ -301,6 +303,8 @@ sub writeCommandFiles
       $k++;
       my $tag = sprintf "%0${len3}d",$k;
       open FILE, ">$PAR->{tempdir}/cmd.${suffix}_${tag}";
+      print FILE $OPT{'keep-scripts'}; # Don't do any clean up if told not to
+      print FILE "rm $PAR->{tempdir}/cmd.${suffix}_${tag}\n"; # Force the script to self-delete
       if ($OPT{module}) {
         if ($PAR->{shell} eq '/bin/bash') {
           print FILE "source /usr/local/lmod/lmod/lmod/init/bash\n";
@@ -327,8 +331,12 @@ sub writeBatchScript
   open FILE, ">$PAR->{batchfile}";
   my $len = length($#{$SWARM->{CMDLISTS}});
   my $len3 = length($OPT{p}) if $OPT{p};
+  print FILE "#!/bin/bash\n";
+
+  print FILE $OPT{'keep-scripts'}; # Don't do any clean up if told not to
+  print FILE "rm -f $PAR->{batchfile} 2>/dev/null\n"; # Force the script to self-delete
+
   print FILE <<EOF1;
-#!/bin/bash
 
 # Determine the jobid and task id on the fly
 d=$PAR->{basedir}/\${SLURM_ARRAY_JOB_ID}
@@ -395,7 +403,7 @@ EOF1
       print FILE "echo \${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID} finished on \$HOSTNAME at \$(date +'\%F \%T')\n";
     }
 
-    print FILE "lockfile $PAR->{basedir}/\${SLURM_ARRAY_JOB_ID}.lock\n";
+    print FILE "lockfile $PAR->{tempdir}/\${SLURM_ARRAY_JOB_ID}.lock\n";
     if ($OPT{p}) {
       foreach my $i (0 .. $OPT{p}-1) {
         my $tag = sprintf "%0${len3}d",$i;
@@ -405,11 +413,9 @@ EOF1
     else {
       print FILE (generate_singleout_block());
     }
-    print FILE "rm -f $PAR->{basedir}/\${SLURM_ARRAY_JOB_ID}.lock\n";
+    print FILE "rm -f $PAR->{tempdir}/\${SLURM_ARRAY_JOB_ID}.lock\n";
   }
 
-  print FILE $OPT{'keep-scripts'}; # Don't do any clean up if told not to
-  print FILE "rm \${d}/cmd.\${z}\n"; # Force the script to self-delete
   print FILE "exit \$exitcode\n"; # Exit with the final exit code from the given command
 
   close FILE;
@@ -427,8 +433,8 @@ sub submitSlurm
   }
   else {
     if ($OPT{singleout}) {
-      $PAR->{sbatch_options} .= " --output=$PAR->{basedir}/\%A_\%a.o";
-      $PAR->{sbatch_options} .= " --error=$PAR->{basedir}/\%A_\%a.e";
+      $PAR->{sbatch_options} .= " --output=$PAR->{tempdir}/\%A_\%a.o";
+      $PAR->{sbatch_options} .= " --error=$PAR->{tempdir}/\%A_\%a.e";
     }
     else {
       if ($OPT{noout}) {
@@ -483,7 +489,6 @@ sub createSymlink
   my $num;
   if ($PAR->{jobid}) { $num = $PAR->{jobid}; }
   else { $num = fakeJobId(); }
-  symlink ("$PAR->{batchfile}","$PAR->{basedir}/$num.batch");
   symlink ("$PAR->{tempdir}","$PAR->{basedir}/$num");
 }
 #==============================================================================
@@ -834,7 +839,7 @@ sub getCommandLineOptions
 
 # Set singleout final output and error file path
   if ($OPT{singleout}) {
-    $PAR->{singleoutbase} = $PAR->{basedir}."/".'${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}';
+    $PAR->{singleoutbase} = $PAR->{tempdir}."/".'${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}';
     $PAR->{singleoutfinal} = $OPT{logdir}."/".$PAR->{"job-name"}.'_${SLURM_ARRAY_JOB_ID}';
   }
 
@@ -842,6 +847,9 @@ sub getCommandLineOptions
   if (defined $ENV{SBATCH_TIMELIMIT}) {
     $SLURMOPT{binary}{time}=$ENV{SBATCH_TIMELIMIT};
   }
+
+# Set keep-scripts if singleout
+  $OPT{"keep-scripts"} = '#' if $OPT{singleout};
 }
 #==============================================================================
 sub print_options
