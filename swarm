@@ -64,17 +64,12 @@ sub setDefaults
   chomp($PAR->{host} = `/bin/hostname`); # where am I?
   $PAR->{pwd} = $ENV{'PWD'}; # what directory is this?
 
-# Create a temporary name for the batch script and command script directory
-  (undef,$PAR->{tempname}) = tempfile('tmpXXXXXXXX',OPEN => 0);
-
 # Create the basedir where the batch script and command scripts will be written
   $PAR->{basedir} = "/spin1/swarm/$PAR->{user}";
   isDirCreateable($PAR->{basedir}) || dieWithError("can't write to $PAR->{basedir}");
   if (!-d $PAR->{basedir}) {
     make_path($PAR->{basedir}, { mode => 0700, }) || dieWithError("Can't create swarm script basedir!");
   }
-  $PAR->{tempdir} = "$PAR->{basedir}/$PAR->{tempname}";
-  $PAR->{batchfile} = $PAR->{tempdir}."/swarm.batch";
 
 # Other defaults
   $PAR->{shell} = "/bin/bash";
@@ -487,22 +482,9 @@ sub createSymlink
 # Create a symlink to the temporary directory with the jobid
 {
   my $num;
-  if ($PAR->{jobid}) { $num = $PAR->{jobid}; }
-  else { $num = fakeJobId(); }
-  symlink ("$PAR->{tempdir}","$PAR->{basedir}/$num");
-}
-#==============================================================================
-sub fakeJobId
-# Generate a number that will never be a jobid; this was determined by running
-# scontrol show conf | grep MaxJobId.
-{
-  my $x = 0;
-  my $maxjobid = 1000000000000;
-  while ($x < $maxjobid) {
-    $x .= int(rand(100));
+  if ($PAR->{jobid}) { 
+    symlink ("$PAR->{tempdir}","$PAR->{basedir}/$PAR->{jobid}");
   }
-  $x = "9".substr($x,-12,11);
-  return $x
 }
 #==============================================================================
 sub evaluateBundling
@@ -706,6 +688,14 @@ sub getCommandLineOptions
 # Default verbosity
   $OPT{verbose} = 0 if (not defined $OPT{verbose});
 
+# Create a temporary name for the batch script and command script directory.
+# Partitioning debug/devel runs from real runs makes it easier to clean up.
+  if ($OPT{debug} || $OPT{devel}) { (undef,$PAR->{tempname}) = tempfile('devXXXXXXXX',OPEN => 0); }
+  else { (undef,$PAR->{tempname}) = tempfile('tmpXXXXXXXX',OPEN => 0); }
+  $PAR->{tempdir} = "$PAR->{basedir}/$PAR->{tempname}";
+  $PAR->{batchfile} = $PAR->{tempdir}."/swarm.batch";
+
+# Be chatty
   print "basedir = $PAR->{basedir}\n" if ($OPT{verbose} > 4);
   print "script dir = $PAR->{tempdir}\n" if ($OPT{verbose} > 4);
 
