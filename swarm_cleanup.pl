@@ -36,12 +36,9 @@ GetOptions(
   "debug" => \$OPT{debug}, # debug mode
   "h" => sub { print $description; exit; },
   "help" => sub { print $description; exit; },
-  "v=i" => \$OPT{verbose},
-  "verbose=i" => \$OPT{verbose},
+  "v" => \$OPT{verbose},
+  "verbose" => \$OPT{verbose},
 );
-
-# Permanently debug state until we know this will work correctly
-$OPT{debug} = 1;
 
 my $jobs = getJobs();
 
@@ -161,7 +158,7 @@ sub emptydir {
 sub getJobLinks
 {
 # Find symlinks pointing to tmp directories
-  print "Getting symlinks for real jobs\n" if $OPT{debug};
+  print "Getting symlinks for real jobs\n" if $OPT{verbose};
   my $cmd;
   if ($OPT{user}) {
     $cmd = "find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type l 2>/dev/null";
@@ -181,7 +178,7 @@ sub getJobLinks
 sub getDevDirectories
 {
 # Find dev directories
-  print "Getting dev directories\n" if $OPT{debug};
+  print "Getting dev directories\n" if $OPT{verbose};
   my $cmd;
   if ($OPT{user}) {
     $cmd = "find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type d -name '^dev' 2>/dev/null";
@@ -201,7 +198,7 @@ sub getDevDirectories
 sub getOrphanDirectories
 {
 # Find tmp directories without any symlinks
-  print "Getting orphan directories without symlink (this will take some time)\n" if $OPT{debug};
+  print "Getting orphan directories without symlink (this will take some time)\n" if $OPT{verbose};
   my $cmd;
   if ($OPT{user}) {
     $cmd = "find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type d 2>/dev/null";
@@ -232,7 +229,7 @@ sub getOrphanDirectories
 #==============================================================================
 #sub getSingleoutFiles
 #{
-#  print "Getting singleout file info\n" if $OPT{debug};
+#  print "Getting singleout file info\n" if $OPT{verbose};
 #  my $cmd;
 #  if ($OPT{user}) {
 #    $cmd = "find /spin1/swarm/$OPT{user} -mindepth 1 -maxdepth 1 -type f -name '*.o' -o -name '*.e' 2>/dev/null";
@@ -252,10 +249,10 @@ sub getOrphanDirectories
 #==============================================================================
 sub getJobs
 {
-  print "Getting jobs\n" if $OPT{debug};
+  print "Getting jobs\n" if $OPT{verbose};
   my $slurm = Slurm::new();
   my $jobs = $slurm->load_jobs();
-  print "Getting job states\n" if $OPT{debug};
+  print "Getting job states\n" if $OPT{verbose};
   my $hr;
   JOB: foreach my $ref (@{$jobs->{job_array}}) {
     next JOB if ((defined $OPT{user}) && ($ref->{"user"} ne $OPT{user}));
@@ -286,24 +283,24 @@ sub getStatesForJob
 sub clean_jobdirs
 {
   my $jobdir = getJobLinks();
-  print "Walking through directories\n" if $OPT{debug};
+  print "Walking through directories\n" if $OPT{verbose};
 # Walk through all directories and determine if it and the associated batch file be removed
   foreach my $id (sort keys %{$jobdir}) {
   
     my $delete;
   
     my $user = basename(dirname($jobdir->{$id}));
-    print "$user\t$id\t" if $OPT{debug};
+    print "$user\t$id\t" if $OPT{verbose};
   
 # Real job id
     if (job_ended($id)) {
-      print " --> ENDED" if $OPT{debug};
+      print " --> ENDED" if $OPT{verbose};
       $delete = 1;
     }
-    else { print " --> ?" if $OPT{debug}; }
+    else { print " --> ?" if $OPT{verbose}; }
   
-    print " DELETE!" if ($delete && $OPT{debug});
-    print "\n" if $OPT{debug}; 
+    print " DELETE!" if ($delete && $OPT{verbose});
+    print "\n" if $OPT{verbose}; 
   }
 }
 #==============================================================================
@@ -315,25 +312,22 @@ sub clean_devdirs
 sub clean_orphandirs
 {
   my $tmpdir = getOrphanDirectories();
-  print "Walking through directories\n" if $OPT{debug};
+  print "Walking through directories\n" if $OPT{verbose};
 # Walk through all directories and determine if it and the associated batch file be removed
   foreach my $dir (sort keys %{$tmpdir}) {
   
     my $delete;
   
     my $user = basename(dirname($tmpdir->{$dir}));
-    print "$user\t$dir\t" if $OPT{debug};
+    print "$user\t$dir\t" if $OPT{verbose};
 
 # Real job id?
     if ($dir =~ /^\d+$/) {
       if (job_ended($dir)) {
-        print " --> ENDED" if $OPT{debug};
+        print " --> ENDED" if $OPT{verbose};
         $delete = 1;
       }
-      else { print " --> ?" if $OPT{debug}; }
-  
-      print " DELETE!" if ($delete && $OPT{debug});
-      print "\n" if $OPT{debug}; 
+      else { print " --> ?" if $OPT{verbose}; }
     }
 
 # Can't figure it out
@@ -341,7 +335,7 @@ sub clean_orphandirs
 
 # Is directory empty?
       if (emptydir($tmpdir->{$dir})) {
-        print " --> EMPTY" if $OPT{debug};
+        print " --> EMPTY" if $OPT{verbose};
 # Delete the empty directory if it is more than 1 day old
         if ((time()-(stat($tmpdir->{$dir}))[9]) > (86400*1)) {
           $delete = 1;
@@ -351,27 +345,39 @@ sub clean_orphandirs
 # Look in swarm log to see if it is on the verge of running
         chomp(my $stupid = `grep $dir /usr/local/logs/sbatch.log`);
         if ($stupid=~/ SUBM\[ERROR\]: $user /) {
-          print " --> SUBM[ERROR]" if $OPT{debug};
+          print " --> SUBM[ERROR]" if $OPT{verbose};
           $delete = 1 ;
         }
         elsif ($stupid=~/ SUBM\[(\d+)\]: $user /) {
           if (job_ended($1)) {
-            print " --> ENDED" if $OPT{debug};
+            print " --> ENDED" if $OPT{verbose};
             $delete = 1;
           }
         }
         elsif ($stupid) {
-          print " --> $stupid" if $OPT{debug};
+          print " --> $stupid" if $OPT{verbose};
         }
         elsif ((time()-(stat($tmpdir->{$dir}))[9]) > (86400*3)) {
-          print " --> DEVEL? $tmpdir->{$dir}" if $OPT{debug};
+          print " --> DEVEL? $tmpdir->{$dir}" if $OPT{verbose};
+          $delete = 1;
         }
         else {
-          print " --> ? $tmpdir->{$dir}" if $OPT{debug};
+          print " --> ? $tmpdir->{$dir}" if $OPT{verbose};
         }
       }
-      print " DELETE!" if ($delete && $OPT{debug});
-      print "\n" if $OPT{debug}; 
+    }
+
+    print " DELETE!" if ($delete && $OPT{verbose});
+    print "\n" if $OPT{verbose}; 
+
+# Really delete it
+    if (($delete) && (!$OPT{debug})) {
+      print "  deleting $tmpdir->{$dir} ...\n";
+      system("rm -rf $tmpdir->{$dir}");
+      if (-f "$tmpdir->{$dir}.batch") {
+        print "  deleting $tmpdir->{$dir}.batch ...\n";
+        system("rm -f $tmpdir->{$dir}.batch");
+      }
     }
   }
 }
@@ -392,7 +398,7 @@ sub job_ended
   my $job_ended;
  
   if (@z) { # job states can be known
-    print " --> @z" if ($OPT{debug});
+    print " --> @z" if ($OPT{verbose});
 
 # if the job state is NOT an active state, then the Job is inactive -- we can delete it
     $job_ended = 1;
