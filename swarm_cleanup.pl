@@ -30,6 +30,8 @@ GetOptions(
   "u=s" => \$OPT{user}, # restrict to this user
   "l=s" => \$OPT{log}, # log actions
   "log=s" => \$OPT{log}, # log actions
+  "clean-dev" => \$OPT{"clean-dev"}, # only clean dev directories
+  "clean-orphans" => \$OPT{"clean-orphans"}, # only clean orphan directories
   "d" => \$OPT{debug}, # debug mode
   "debug" => \$OPT{debug}, # debug mode
   "h" => sub { print $description; exit; },
@@ -41,64 +43,25 @@ GetOptions(
 # Permanently debug state until we know this will work correctly
 $OPT{debug} = 1;
 
-# Get states for all jobs known to sacct
-my $x = getJobs();
+my $jobs = getJobs();
 
-# Get all directories in /spin1/swarm
-my $y = getDirectories();
-
-print "Walking through directories\n" if $OPT{debug};
-# Walk through all directories and determine if it and the associated batch file be removed
-foreach my $id (sort keys %{$y}) {
-
-  my $delete;
-
-  my $user = basename(dirname($y->{$id}));
-  print "$user/$id: " if $OPT{debug};
-
-  if ($id >  100000000000) { # fake job id
-# is the symlink older than a week?
-    if (older_than_one_week($y->{$id})) {
-      print " --> ONE WEEK" if $OPT{debug};
-      $delete = 1;
-    }
-    else {
-      print " --> TOO EARLY" if $OPT{debug};
-    }
-  }
-  else {
-
-# Real job id
-    if (not defined $x->{$id}) { # unknown to perl api
-      $x = getStatesForJob($id); 
-    }
-
-    my @z = sort keys %{$x->{$id}};
-
-    if (@z) { # job states known
-      print " --> @z" if ($OPT{debug});
-
-# If the job state is NOT an active state, then the Job is inactive -- we can delete it
-      $delete = 1;
-      foreach my $st ("CONFIGURING","COMPLETING","PENDING","RUNNING","RESIZING","SUSPENDED") {
-        undef $delete if (grep /$st/,@z);
-      }
-    }
-    else {
-      print " --> ?" if $OPT{debug};
-    }
-  }
-
-  print " DELETE!" if ($delete && $OPT{debug});
-  print "\n" if $OPT{debug}; 
+if ($OPT{"clean-dev"}) {
+  clean_devdirs();
 }
+elsif ($OPT{"clean-orphans"}) {
+  clean_orphandirs();
+}
+else {
+  clean_jobdirs();
+}
+
 #  else {
 ##    print "unknown\n";
 ##    print "  $y->{$id}\n";
 #
 ## Is the directory empty?
 #
-#    if ((-d $y->{$id}) && (is_folder_empty($y->{$id})) && (older_than_three_days($y->{$id}))) {
+#    if ((-d $y->{$id}) && (emptydir($y->{$id})) && (older_than_three_days($y->{$id}))) {
 #      print " --> EMPTY" if $OPT{debug};
 #      $delete = 1;
 #    }
@@ -185,34 +148,83 @@ sub older_than_one_week
 #  return 1 if ((time()-$mtime) > (86400*3));
 #}
 #==============================================================================
-#sub is_folder_empty {
-#  my $dirname = shift;
-#  if (opendir(my $dh, $dirname)) {
-#    return scalar(grep { $_ ne "." && $_ ne ".." } readdir($dh)) == 0;
-#  }
-#  else {
-#    warn "Can't open directory: $dirname";
-#  }
-#}
-##==============================================================================
-sub getDirectories
-{
-  print "Getting directory info\n" if $OPT{debug};
-  my $cmd;
-  if ($OPT{user}) {
-    $cmd = 'find /spin1/swarm/'.$OPT{user}.' -mindepth 1 -maxdepth 1 \( -type l -o -type d \) 2>/dev/null';
+sub emptydir {
+  my $dirname = shift;
+  if (opendir(my $dh, $dirname)) {
+    return scalar(grep { $_ ne "." && $_ ne ".." } readdir($dh)) == 0;
   }
   else {
-    $cmd = 'find /spin1/swarm -mindepth 2 -maxdepth 2 \( -type l -o -type d \) 2>/dev/null';
+    warn "Can't open directory: $dirname";
+  }
+}
+#==============================================================================
+sub getJobLinks
+{
+# Find symlinks pointing to tmp directories
+  print "Getting symlinks for real jobs\n" if $OPT{debug};
+  my $cmd;
+  if ($OPT{user}) {
+    $cmd = "find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type l 2>/dev/null";
+  }
+  else {
+    $cmd = "find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type l 2>/dev/null";
   }
   chomp(my $ret = `$cmd`);
   my $s;
-  foreach my $line (split /\n/,$ret) {
-    my $id = basename($line);
-
-# only keep numerical symlinks
-    if ($id=~/^\d+$/) {
-      $s->{$id} = $line;
+  foreach my $link (split /\n/,$ret) {
+    my $id = basename($link);
+    if ($id=~/^\d+$/) { $s->{$id} = $link; } # only keep numerical symlinks
+  }
+  return $s;
+}
+#==============================================================================
+sub getDevDirectories
+{
+# Find dev directories
+  print "Getting dev directories\n" if $OPT{debug};
+  my $cmd;
+  if ($OPT{user}) {
+    $cmd = "find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type d -name '^dev' 2>/dev/null";
+  }
+  else {
+    $cmd = "find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type d -name '^dev' 2>/dev/null";
+  }
+  chomp(my $ret = `$cmd`);
+  my $s;
+  foreach my $dir (split /\n/,$ret) {
+    my $name = basename($dir);
+    $s->{$name} = $dir;
+  }
+  return $s;
+}
+#==============================================================================
+sub getOrphanDirectories
+{
+# Find tmp directories without any symlinks
+  print "Getting orphan directories without symlink (this will take some time)\n" if $OPT{debug};
+  my $cmd;
+  if ($OPT{user}) {
+    $cmd = "find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type d 2>/dev/null";
+  }
+  else {
+    $cmd = "find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type d 2>/dev/null";
+  }
+  chomp(my $ret = `$cmd`);
+  my $s;
+  DIR: foreach my $dir (split /\n/,$ret) {
+    my $name = basename($dir);
+    next DIR if ($name=~/^dev/);
+    next DIR if ($name=~/^tmp/);
+# Now turn around and find if there are any symlinks pointing to that file
+    if ($OPT{user}) {
+      $cmd = "find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -lname $dir 2>/dev/null";
+    }
+    else {
+      $cmd = "find /spin1/swarm/ -mindepth 2 -maxdepth 2 -lname $dir 2>/dev/null";
+    } 
+    chomp(my $ret2 = `$cmd`);
+    if (!$ret2) {
+      $s->{$name} = $dir;
     }
   }
   return $s;
@@ -240,6 +252,7 @@ sub getDirectories
 #==============================================================================
 sub getJobs
 {
+  print "Getting jobs\n" if $OPT{debug};
   my $slurm = Slurm::new();
   my $jobs = $slurm->load_jobs();
   print "Getting job states\n" if $OPT{debug};
@@ -268,5 +281,125 @@ sub getStatesForJob
   }
  
   return $hr;
+}
+#==============================================================================
+sub clean_jobdirs
+{
+  my $jobdir = getJobLinks();
+  print "Walking through directories\n" if $OPT{debug};
+# Walk through all directories and determine if it and the associated batch file be removed
+  foreach my $id (sort keys %{$jobdir}) {
+  
+    my $delete;
+  
+    my $user = basename(dirname($jobdir->{$id}));
+    print "$user\t$id\t" if $OPT{debug};
+  
+# Real job id
+    if (job_ended($id)) {
+      print " --> ENDED" if $OPT{debug};
+      $delete = 1;
+    }
+    else { print " --> ?" if $OPT{debug}; }
+  
+    print " DELETE!" if ($delete && $OPT{debug});
+    print "\n" if $OPT{debug}; 
+  }
+}
+#==============================================================================
+sub clean_devdirs
+{
+  my $dev = getDevDirectories();
+}
+#==============================================================================
+sub clean_orphandirs
+{
+  my $tmpdir = getOrphanDirectories();
+  print "Walking through directories\n" if $OPT{debug};
+# Walk through all directories and determine if it and the associated batch file be removed
+  foreach my $dir (sort keys %{$tmpdir}) {
+  
+    my $delete;
+  
+    my $user = basename(dirname($tmpdir->{$dir}));
+    print "$user\t$dir\t" if $OPT{debug};
+
+# Real job id?
+    if ($dir =~ /^\d+$/) {
+      if (job_ended($dir)) {
+        print " --> ENDED" if $OPT{debug};
+        $delete = 1;
+      }
+      else { print " --> ?" if $OPT{debug}; }
+  
+      print " DELETE!" if ($delete && $OPT{debug});
+      print "\n" if $OPT{debug}; 
+    }
+
+# Can't figure it out
+    else {
+
+# Is directory empty?
+      if (emptydir($tmpdir->{$dir})) {
+        print " --> EMPTY" if $OPT{debug};
+# Delete the empty directory if it is more than 1 day old
+        if ((time()-(stat($tmpdir->{$dir}))[9]) > (86400*1)) {
+          $delete = 1;
+        }
+      }
+      else {
+# Look in swarm log to see if it is on the verge of running
+        chomp(my $stupid = `grep $dir /usr/local/logs/sbatch.log`);
+        if ($stupid=~/ SUBM\[ERROR\]: $user /) {
+          print " --> SUBM[ERROR]" if $OPT{debug};
+          $delete = 1 ;
+        }
+        elsif ($stupid=~/ SUBM\[(\d+)\]: $user /) {
+          if (job_ended($1)) {
+            print " --> ENDED" if $OPT{debug};
+            $delete = 1;
+          }
+        }
+        elsif ($stupid) {
+          print " --> $stupid" if $OPT{debug};
+        }
+        elsif ((time()-(stat($tmpdir->{$dir}))[9]) > (86400*3)) {
+          print " --> DEVEL? $tmpdir->{$dir}" if $OPT{debug};
+        }
+        else {
+          print " --> ? $tmpdir->{$dir}" if $OPT{debug};
+        }
+      }
+      print " DELETE!" if ($delete && $OPT{debug});
+      print "\n" if $OPT{debug}; 
+    }
+  }
+}
+#==============================================================================
+sub job_ended
+{
+# Determine if a job has ended
+  my $jobid = shift;
+  my @z;
+  if (not defined $jobs->{$jobid}) { # unknown to perl api
+    my $x = getStatesForJob($jobid); 
+    @z = (sort keys %{$x->{$jobid}});
+  }
+  else {
+    @z = (sort keys %{$jobs->{$jobid}});
+  }
+
+  my $job_ended;
+ 
+  if (@z) { # job states can be known
+    print " --> @z" if ($OPT{debug});
+
+# if the job state is NOT an active state, then the Job is inactive -- we can delete it
+    $job_ended = 1;
+    foreach my $st ("CONFIGURING","COMPLETING","PENDING","RUNNING","RESIZING","SUSPENDED") {
+      undef $job_ended if (grep /$st/,@z);
+    }
+  }
+  return $job_ended;
 }
 #==============================================================================

@@ -254,8 +254,9 @@ sub writeCommandFiles
     my $k=-1;
     my $clust;
     open FILE, ">$PAR->{tempdir}/cmd.$suffix" if (!$OPT{p});
-    print FILE $OPT{'keep-scripts'} if (!$OPT{p}); # Don't do any clean up if told not to
-    print FILE "rm $PAR->{tempdir}/cmd.$suffix\n" if (!$OPT{p}); # Force the script to self-delete
+# DO NOT SELF DESTRUCT, SYSADMINS WANT TO SEE WHAT'S HAPPENING -- hooverdm, 2015-09-29
+#    print FILE $OPT{'keep-scripts'} if (!$OPT{p}); # Don't do any clean up if told not to
+#    print FILE "rm $PAR->{tempdir}/cmd.$suffix\n" if (!$OPT{p}); # Force the script to self-delete
 # STUPID STUPID STUPID
 # Under tcsh, 'module' is an alias, which means there is no valid exit status.
     if ($OPT{module}) {
@@ -328,8 +329,9 @@ sub writeBatchScript
   my $len3 = length($OPT{p}) if $OPT{p};
   print FILE "#!/bin/bash\n";
 
-  print FILE $OPT{'keep-scripts'}; # Don't do any clean up if told not to
-  print FILE "rm -f $PAR->{batchfile} 2>/dev/null\n"; # Force the script to self-delete
+# DO NOT SELF DESTRUCT, SYSADMINS WANT TO SEE WHAT'S HAPPENING -- hooverdm, 2015-09-29
+  #print FILE $OPT{'keep-scripts'}; # Don't do any clean up if told not to
+  #print FILE "rm -f $PAR->{batchfile} 2>/dev/null\n"; # Force the script to self-delete
 
   print FILE <<EOF1;
 
