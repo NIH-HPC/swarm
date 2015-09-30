@@ -32,6 +32,7 @@ GetOptions(
   "log=s" => \$OPT{log}, # log actions
   "clean-dev" => \$OPT{"clean-dev"}, # only clean dev directories
   "clean-orphans" => \$OPT{"clean-orphans"}, # only clean orphan directories
+  "clean-failures" => \$OPT{"clean-failures"}, # only clean orphan directories
   "d" => \$OPT{debug}, # debug mode
   "debug" => \$OPT{debug}, # debug mode
   "h" => sub { print $description; exit; },
@@ -49,6 +50,9 @@ if ($OPT{"clean-dev"}) {
 }
 elsif ($OPT{"clean-orphans"}) {
   clean_orphandirs();
+}
+elsif ($OPT{"clean-failures"}) {
+  clean_failures();
 }
 else {
   clean_jobdirs();
@@ -177,18 +181,39 @@ sub getJobLinks
   return $s;
 }
 #==============================================================================
+sub getFailLinks
+{
+# Find symlinks pointing to tmp directories
+  print "Getting symlinks for real jobs\n" if $OPT{verbose};
+  my $cmd;
+  if ($OPT{user}) {
+    $cmd = "find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type l 2>/dev/null";
+  }
+  else {
+    $cmd = "find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type l 2>/dev/null";
+  }
+  chomp(my $ret = `$cmd`);
+  my $s;
+  foreach my $link (split /\n/,$ret) {
+    my $id = basename($link);
+    if ($id=~/_FAIL$/) { $s->{$id} = $link; }
+  }
+  return $s;
+}
+#==============================================================================
 sub getDevDirectories
 {
 # Find dev directories
   print "Getting dev directories\n" if $OPT{verbose};
   my $cmd;
   if ($OPT{user}) {
-    $cmd = "find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type d -name '^dev' 2>/dev/null";
+    $cmd = "find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type d -name 'dev*' 2>/dev/null";
   }
   else {
-    $cmd = "find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type d -name '^dev' 2>/dev/null";
+    $cmd = "find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type d -name 'dev*' 2>/dev/null";
   }
   chomp(my $ret = `$cmd`);
+print $ret."\n";
   my $s;
   foreach my $dir (split /\n/,$ret) {
     my $name = basename($dir);
@@ -306,9 +331,45 @@ sub clean_jobdirs
   }
 }
 #==============================================================================
+sub clean_failures
+{
+  my $fail = getFailLinks();
+  print "Walking through directories\n" if $OPT{verbose};
+# Walk through all directories and determine if it and the associated batch file be removed
+  DIR: foreach my $id (sort keys %{$fail}) {
+  
+# Don't even bother unless the link is at least one day old 
+    #next DIR if ((time()-(stat($fail->{$id}))[9]) < (86400*1));
+    my $delete;
+  
+    my $user = basename(dirname($fail->{$id}));
+    printf "%-12s\t%s\t",$user,$id if $OPT{verbose};
+  
+    $delete = 1;
+  
+    print "DELETE!" if ($delete && $OPT{verbose});
+    print "\n" if $OPT{verbose}; 
+  }
+}
+#==============================================================================
 sub clean_devdirs
 {
   my $dev = getDevDirectories();
+  print "Walking through directories\n" if $OPT{verbose};
+# Walk through all directories and determine if it and the associated batch file be removed
+  DIR: foreach my $id (sort keys %{$dev}) {
+  
+# Don't even bother unless the link is at least one day old 
+    #next DIR if ((time()-(stat($fail->{$id}))[9]) < (86400*1));
+    my $delete;
+    my $user = basename(dirname($dev->{$id}));
+    printf "%-12s\t%s\t",$user,$id if $OPT{verbose};
+  
+    $delete = 1;
+  
+    print "DELETE!" if ($delete && $OPT{verbose});
+    print "\n" if $OPT{verbose}; 
+  }
 }
 #==============================================================================
 sub clean_orphandirs
