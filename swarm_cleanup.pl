@@ -40,6 +40,8 @@ GetOptions(
   "verbose" => \$OPT{verbose},
 );
 
+$OPT{verbose} = 1 if $OPT{debug};
+
 my $jobs = getJobs();
 
 if ($OPT{"clean-dev"}) {
@@ -282,24 +284,24 @@ sub getStatesForJob
 #==============================================================================
 sub clean_jobdirs
 {
-  my $jobdir = getJobLinks();
+  my $joblink = getJobLinks();
   print "Walking through directories\n" if $OPT{verbose};
 # Walk through all directories and determine if it and the associated batch file be removed
-  foreach my $id (sort keys %{$jobdir}) {
+  DIR: foreach my $id (sort keys %{$joblink}) {
   
+# Don't even bother unless the link is at least one day old 
+    next DIR if ((time()-(stat($joblink->{$id}))[9]) < (86400*1));
     my $delete;
   
-    my $user = basename(dirname($jobdir->{$id}));
-    print "$user\t$id\t" if $OPT{verbose};
+    my $user = basename(dirname($joblink->{$id}));
+    printf "%-12s\t%d\t",$user,$id if $OPT{verbose};
   
 # Real job id
     if (job_ended($id)) {
-      print " --> ENDED" if $OPT{verbose};
       $delete = 1;
     }
-    else { print " --> ?" if $OPT{verbose}; }
   
-    print " DELETE!" if ($delete && $OPT{verbose});
+    print "DELETE!" if ($delete && $OPT{verbose});
     print "\n" if $OPT{verbose}; 
   }
 }
@@ -314,17 +316,18 @@ sub clean_orphandirs
   my $tmpdir = getOrphanDirectories();
   print "Walking through directories\n" if $OPT{verbose};
 # Walk through all directories and determine if it and the associated batch file be removed
-  foreach my $dir (sort keys %{$tmpdir}) {
-  
+  DIR: foreach my $dir (sort keys %{$tmpdir}) {
+ 
+# Don't even bother unless the directory is at least one day old 
+    next DIR if ((time()-(stat($tmpdir->{$dir}))[9]) < (86400*1));
     my $delete;
   
     my $user = basename(dirname($tmpdir->{$dir}));
-    print "$user\t$dir\t" if $OPT{verbose};
+    printf "%-14s\t%-8s\t",$user,$dir if $OPT{verbose};
 
 # Real job id?
     if ($dir =~ /^\d+$/) {
       if (job_ended($dir)) {
-        print " --> ENDED" if $OPT{verbose};
         $delete = 1;
       }
       else { print " --> ?" if $OPT{verbose}; }
@@ -350,7 +353,6 @@ sub clean_orphandirs
         }
         elsif ($stupid=~/ SUBM\[(\d+)\]: $user /) {
           if (job_ended($1)) {
-            print " --> ENDED" if $OPT{verbose};
             $delete = 1;
           }
         }
@@ -367,7 +369,7 @@ sub clean_orphandirs
       }
     }
 
-    print " DELETE!" if ($delete && $OPT{verbose});
+    print "DELETE!" if ($delete && $OPT{verbose});
     print "\n" if $OPT{verbose}; 
 
 # Really delete it
@@ -398,13 +400,18 @@ sub job_ended
   my $job_ended;
  
   if (@z) { # job states can be known
-    print " --> @z" if ($OPT{verbose});
+    my $list = join ",",@z;
+    $list =~s/\s+//g;
+    printf "%-30s\t",$list if ($OPT{verbose});
 
 # if the job state is NOT an active state, then the Job is inactive -- we can delete it
     $job_ended = 1;
     foreach my $st ("CONFIGURING","COMPLETING","PENDING","RUNNING","RESIZING","SUSPENDED") {
       undef $job_ended if (grep /$st/,@z);
     }
+  }
+  else {
+    printf "%-30s\t","" if $OPT{verbose};
   }
   return $job_ended;
 }
