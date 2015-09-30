@@ -15,25 +15,32 @@ swarm_cleanup.pl -- remove old swarm temp files and directories
 
 options:
 
-  -l     log actions to this file
-  -h     print this message
-  -d     run in debug mode (prevents -o option)
+  -u,--user    run for a single user
+  --dev       remove devel directories
+  --orphans   remove obsolete and orphaned directories
+  --fail     remove submission failures
 
-Last modification date Sep 28, 2015 (David Hoover)
+  -l,--log     log actions to this file
+  -v,--verbose  be chatty
+  --debug     run in debug mode (prevents -o option)
+  -h,--help     print this message
+
+Last modification date Sep 30, 2015 (David Hoover)
 
 EOF
 
 $|=1;  # turns off output buffering
 
+my $PAR;
 my %OPT;  # options
 GetOptions(
   "u=s" => \$OPT{user}, # restrict to this user
+  "user=s" => \$OPT{user}, # restrict to this user
   "l=s" => \$OPT{log}, # log actions
   "log=s" => \$OPT{log}, # log actions
-  "clean-dev" => \$OPT{"clean-dev"}, # only clean dev directories
-  "clean-orphans" => \$OPT{"clean-orphans"}, # only clean orphan directories
-  "clean-failures" => \$OPT{"clean-failures"}, # only clean orphan directories
-  "d" => \$OPT{debug}, # debug mode
+  "dev" => \$OPT{"clean-dev"}, # only clean dev directories
+  "orphan" => \$OPT{"clean-orphans"}, # only clean orphan directories
+  "fail" => \$OPT{"clean-failures"}, # only clean orphan directories
   "debug" => \$OPT{debug}, # debug mode
   "h" => sub { print $description; exit; },
   "help" => sub { print $description; exit; },
@@ -43,7 +50,7 @@ GetOptions(
 
 $OPT{verbose} = 1 if $OPT{debug};
 
-my $jobs = getJobs();
+my $jobs = getCurrentJobs();
 
 if ($OPT{"clean-dev"}) {
   clean_devdirs();
@@ -213,7 +220,6 @@ sub getDevDirectories
     $cmd = "find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type d -name 'dev*' 2>/dev/null";
   }
   chomp(my $ret = `$cmd`);
-print $ret."\n";
   my $s;
   foreach my $dir (split /\n/,$ret) {
     my $name = basename($dir);
@@ -274,7 +280,7 @@ sub getOrphanDirectories
 #  return $s;
 #}
 #==============================================================================
-sub getJobs
+sub getCurrentJobs
 {
   print "Getting jobs\n" if $OPT{verbose};
   my $slurm = Slurm::new();
@@ -287,8 +293,8 @@ sub getJobs
     my $state = $slurm->job_state_string($ref->{"job_state"});
     $hr->{$ref->{"array_job_id"}}{$state} = 1;
   } 
-
-  return $hr
+  
+  return $hr;
 }
 #==============================================================================
 sub getStatesForJob
@@ -315,19 +321,27 @@ sub clean_jobdirs
   DIR: foreach my $id (sort keys %{$joblink}) {
   
 # Don't even bother unless the link is at least one day old 
-    next DIR if ((time()-(stat($joblink->{$id}))[9]) < (86400*1));
-    my $delete;
-  
+    my $age = ((time()-(stat($joblink->{$id}))[9])/86400);
     my $user = basename(dirname($joblink->{$id}));
-    printf "%-12s\t%d\t",$user,$id if $OPT{verbose};
-  
-# Real job id
-    if (job_ended($id)) {
-      $delete = 1;
+   # my $s = get_state($id);
+
+# Because we already know the job id, and by definition if the job is not available via the
+# Slurm Perl API then the job is completed, all we have to check is whether the job is
+# defined in the jobarray.
+    #if ($s->{ended} == -1) {
+    #  print_action({user=>$user,dir=>$id,path=>$joblink->{$id},delete=>0,link=>1,age=>$age});
+    #}
+    #elsif ($s->{ended} == 1) {
+    if (not defined $jobs->{$id}) { # unknown to perl api, assumed completed
+      #print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$id,path=>$joblink->{$id},delete=>1,link=>1,age=>$age});
+      print_action({ended=>1,user=>$user,dir=>$id,path=>$joblink->{$id},delete=>1,link=>1,age=>$age});
     }
-  
-    print "DELETE!" if ($delete && $OPT{verbose});
-    print "\n" if $OPT{verbose}; 
+   # elsif ($s->{ended} == 0) {
+    else {
+      my $state = join ',',(sort keys %{$jobs->{$id}});
+      #print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$id,path=>$joblink->{$id},delete=>0,link=>1,age=>$age});
+      print_action({state=>$state,ended=>0,user=>$user,dir=>$id,path=>$joblink->{$id},delete=>0,link=>1,age=>$age});
+    }
   }
 }
 #==============================================================================
@@ -339,16 +353,9 @@ sub clean_failures
   DIR: foreach my $id (sort keys %{$fail}) {
   
 # Don't even bother unless the link is at least one day old 
-    #next DIR if ((time()-(stat($fail->{$id}))[9]) < (86400*1));
-    my $delete;
-  
+    my $age = ((time()-(stat($fail->{$id}))[9])/86400);
     my $user = basename(dirname($fail->{$id}));
-    printf "%-12s\t%s\t",$user,$id if $OPT{verbose};
-  
-    $delete = 1;
-  
-    print "DELETE!" if ($delete && $OPT{verbose});
-    print "\n" if $OPT{verbose}; 
+    print_action({user=>$user,dir=>$id,path=>$fail->{$id},delete=>1,link=>1,age=>$age});
   }
 }
 #==============================================================================
@@ -360,15 +367,9 @@ sub clean_devdirs
   DIR: foreach my $id (sort keys %{$dev}) {
   
 # Don't even bother unless the link is at least one day old 
-    #next DIR if ((time()-(stat($fail->{$id}))[9]) < (86400*1));
-    my $delete;
+    my $age = ((time()-(stat($dev->{$id}))[9])/86400);
     my $user = basename(dirname($dev->{$id}));
-    printf "%-12s\t%s\t",$user,$id if $OPT{verbose};
-  
-    $delete = 1;
-  
-    print "DELETE!" if ($delete && $OPT{verbose});
-    print "\n" if $OPT{verbose}; 
+    print_action({user=>$user,dir=>$id,path=>$dev->{$id},delete=>1,link=>0,age=>$age});
   }
 }
 #==============================================================================
@@ -380,18 +381,23 @@ sub clean_orphandirs
   DIR: foreach my $dir (sort keys %{$tmpdir}) {
  
 # Don't even bother unless the directory is at least one day old 
-    next DIR if ((time()-(stat($tmpdir->{$dir}))[9]) < (86400*1));
+    my $age = ((time()-(stat($tmpdir->{$dir}))[9])/86400);
     my $delete;
   
     my $user = basename(dirname($tmpdir->{$dir}));
-    printf "%-14s\t%-8s\t",$user,$dir if $OPT{verbose};
 
 # Real job id?
     if ($dir =~ /^\d+$/) {
-      if (job_ended($dir)) {
-        $delete = 1;
+      my $s = get_state($dir);
+      if ($s->{ended} == -1) {
+        print_action({user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0,age=>$age});
       }
-      else { print " --> ?" if $OPT{verbose}; }
+      elsif ($s->{ended} == 1) {
+        print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>1,link=>0,age=>$age});
+      }
+      elsif ($s->{ended} == 0) {
+        print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0,age=>$age});
+      } 
     }
 
 # Can't figure it out
@@ -399,53 +405,48 @@ sub clean_orphandirs
 
 # Is directory empty?
       if (emptydir($tmpdir->{$dir})) {
-        print " --> EMPTY" if $OPT{verbose};
-# Delete the empty directory if it is more than 1 day old
-        if ((time()-(stat($tmpdir->{$dir}))[9]) > (86400*1)) {
-          $delete = 1;
-        }
+        print_action({user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>1,link=>0,age=>$age,empty=>1});
       }
       else {
 # Look in swarm log to see if it is on the verge of running
         chomp(my $stupid = `grep $dir /usr/local/logs/sbatch.log`);
         if ($stupid=~/ SUBM\[ERROR\]: $user /) {
-          print " --> SUBM[ERROR]" if $OPT{verbose};
-          $delete = 1 ;
-        }
+          print_action({state=>'SUBM[ERROR]',ended=>1,user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>1,link=>0,age=>$age});
+        } 
         elsif ($stupid=~/ SUBM\[(\d+)\]: $user /) {
-          if (job_ended($1)) {
-            $delete = 1;
+          my $s = get_state($1);
+          if ($s->{ended} == -1) {
+            print_action({user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0});
+          }
+          elsif ($s->{ended} == 1) {
+            print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>1,link=>0,age=>$age});
+          }
+          elsif ($s->{ended} == 0) {
+            print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0,age=>$age});
           }
         }
         elsif ($stupid) {
-          print " --> $stupid" if $OPT{verbose};
-        }
-        elsif ((time()-(stat($tmpdir->{$dir}))[9]) > (86400*3)) {
-          print " --> DEVEL? $tmpdir->{$dir}" if $OPT{verbose};
-          $delete = 1;
+          print_action({state=>$stupid,ended=>0,user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0,age=>$age});
         }
         else {
-          print " --> ? $tmpdir->{$dir}" if $OPT{verbose};
-        }
-      }
-    }
-
-    print "DELETE!" if ($delete && $OPT{verbose});
-    print "\n" if $OPT{verbose}; 
-
-# Really delete it
-    if (($delete) && (!$OPT{debug})) {
-      print "  deleting $tmpdir->{$dir} ...\n";
-      system("rm -rf $tmpdir->{$dir}");
-      if (-f "$tmpdir->{$dir}.batch") {
-        print "  deleting $tmpdir->{$dir}.batch ...\n";
-        system("rm -f $tmpdir->{$dir}.batch");
+          print_action({user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0,age=>$age});
+        } 
       }
     }
   }
 }
+
+# Really delete it
+#    if (($delete) && (!$OPT{debug})) {
+#      print "  deleting $tmpdir->{$dir} ...\n";
+#      system("rm -rf $tmpdir->{$dir}");
+#      if (-f "$tmpdir->{$dir}.batch") {
+#        print "  deleting $tmpdir->{$dir}.batch ...\n";
+#        system("rm -f $tmpdir->{$dir}.batch");
+#      }
+#    }
 #==============================================================================
-sub job_ended
+sub get_state
 {
 # Determine if a job has ended
   my $jobid = shift;
@@ -457,23 +458,76 @@ sub job_ended
   else {
     @z = (sort keys %{$jobs->{$jobid}});
   }
-
-  my $job_ended;
- 
+  my $hr;
+  $hr->{ended} = -1; # unknown
   if (@z) { # job states can be known
     my $list = join ",",@z;
     $list =~s/\s+//g;
-    printf "%-30s\t",$list if ($OPT{verbose});
+    $hr->{state} = $list;
 
 # if the job state is NOT an active state, then the Job is inactive -- we can delete it
-    $job_ended = 1;
+    $hr->{ended} = 1;
     foreach my $st ("CONFIGURING","COMPLETING","PENDING","RUNNING","RESIZING","SUSPENDED") {
-      undef $job_ended if (grep /$st/,@z);
+      if (grep /$st/,@z) {
+        $hr->{ended} = 0;
+        return $hr;
+      }
     }
   }
-  else {
-    printf "%-30s\t","" if $OPT{verbose};
+  return $hr;
+}
+#==============================================================================
+sub print_action
+{
+  my $hr = shift;
+
+
+# Has the job ended?
+  my $end;
+  if (defined $hr->{ended}) {
+    if ($hr->{ended} == 0) { $end = "Q/R"; }
+    else { $end = "END"; }
   }
-  return $job_ended;
+  else { $end = "UNK"; }
+
+# What type is the file?
+  my $type;
+  if (defined $hr->{link}) {
+    if ($hr->{link} == 1) { $type = "LNK"; }
+    else { $type = "DIR"; }
+  }
+  else { $type = "UNK"; }
+
+# Can the directory/link etc. be deleted?
+  my $action;
+  if (defined $hr->{delete}) {
+    if ($hr->{delete} == 1) { $action = "DELETE"; }
+    else { $action = "KEEP"; }
+  }
+  else { $action = "UNK"; }
+
+  unless ($PAR->{header}) {
+    printf("%-16s %-10s  %-3s  %-3s  %-3s : %-6s  %s\n",
+      "user",
+      "basename",
+      "STA",
+      "AGE", 
+      "TYP",
+      "ACTION",
+      "EXTRA",
+    );
+    print "="x70,"\n";
+    $PAR->{header} = 1;
+  }
+      
+  printf("%-16s %-10s  %-3s  %.1f  %-3s : %-6s  %s\n",
+    $hr->{user},
+    $hr->{dir},
+    $end,
+    $hr->{age},
+    $type,
+    $action,
+    $hr->{state},
+  );
 }
 #==============================================================================
