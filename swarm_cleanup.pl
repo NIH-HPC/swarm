@@ -32,6 +32,9 @@ EOF
 $|=1;  # turns off output buffering
 
 my $PAR;
+
+$PAR->{minage} = 5; # files must be at least 5 days old before doing anything
+
 my %OPT;  # options
 GetOptions(
   "u=s" => \$OPT{user}, # restrict to this user
@@ -323,7 +326,6 @@ sub clean_jobdirs
 # Don't even bother unless the link is at least one day old 
     my $age = ((time()-(stat($joblink->{$id}))[9])/86400);
     my $user = basename(dirname($joblink->{$id}));
-   # my $s = get_state($id);
 
 # Because we already know the job id, and by definition if the job is not available via the
 # Slurm Perl API then the job is completed, all we have to check is whether the job is
@@ -333,13 +335,19 @@ sub clean_jobdirs
     #}
     #elsif ($s->{ended} == 1) {
     if (not defined $jobs->{$id}) { # unknown to perl api, assumed completed
-      #print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$id,path=>$joblink->{$id},delete=>1,link=>1,age=>$age});
-      print_action({ended=>1,user=>$user,dir=>$id,path=>$joblink->{$id},delete=>1,link=>1,age=>$age});
+      my $s = get_state($id,$age); # Perl API may fail, and sacct may give nonsense
+      if ($s->{ended} == 1) {
+        print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$id,path=>$joblink->{$id},delete=>1,link=>1,age=>$age});
+      }
+      elsif ($s->{ended} == 0) {
+        print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$id,path=>$joblink->{$id},delete=>0,link=>1,age=>$age});
+      } 
+      else {
+        print_action({user=>$user,dir=>$id,path=>$joblink->{$id},delete=>0,link=>1,age=>$age});
+      }
     }
-   # elsif ($s->{ended} == 0) {
     else {
       my $state = join ',',(sort keys %{$jobs->{$id}});
-      #print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$id,path=>$joblink->{$id},delete=>0,link=>1,age=>$age});
       print_action({state=>$state,ended=>0,user=>$user,dir=>$id,path=>$joblink->{$id},delete=>0,link=>1,age=>$age});
     }
   }
@@ -388,16 +396,16 @@ sub clean_orphandirs
 
 # Real job id?
     if ($dir =~ /^\d+$/) {
-      my $s = get_state($dir);
-      if ($s->{ended} == -1) {
-        print_action({user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0,age=>$age});
-      }
-      elsif ($s->{ended} == 1) {
+      my $s = get_state($dir,$age);
+      if ($s->{ended} == 1) {
         print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>1,link=>0,age=>$age});
       }
       elsif ($s->{ended} == 0) {
         print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0,age=>$age});
       } 
+      else {
+        print_action({user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0,age=>$age});
+      }
     }
 
 # Can't figure it out
@@ -414,15 +422,15 @@ sub clean_orphandirs
           print_action({state=>'SUBM[ERROR]',ended=>1,user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>1,link=>0,age=>$age});
         } 
         elsif ($stupid=~/ SUBM\[(\d+)\]: $user /) {
-          my $s = get_state($1);
-          if ($s->{ended} == -1) {
-            print_action({user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0});
-          }
-          elsif ($s->{ended} == 1) {
+          my $s = get_state($1,$age);
+          if ($s->{ended} == 1) {
             print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>1,link=>0,age=>$age});
           }
           elsif ($s->{ended} == 0) {
             print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0,age=>$age});
+          }
+          else {
+            print_action({user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0});
           }
         }
         elsif ($stupid) {
@@ -449,7 +457,12 @@ sub clean_orphandirs
 sub get_state
 {
 # Determine if a job has ended
-  my $jobid = shift;
+  my ($jobid,$age) = @_;
+
+  my $hr;
+  $hr->{ended} = -1; # unknown
+  return $hr if ($age < $PAR->{minage}); # don't bother unless dir is old enough
+
   my @z;
   if (not defined $jobs->{$jobid}) { # unknown to perl api
     my $x = getStatesForJob($jobid); 
@@ -458,8 +471,6 @@ sub get_state
   else {
     @z = (sort keys %{$jobs->{$jobid}});
   }
-  my $hr;
-  $hr->{ended} = -1; # unknown
   if (@z) { # job states can be known
     my $list = join ",",@z;
     $list =~s/\s+//g;
@@ -501,10 +512,17 @@ sub print_action
 # Can the directory/link etc. be deleted?
   my $action;
   if (defined $hr->{delete}) {
-    if ($hr->{delete} == 1) { $action = "DELETE"; }
+    if ($hr->{delete} == 1) { 
+      if ($hr->{age} > 5) {
+        $action = "DELETE";
+      }
+      else { $action = "KEEP"; }
+    }
     else { $action = "KEEP"; }
   }
-  else { $action = "UNK"; }
+  else {
+    $action = "UNK";
+  }
 
   unless ($PAR->{header}) {
     printf("%-16s %-10s  %-3s  %-3s  %-3s : %-6s  %s\n",
@@ -529,5 +547,31 @@ sub print_action
     $action,
     $hr->{state},
   );
+
+# Now really delete stuff
+  if ($action eq 'DELETE') {
+    if ($OPT{"clean-dev"} || $OPT{"clean-failures"}) {
+      if (-d $hr->{path}) {
+        print "  rm -rf $hr->{path}\n" if ($OPT{verbose});
+        system("rm -rf $hr->{path}") if (!$OPT{debug});
+      }
+    }
+    elsif ($OPT{"clean-orphans"}) {
+
+# do nothing yet
+
+    }
+    else {
+      if (-l $hr->{path}) {
+        my $real_dir = readlink($hr->{path});
+        if (-d $real_dir) {
+          print "  rm -f $hr->{path}\n" if $OPT{verbose};
+          print "  rm -rf $real_dir\n" if $OPT{verbose};
+          system("rm -f $hr->{path}") if (!$OPT{debug});
+          system("rm -rf $real_dir") if (!$OPT{debug});
+        }
+      }
+    }
+  }
 }
 #==============================================================================
