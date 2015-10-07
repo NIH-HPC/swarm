@@ -1,0 +1,336 @@
+.TH swarm "1" "Jun 2015" "Linux" "Biowulf Cluster Tools"
+
+.SH "NAME"
+swarm \- submit a swarm of commands to cluster
+
+.SH "SYNOPSIS"
+.B swarm -f swarmfile
+[
+.B -b #
+] [
+.B -g #
+] [
+.B -t # | auto
+] [
+.B -p #
+] [
+.B other-options
+] [
+.B --sbatch 
+[ "sbatch-options" ]
+]
+
+.SH "DESCRIPTION"
+.I Swarm
+reads a list of command lines from
+.B swarmfile
+then automatically submits those commands to execute under
+the Slurm batch system as a job array. Each command line is evaluated as a
+single subjob. By default swarm runs one subjob per core on a node, making optimum use of a node.
+Swarm is thus useful for running many single- and multi-threaded jobs.
+.PP
+Swarm creates a single job array with a single job id, with an executable script for every subjob in the job array.
+These temporary scripts are stored in a central location (/spin1/swarm) and are automatically deleted upon
+job completion.
+.PP
+Commands in the swarmfile should appear just as they
+would be entered on a command line. STDOUT (or STDERR) output
+that isn't explicitly directed elsewhere will be sent
+to a file named swarm_*_*.o (or .e) in your current
+working directory. Blank lines are skipped and lines where the
+first non-whitespace character is "#" are treated as a comment.
+Lines ending with a space and a backslash "\\" are joined to the next line.
+.PP
+When there are hundreds or thousands of command lines in the swarmfile, or when the expected time of
+execution for each subjob is very short (less than one minute), please use the
+.B \-b
+option to
+.I bundle
+two or more command lines into each subjob to be run sequentially per cpu.
+.PP
+
+.SH "OPTIONS"
+
+.TP
+.B -f,--file swarmfile
+name of file with list of command lines to execute.  By default, each command line is evaluated as a subjob.
+
+.TP
+.B -g,--gb-per-process [ float ]
+Equivalent to the sbatch option
+.B --mem.
+By default swarm assumes each process will require 1.5 gb of memory. Some applications
+require more than 1.5 gb, and so setting -g will restrict both the nodes allocated to the swarm and the number
+of processes per node to accomodate the memory requirement.
+
+.TP
+.B -t,--threads-per-process [ int ] | auto
+Equivalent to the sbatch option
+.B --cpus-per-task.
+By default swarm assumes each process will run a single thread, meaning one thread per core.
+If a command is multi-threaded, then assigning the -t will set
+.B --cpus-per-task
+to allow the command the proper number of threads.
+If -t auto is used, then the sbatch option
+.B --ntasks-per-node
+will be set to 1, and allow the command to create
+as many threads as there are cpus on the node.
+
+.TP
+.B -p, --processes-per-subjob [int]
+By default swarms of single-threaded commands waste half of the cpus allocated.  This is because Slurm
+allocates per core, and each core has two cpus.  To push more commands onto cpus, at the risk of lower
+computational performance, -p can set the 
+number of commands run per subjob, with each process taking a single cpu.  -p requires -t = 1.
+
+.TP
+.B -b,--bundle [ int ]
+Swarm evaluates a single command line as a subjob.
+Use the bundle option to run "n" command lines per subjob, one after
+the other. The advantages of bundling includes fewer swarm jobs
+and output files, lower overhead due to scheduling and job startup,
+and disk file cache benefits under certain circumstances.  If a swarm contains
+a large number of short running commands (i.e. thousands of commands, each of
+which run for less than a minute), then you should bundle the swarm.
+
+.TP
+.B --noht
+.RS
+equivalent to
+.B --threads-per-core=1.
+This essentially disables hyperthreading.  Because Slurm allocates by core, rather than by cpu, this option
+is only useful for multi-threaded commands.
+.RE
+
+.TP
+.B --usecsh
+/bin/tcsh mode, instead of /bin/bash
+
+.TP
+.B --module [ module1[,module2][,module3] ]
+load a list of environment modules prior to execution. Module names are separated by commas only.
+
+.B NOTE: As of 7 am, Friday August 28, --module will accept a comma-delimited list, rather than a space-delimited list.
+
+.TP
+.B --no-comment
+don't ignore text following a comment character ('#' by default)
+
+.TP
+.B --comment-char [ char ]
+use a different character other than '#' as a comment character
+
+.TP
+.B --singleout
+concatenate STDOUT and STDERR to single files, rather an a set of .o and .e files
+
+.TP
+.B --logdir
+directory to which .o and .e files are to be written (default is current working directory)
+
+.TP
+.B --no-scripts
+don't create command scripts when --debug mode is run
+.TP
+.B --keep-scripts
+don't delete command scripts when swarm is completed
+
+.TP
+.B --debug
+don't actually run
+
+.TP
+.B --devel
+combine --debug and --no-scripts, and be very chatty
+
+.TP
+.B --verbose [ int ]
+can range from 0 to 4, with 4 the most verbose
+
+.TP
+.B --silent
+don't give any feedback, just jobid
+
+.TP
+.B --job-name [ string ]
+set the name of the job
+
+.TP
+.B --dependency [ jobid ]
+set up dependency (i.e. run swarm after jobid)
+
+.TP
+.B --time [ string ]
+change the walltime for each subjob (default is 04:00:00, or 4 hours).  If a swarm is bundled, then the
+time is multiplied by the bundle factor.
+
+.TP
+.B --partition [ string ]
+change the partition (default is norm)
+
+.TP
+.B --license [ string ]
+require application licenses to be available before running
+
+.TP
+.B --gres [ string ]
+require generic resources for each subjob
+
+.TP
+.B --qos [ string ]
+require specific quality of service for each subjob
+
+.TP
+.B --sbatch [ quoted string ]
+add sbatch-specific options to swarm.  These options will be added last, which means that swarm options
+for allocation of cpus and memory (
+.B --cpus-per-task
+and
+.B --mem
+take precedence.  Make sure that all options are quoted, as the single quoted string is passed directly to the
+.B sbatch
+command.
+See
+.B sbatch(1)
+for a complete list of options for sbatch.
+If there is confusion as to what is passed, include the --devel option to see exactly what swarm is doing.
+
+.TP
+.B --help
+.RS
+print a helpful usage message
+.RE
+
+.SH "ENVIRONMENT VARIABLES"
+
+The following environment variables will affect how sbatch allocates resources:
+
+.RS
+  SBATCH_JOB_NAME        Same as --job-name
+  SBATCH_PARTITION       Same as --partition
+  SBATCH_QOS             Same as --qos
+  SBATCH_TIMELIMIT       Same as --time
+  SBATCH_EXCLUSIVE       Same as --exclusive
+.RE
+
+.SH "OUTPUT"
+STDOUT and STDERR output from processes executed under
+.I swarm
+will be directed to a file named swarm_*_*.o (or .e),
+for example swarm_12345_0.o (or swarm_12345_0.e).
+The first number corresponds to the jobid, the second number
+corresponds to the task id of the job array.
+Since this can be confusing (with multiple processes
+writing to the same file) it is a good idea to explicitly
+redirect output on the command line using ">".
+
+Be aware of programs that write directly to a file
+using a fixed filename. If you run multiple instances
+of such programs then for each instance you will need to
+either a) change the name of the file or b) alter the path to
+the file. See the
+.B EXAMPLES
+section for some ideas.
+.IP
+
+.SH "EXAMPLES"
+To see how swarm works, first create a file containing a few simple
+commands, then use
+.I swarm
+to submit them to the batch queue:
+.PP
+.nf
+
+      $ cat > cmdfile
+      date
+      hostname
+      ls -l
+      ^D
+
+      $ swarm -f cmdfile
+.fi
+.PP
+Use
+.I squeue -u your-user-id
+to monitor the status of your request; an "R" in the "ST"atus column
+indicates your job is running, while "PD" indicates pending mode (see
+.B squeue(1)
+for more details).
+This particular example will probably run to completion before
+you can give the squeue command. To see the output from the commands,
+see the files named "swarm_*_*.o".
+.PP
+The next example shows a program that reads STDIN and writes to
+STDOUT. For each invocation of the program the names for the input
+and output files vary:
+.PP
+.nf
+      $ cat > runbix
+      ./bix < testin1 > testout1
+      ./bix < testin2 > testout2
+      ./bix < testin3 > testout3
+      ./bix < testin4 > testout4
+      ^D
+.fi
+.PP
+If a program writes to a fixed filename, then you may need to
+run the program in different directories. First create the necessary
+directories (for instance run1, run2), and then in the swarm command
+file
+.I cd
+to the unique output directory before running the program: (cd using
+either an absolute path beginning with "/" or a relative path from
+your home directory). Lines with leading "#" are considered comments
+and ignored.
+.PP
+.nf
+      $ cat > batchcmds
+      # Run ped program using different directory
+      # for each run
+      cd pedsystem/run1; ../ped
+      cd pedsystem/run2; ../ped
+      cd pedsystem/run3; ../ped
+      cd pedsystem/run4; ../ped
+       ...
+
+      $ swarm -f batchcmds
+.fi
+.PP
+Swarm submits clusters of subjobs using Slurm
+via the
+.I sbatch
+command; any valid sbatch command-line option is also valid for swarm when
+passed with the "--sbatch" option..
+In this example the "--time" option is given to increase the walltime for the subjob from the
+default 4 hours to 12 hours:
+.PP
+.nf
+      $ swarm -f swarmcmds --sbatch "--time=12:00:00"
+
+.fi
+For additional examples of --sbatch options for swarm, please see
+.I http://hpc.nih.gov/apps/swarm.html#sbatch.
+.PP
+By default swarm executes one command line per subjob, with each subjob allocated a single core.
+In this example 5 command lines are bundled per subjob. If the command
+file contains 1280 command lines and there are 16 cores per node, then
+there will be 16 subjob submitted, compared to 80 subjob
+without bundling the commands.
+.PP
+.nf
+      $ swarm -f cmdfile -b 5
+.fi
+.PP
+Many applications require specific environment settings prior to execution.  For interactive sessions,
+the environment can be set using environment modules.  Passing the environment settings to swarm is
+mediated by the --module option.  For example, if the commands in a swarm require setting the
+environment using the modules for tophat v2.0.6 and samtools v0.1.17, then these modules can be
+included in the swarm command.  Modules are separated only by spaces.
+.PP
+.nf
+      $ swarm -f cmdfile --module tophat/2.0.6 samtools/0.1.17 -g 4 -t 4
+.fi
+.PP
+
+.SH "SEE ALSO"
+.BR jobload (1), sbatch (1), scontrol (1), squeue (1), noded (8)

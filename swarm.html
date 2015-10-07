@@ -1,0 +1,1156 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<link href="/systems/status/luxcal/css/luxcal.css" rel="stylesheet" type="text/css" /> <!-- for calendar system status -->
+<link href="/css/main.css"        rel="stylesheet" type="text/css" />
+<link href="/css/dropdown.css"    rel="stylesheet" type="text/css" />
+<script src="/js/expandCollapse.js"   type="text/javascript"></script>
+<script src="/js/jquery-2.1.3.min.js" type="text/javascript"></script>
+<script src="/js/dropdown.js"         type="text/javascript"></script>
+
+<!--[if lte IE 7.]>
+<script defer type="text/javascript" src="/js/pngfix.js" ></script>
+<![endif]-->
+<title>Swarm on Biowulf</title>
+</head>
+<body onload="javascript:expandCollapseAllButton()">
+<br />
+<div id="skiplink">
+        <a href="#content-area" id="skiplink"></a>
+</div>
+<div class="container">
+<div><img src="/images/golden_helix_top900.jpg" alt="" /></div>
+<table class="head_area" cellpadding="0" cellspacing="0" border="0" width="100%">
+<tr><th scope="col"></th><td scope="col">
+<div class="titleLocation">
+<div><a href="http://hpc.nih.gov" class="siteTitle">HPC <div class="siteTitle2">@</div> NIH</a></div>
+<div class="siteSubTitle">High-Performance Computing at the NIH</div>
+</div>
+<div><img src="/images/shimmy.gif" height="15" border="0" alt="" /></div>
+</td>
+<td align="right" valign="top" scope="col">
+<div  class="searchCell">
+<form action="http://hpc.nih.gov/cgi-bin/search/swish.cgi" method="get">
+<input type="hidden" name="maxresultflag" value="200" />
+<input type="hidden" name="si" value="0" />
+<label for="searchbox">Search:</label>
+<input type="text" class="formfield" size="14" id="searchbox" name="query" alt="Search" />
+</form>
+<a href="http://helix.nih.gov/helix_RSS.xml"><img border="0"
+align="right" style="position: absolute; top: 65px; right: 0px;"
+src="http://hpc.nih.gov/images/small_rss_icon.jpg" alt="RSS Feed"
+title="Click here to add an RSS feed from NIH HPC" /></a>
+</div>
+</td>
+</tr>
+</table>
+
+<!-- The new and improved dropdown navigation bar -->
+<div id='cssmenu'>
+<ul>
+
+   <li class='has-sub'><a href='/systems/status'><span>Status</span></a>
+     <ul>
+        <li><a class='sublink' href='/systems/status/index.html#part_status'><span>Partition Status</span></a></li>
+        <li><a class='sublink' href='/systems/status/partitions.html'><span>Usage History</span></a></li>
+        <li><a class='sublink' href='/systems/status/index.html#batch_limits'><span>Batch Limits</span></a></li>
+        <li><a class='sublink' href='/systems/status/index.html#licenses'><span>Licenses</span></a></li>
+	</ul>
+
+   </li>
+
+   <li class='has-sub'><a href='/apps/'><span>Applications</span></a>
+      <ul>
+ <li><a class='sublink' href='/apps/#compchem'        ><span>Computational Chemistry</span></a></li>
+ <li><a class='sublink' href='/docs/development.html' ><span>Development Tools</span></a></li>
+ <li><a class='sublink' href='/apps/#image'           ><span>Image Analysis</span></a></li>
+ <li><a class='sublink' href='/apps/#linkage'         ><span>Linkage/Phylogenetics</span></a></li>
+ <li><a class='sublink' href='/apps/#math'            ><span>Mathematics/Statistics</span></a></li>
+ <li><a class='sublink' href='/apps/#compchem'        ><span>Molecular Modeling</span></a></li>
+ <li><a class='sublink' href='/apps/#ngs'             ><span>Next-Generation Sequencing</span></a></li>
+ <li><a class='sublink' href='/apps/#massspec'        ><span>Mass Spectrometry</span></a></li>
+ <li><a class='sublink' href='/apps/#seqanal'         ><span>Sequence Analysis</span></a></li>
+ <li><a class='sublink' href='/apps/db.php'           ><span>Scientific Databases</span></a></li>
+ <li><a class='sublink' href='/apps/#structbio'       ><span>Structural Biology</span></a></li>
+ <li><a class='sublink' href='/apps/#sysbiol'         ><span>Systems Biology</span></a></li>
+ <li><a class='sublink' href='/apps/#utils'           ><span>Utilities</span></a></li>
+
+
+      </ul>
+   </li>
+   <li class='has-sub'><a href='/storage/'><span>Storage</span></a>
+      <ul>
+         <li><a class='sublink' href='/storage/index.html'><span>Storage Overview</span></a></li>
+         <li><a class='sublink' href='/storage/sharing_data.html'><span>Sharing Data</span></a></li>
+      </ul>
+   </li>
+   <li class='has-sub'><a href='/docs/user_guides.html'><span>User Guides</span></a>
+      <ul>
+         <li><a class='sublink' href='/docs/userguide.html'><span>Biowulf User Guide</span></a></li>
+         <li><a class='sublink' href='/docs/development.html'><span>Development Tools</span></a></li>
+         <li><a class='sublink' href='/docs/pbs2slurm.html'><span>PBS to Slurm</span></a></li>
+         <li><a class='sublink' href='/apps/swarm.html'><span>Swarm</span></a></li>
+         <li><a class='sublink' href='/training/'><span>Training</span></a></li>
+      </ul>
+   </li>
+   <li><a href='/dashboard'><span>User Dashboard</span></a></li>
+   <li><a href='/docs/how_to.html'><span>How To</span></a></li>
+   <li class='has-sub'><a href='/about/'><span>About</span></a>
+   <ul>
+        <li><a class='sublink' href='/about/index.html#staff'><span>HPC Staff</span></a></li>
+         <li><a class='sublink' href='/about/index.html#history'><span>History</span></a></li>
+        <li><a class='sublink' href='/about/contact.html'><span>Contact</span></a></li>
+    </ul>
+   </li>
+</ul>
+</div>
+
+<div class="main">
+<a name="content-area"></a>
+<!-- Start content - do not edit above this line  -->
+<div class="title">Swarm on Biowulf</div>
+<p>
+
+
+<table width=100%><tr><td>
+  <table width=270px align=left style="margin-right:10px"><tr><td> 
+    <div class="toc">
+    <div class="tocHeading" width=25%>Quick Links</div>
+    <div class="tocItem"><a href="#usage">Usage</a></div>
+    <div class="tocItem"><a href="#details">Details</a></div>
+    <div class="tocItem"><a href="#input">Input</a></div>
+    <div class="tocItem"><a href="#output">Output</a></div>
+    <div class="tocItem"><a href="#examples">Examples</a></div>
+
+     <div class="tocItem" style="margin-left:20px"><a href="#stdin">STDIN/STDOUT</a></div>
+      <div class="tocItem" style="margin-left:20px"><a href="#bundling">-b, --bundle</a></div>
+      <div class="tocItem" style="margin-left:20px"><A href="#gandt">-g and -t</a></div>
+      <div class="tocItem" style="margin-left:20px"><A href="#p">-p, --processes-per-subjob</a></div>
+      <div class="tocItem" style="margin-left:20px"><A href="#time">--time</a></div>
+      <div class="tocItem" style="margin-left:20px"><a href="#dependency">--dependency</a></div>
+      <div class="tocItem" style="margin-left:20px"><a href="#fixed">Fixed output path</a></div>
+      <div class="tocItem" style="margin-left:20px"><a href="#mixed">Mixed asynchronous and serial commands</a></div>
+      <div class="tocItem" style="margin-left:20px"><a href="#module">--module</a></div>
+      <div class="tocItem" style="margin-left:20px"><a href="#environment">Setting environment variables</a></div>
+      <div class="tocItem" style="margin-left:20px"><a href="#lscratch">--gres (Local scratch disk space)</a></div>
+      <div class="tocItem" style="margin-left:20px"><a href="#sbatch">--sbatch</a></div>
+      <div class="tocItem" style="margin-left:20px"><a href="#devel">--devel, --verbose</a></div>
+
+    <div class="tocItem"><A href="#generate">Generating a swarm file</a></div>
+    <div class="tocItem"><A href="#monitor">Monitoring a swarm</a></div>
+    <div class="tocItem"><A href="#delete">Deleting/Canceling a swarm</a></div>
+    <div class="tocItem"><a href="#download">Download</a></div>
+    </div>
+  </table>
+</td><td>
+  Swarm is a script designed to simplify submitting a group of commands to
+  the Biowulf cluster. Some programs do not scale well or can't use distributed memory.
+  Other programs may be 'embarrassingly parallel', in that many independent jobs need to be
+  run. These programs are well suited to running 'swarms of jobs'.
+  The swarm script simplifies these computational problems.
+</td></tr></table>
+
+<p>Swarm reads a list of command lines (termed "commands" or "processes") from a swarm command file (termed the "swarmfile"), then automatically
+submits those commands to the batch system to execute.
+
+Command lines in the swarmfile should appear just as they would be entered on a Linux command line.
+
+Swarm encapsulates each command line in a single temporary command script, then submits all command scripts to the Biowulf
+cluster as a <a href="http://slurm.schedmd.com/job_array.html">Slurm job array</a>.
+By default, swarm runs one command per core on a node, making optimum use of a node.
+Thus, a node with 16 cores will run 16 commands <b>in parallel</b>.</p>
+
+<p>For example, create a file that looks something like this (<b>NOTE:</b> lines that begin with a <b>#</b>
+character are interpreted as comments and are not executed):</p>
+
+<pre class="term"><b>[biowulf]$</b> cat file.swarm
+# My first swarmfile -- this file is file.swarm
+uptime
+uptime
+uptime
+uptime</pre>
+
+<p>Then submit to the batch system:</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm -f file.swarm --verbose 1
+4 commands run in 4 subjobs, each command requiring 1.5 gb and 1 thread
+12345</pre>
+
+<p>This will result in a single <b>job</b> (jobid 12345) of four <b>subjobs</b> (subjobids 0, 1, 2, 3), with each swarmfile line being run independently as a single subjob.
+By default, each subjob is allocated a 1.5 gb of memory and 1 core (consisting of 2 cpus). 
+The subjobs will be executed within the same directory from which the swarm was submitted.</p>
+
+<p>The following diagram visualizes how the job array will look:</p>
+
+<pre class="term">------------------------------------------------------------
+SWARM
+├── subjob 0: 1 command (1 cpu, 1.50 gb)
+|   ├──  uptime
+├── subjob 1: 1 command (1 cpu, 1.50 gb)
+|   ├──  uptime
+├── subjob 2: 1 command (1 cpu, 1.50 gb)
+|   ├──  uptime
+├── subjob 3: 1 command (1 cpu, 1.50 gb)
+|   ├──  uptime
+------------------------------------------------------------</pre>
+
+<p>All output will be written to that same directory.  By default, swarm will create two output files for each independent subjob, one for 
+STDOUT and one for STDERR.  The format is <em>name</em>_<em>jobid</em>_<em>subjobid</em>.<em>{e,o}</em>:</p>
+
+<pre class="term"><b>[biowulf]$</b> ls
+file.swarm       swarm_12345_0.o  swarm_12345_1.o  swarm_12345_2.o  swarm_12345_3.o
+swarm_12345_0.e  swarm_12345_1.e  swarm_12345_2.e  swarm_12345_3.e</pre>
+
+<div class="heading"><a name="usage"></a>Usage</div>
+<a href="/apps/swarm.html" style="font-size:12px">back to top</a><br />
+<pre class="term">
+Usage: swarm [swarm options] [sbatch options]
+
+  <a href="#input"><b>-f,--file</b></a> [file]       name of file with list of command lines to execute,
+                         with a single command line per subjob
+
+  <a href="#gandt"><b>-g,--gb-per-process</b></a>    gb per process (can be fractions of GB, e.g. 3.5)
+  [float]
+
+  <a href="#gandt"><b>-t,</b></a>                    threads per process (can be an integer or the word
+  <a href="#gandt"><b>--threads-per-process</b></a>  auto).  This option is only valid for multi-
+  [int]/"auto"           threaded swarms (-p 1).
+
+  <a href="#p"><b>-p,</b></a>                    processes per subjob (default = 1).  This option is
+  <a href="#p"><b>--processes-per-subjob</b></a> only valid for single-threaded swarms (-t 1).
+  [int]                  
+                      
+  --noht                 don't use hyperthreading, equivalent to slurm option
+                         --ntasks-per-core=1
+
+  <a href="#bundling"><b>-b,--bundle</b></a> [int]      bundle more than one command line per subjob and run
+                         sequentially
+
+  --usecsh               use tcsh as the shell instead of bash
+  <a href="#module"><b>--module</b></a>               provide a list of environment modules to load
+                         prior to execution
+
+<b>NOTE: As of 7 am, Friday August 28, --module will accept a comma-delimited  list,
+ rather  than  a space-delimited list.</b>
+
+  --no-comment           don't ignore text following comment character #
+  --comment-char [chr]   use something other than # as the comment character
+
+  <a href="#singleout"><b>--singleout</b></a>            concatenate STDOUT and STDERR to single files
+                         NOTE: This option is NOT appropriate for swarms of
+                         very short running commands, as the process of
+                         concatenating output can outlast command execution!
+
+  --logdir               directory to which .o and .e files are to be written
+                         (default is current working directory)
+
+Development options:
+
+  --help                 print this help message
+  --keep-scripts         don't remove temporary swarm scripts
+  --no-scripts           don't create temporary swarm scripts (with --debug
+                         or --devel)
+  --debug                don't actually run 
+  <a href="#devel"><b>--devel</b></a>                combine --debug and --no-scripts, and be very chatty
+  <a href="#devel"><b>--verbose</b></a> [int]        can range from 0 to 6, with 6 the most verbose
+  --silent               don't give any feedback, just jobid
+
+sbatch options:
+
+  --job-name [str]       set the name of the job
+  <a href="#dependency"><b>--dependency</b></a> [str]     set up dependency (i.e. run swarm before or after)
+  <a href="#time"><b>--time</b></a> [str]           change the walltime for each subjob (default is
+                         04:00:00, or 4 hours).  If  a  swarm  is  bundled,
+                         then the time is multiplied by the bundle factor.
+  --license [str]        obtain software licenses (e.g. --license=matlab)
+  --partition [str]      change the partition (default is norm)
+  <a href="#lscratch"><b>--gres</b></a> [str]           set generic resources for swarm
+  --qos [str]            set quality of service for swarm
+
+Other sbatch options
+
+  <a href="#sbatch"><b>--sbatch</b></a> [string]      add sbatch-specific options to swarm.  These options
+                         will be added last, which means that swarm options
+                         for allocation of cpus and memory take precedence.
+
+Environment variables
+
+  The following environment variables will affect how sbatch allocates
+  resources:
+
+  SBATCH_JOB_NAME        Same as --job-name
+  SBATCH_PARTITION       Same as --partition
+  SBATCH_QOS             Same as --qos
+  SBATCH_TIMELIMIT       Same as --time
+  SBATCH_EXCLUSIVE       Same as --exclusive</pre>
+
+<!-- ======================================================================================================== -->
+<!-- Details                                                                                                    -->
+<!-- ======================================================================================================== -->
+<div class="heading"><a name="details"></a>Details</div>
+<a href="/apps/swarm.html" style="font-size:12px">back to top</a><br />
+
+<table width=100%><tr><td>
+<img src="/images/swarm_fig_1.png">
+</td><td>
+A <b>node</b> consists of a hierarchy of resources.
+<ul>
+<li>A <b>socket</b> is a receptacle on the motherboard for one physically packaged processor, each can contain one or more cores.</li>
+<li>A <b>core</b> is a complete private set of registers, execution units, and retirement queues needed to execute programs.
+Nodes on the biowulf cluster can have 8, 16, or 32 cores.</li>
+<li>A <b>cpu</b> has the attributes of one core, but is managed and scheduled as a single logical processor by the operating system.
+<b>Hyperthreading</b> is the implementation of multiple cpus on a single core.
+All nodes on the biowulf cluster have hyperthreading enabled, with 2 cpus per core.</li>
+</ul>
+</td></tr></table>
+
+<p>Slurm allocates on the basis of <b>cores</b>.  The smallest subjob runs on a single core, meaning the <b>smallest number of cpus that swarm can allocate is 2</b>.</p>
+
+<table width=100%><tr><td>
+Swarm reads a swarmfile and creates a single <b>subjob</b> per line.  By default a subjob is allocated to a single core.
+Each line from a swarmfile has access to <b>2 cpus</b>.
+Running swarm with the option <b>-t 2</b> is thus no different than running swarm without the -t option, as both cpus (hyperthreads)
+are available to each subjob.
+</td><td>
+<img src="/images/swarm_fig_2.png">
+</td></tr></table>
+
+<table width=100%><tr><td>
+<img src="/images/swarm_fig_3.png">
+</td><td>
+If commands in the swarmfile are multi-threaded, passing the -t option guarantees enough cpus will be available to the generated slurm subjobs.
+For example, if the commands require either 3 or 4 threads, giving the <b>-t 3</b> or <b>-t 4</b> option allocates <b>2 cores per subjob</b>.
+</td></tr></table>
+
+
+<p>The nodes on the biowulf cluster are configured to constrain threads within the cores the subjob is allocated.  Thus, if a multi-threaded
+command exceeds the cpus available, <b>the command will run much slower than normal!</b>
+This may not be reflected in the overall cpu load for the node.</p>
+
+<p>
+Memory is allocated <b>per subjob</b> by swarm, and is strictly enforced by slurm.
+If a single subjob exceeds its memory allocation (by default 1.5 GB per swarmfile line), then
+<b>the subjob will be killed by the batch system</b>.
+See <a href="#gandt">below</a> for examples on how to allocate threads and memory.
+</p>
+
+<p>
+More than one swarmfile line can be run per subjob using the <b>-p</b> option.  This is only valid for single-threaded
+swarms (i.e. <b>-t 1</b>).  Under these circumstances, all cpus are used.  See <a href="#p">below</a>
+for more information on <b>-p</b>.
+</p>
+
+
+
+<!-- ======================================================================================================== -->
+<!-- Input                                                                                                    -->
+<!-- ======================================================================================================== -->
+<div class="heading"><a name="input"></a>Input</div>
+<a href="/apps/swarm.html" style="font-size:12px">back to top</a><br />
+
+<h3>The swarmfile</h3>
+
+<p>The only required input for swarm is a swarmfile, as designated by the -f or --file option.  Each line in 
+the swarmfile is run as a single command.  For example, the swarmfile <b><em>file.swarm</em></b></p>
+
+<pre class="term"><b>[biowulf]$</b> cat file.swarm
+uptime
+uptime
+uptime
+uptime</pre>
+
+<p>when submitted like this</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm -f file.swarm</pre>
+
+<p>will create a swarm of 4 subjobs, with each subjob running the single command "uptime".</p>
+
+<h3>Bundling</h3>
+
+<p>There are occasions when running a single swarmfile line per subjob is inappropriate, such as when commands
+are very short (e.g. a few seconds) or when there are many thousands or millions of commands in a swarmfile.  In
+these circumstances, it makes more sense to <em><b>bundle</b></em> the swarm.  For example, a swarmfile of 10,000
+commands when run with a bundle value of 40 will generate 250 subjobs (10000/40 = 250):</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm --devel -f x -b 40
+10000 commands run in 250 subjobs, each requiring 1 gb and 1 thread, running 40 commands serially per subjob</pre>
+
+<p><b>NOTE</b>: If a swarmfile results in more than 1000 subjobs, swarm will <b>automatically bundle the commands</b>.
+In previous versions of swarm, this was enabled with <b>--autobundle</b>; this is now the default.</p>
+
+<h3>Comments</h3>
+
+<p>By default, any text on a single line that follows a <b><em>#</em></b> character is assumed to be a comment,
+and is ignored.  For example,</p>
+
+<pre class="term"><b>[biowulf]$</b> cat file.swarm
+# Here are my commands
+uptime      # this gives the current load status
+pwd         # this gives the current working directory
+hostname    # this gives the host name</pre>
+
+<p>However, there are some applications that require a <b><em>#</em></b> character in the input:</p>
+
+<pre class="term"><b>[biowulf]$</b> cat odd.file.swarm
+bogus_app -n 365#AX -w -another-flag=nonsense > output</pre>
+
+<p>The option <b>--no-comment</b> can be given to avoid removal of text following the <b><em>#</em></b> character.
+Alternatively, another comment character can be designated using the <b>--comment-char</b> option.</p>
+
+<h3>Command lists</h3>
+
+<p>Multiple commands can be run serially (one after the other) when they are separated by a semi-colon (;).  This
+is also known as a command list.  For example,</p>
+
+<pre class="term"><b>[biowulf]$</b> cat file.swarm
+hostname ; date ; sleep 200 ; uptime
+hostname ; date ; sleep 200 ; uptime
+hostname ; date ; sleep 200 ; uptime
+hostname ; date ; sleep 200 ; uptime
+
+<b>[biowulf]$</b> swarm -f file.swarm</pre>
+
+<p>will create 4 subjobs, each running independently on a single cpu.  Each subjob will run "hostname", followed
+by "date", then "sleep 200", then "uptime", all in order.</p>
+
+<h3>Complex commands</h3>
+
+<p>Environment variables can be set, directory locations can be changed, subshells can be spawned all within 
+a single command list, and conditional statements can be given.  For example, if you wanted to run some
+commands in a newly created random temporary directory, you could use this:</p>
+
+<pre class="term"><b>[biowulf]$</b> cat file.swarm
+export d=/data/user/${RANDOM} ; mkdir -p $d ; if [[ -d $d ]] ; then cd $d && pwd ; else echo "FAIL" >&2 ; fi
+export d=/data/user/${RANDOM} ; mkdir -p $d ; if [[ -d $d ]] ; then cd $d && pwd ; else echo "FAIL" >&2 ; fi
+export d=/data/user/${RANDOM} ; mkdir -p $d ; if [[ -d $d ]] ; then cd $d && pwd ; else echo "FAIL" >&2 ; fi
+export d=/data/user/${RANDOM} ; mkdir -p $d ; if [[ -d $d ]] ; then cd $d && pwd ; else echo "FAIL" >&2 ; fi</pre>
+
+<p><b>NOTE</b>: By default, command lists are interpreted as bash commands.  If a swarmfile contains tcsh- or csh-specific
+commands, swarm may fail unless <b>--usecsh</b> is included.</p>
+
+<h3>Line continuation markers</h3>
+
+<p>Application commands can be very long, with dozens of options and flags, and multiple commands separated by
+semi-colons.  To ease file editing, line continuation markers can be used to break up the single swarm commands
+into multiple lines.  For example, the swarmfile</p>
+
+<pre class="term">cd /data/user/project; KMER="CCCTAACCCTAACCCTAA"; jellyfish count -C -m ${#KMER} -t 32 -c 7 -s 1000000000 -o /lscratch/$SLURM_JOBID/39sHMC_Tumor_genomic <(samtools bam2fq /data/user/bam/0A4HMC/DNA/genomic/39sHMC_genomic.md.bam ); echo ${KMER} | jellyfish query /lscratch/$SLURM_JOBID/39sHMC_Tumor_genomic_0 > 39sHMC_Tumor_genomic.telrpt.count</pre>
+
+<p>can be written like this:</p>
+
+<pre class="term">cd /data/user/project; KMER="CCCTAACCCTAACCCTAA"; \
+jellyfish count -C 
+  -m ${#KMER} \
+  -t 32 \
+  -c 7 \
+  -s 1000000000 \
+  -o /lscratch/$SLURM_JOBID/39sHMC_Tumor_genomic \
+  <(samtools bam2fq /data/user/bam/0A4HMC/DNA/genomic/39sHMC_genomic.md.bam ); \
+echo ${KMER} | jellyfish query /lscratch/$SLURM_JOBID/39sHMC_Tumor_genomic_0 > 39sHMC_Tumor_genomic.telrpt.count</pre>
+
+<h3>Modules</h3>
+
+<p><a href="modules.html">Environment modules</a> can be loaded for an entire swarm using the <b>--module</b>
+option.  The </p> 
+
+<pre class="term">swarm -f file.swarm --module python tophat ucsc samtools vcftools -g 4 -t 8</pre>
+
+<p class="alert"><b>NOTE: As of 7 am, Friday August 28, --module will accept a comma-delimited list, rather than a space-delimited list.</b></p>
+
+<!-- ======================================================================================================== -->
+<!-- Output                                                                                                   -->
+<!-- ======================================================================================================== -->
+
+<div class="heading"><a name="output"></a>Output</div>
+<a href="/apps/swarm.html" style="font-size:12px">back to top</a><br />
+
+<h3>Default output files</h3>
+
+<p>STDOUT and STDERR output from subjobs executed under swarm will be
+directed to a file named <b>swarm_<em>jobid_subjobid</em>.o</b> and <b>swarm_<em>jobid_subjobid</em>.e</b>, respectively. </p>
+
+<p class="alert">Please pay attention to the memory requirements of your swarm jobs!
+
+When a swarm job runs out of memory, the node stalls and the job is eventually killed or
+dies.
+
+At the bottom of the .e file, you may see a warning like this:</p>
+
+<pre class="term">slurmstepd: Exceeded job memory limit at some point. Job may have been partially swapped out to disk.</pre>
+
+<p> If a job dies before it is finished, this output may not be available.  Contact
+<a href="mailto:staff@helix.nih.gov">staff@helix.nih.gov</a> when you have a question about why
+a swarm stopped prematurely.</p>
+
+<h3>Renaming output files</h3>
+
+<p>The sbatch option <b>--job-name</b> can be used to rename the default output files.</p>
+<pre class="term"><b>[biowulf]$</b> swarm -f file.swarm --job-name programAOK
+...
+<b>[biowulf]$</b> ls
+programAOK_21381_0.e  programAOK_21381_2.e  programAOK_21381_4.e  programAOK_21381_6.e
+programAOK_21381_0.o  programAOK_21381_2.o  programAOK_21381_4.o  programAOK_21381_6.o
+programAOK_21381_1.e  programAOK_21381_3.e  programAOK_21381_5.e  programAOK_21381_7.e
+programAOK_21381_1.o  programAOK_21381_3.o  programAOK_21381_5.o  programAOK_21381_7.o</pre>
+
+<h3>Writing output files to a separate directory</h3>
+<p>By default, the STDOUT and STDERR files are written to the same directory from which the swarm
+was submitted.  To redirect the files to a different directory, use <b>--logdir</b>:</p>
+
+<pre class="term">swarm -f files.swarm --logdir /path/to/another/directory</pre>
+
+<h3>Redirecting output</h3>
+
+<P>Input/output redirects (and everything in the swarmfile) should be bash compatible.  For example,</p>
+<pre class="term"><b>[biowulf]$</b> cat bash_file.swarm
+program1 -o -f -a -n 1 > output1.txt 2>&1
+program1 -o -f -a -n 2 > output2.txt 2>&1
+<b>[biowulf]$</b> swarm -f bash_file.swarm</pre>
+
+<p>csh-style redirects like '<b>program &gt;&amp;; output</b>' will not work correctly unless
+the <b>--usecsh</b> option is included.  For example,</p>
+
+<pre class="term"><b>[biowulf]$</b> cat csh_file.swarm
+program1 -o -f -a -n 1 >& output1.txt
+program1 -o -f -a -n 2 >& output2.txt
+<b>[biowulf]$</b> swarm <b>--usecsh</b> -f csh_file.swarm</pre>
+
+<p>Be aware of programs that write directly to a file using a fixed filename.
+A file will be overwritten and garbled if multiple processes are writing to the same file.
+If you run multiple instances of such programs then for each instance you will
+need to a) change the name of the file in each command <b>or</b> b) alter the path to the file. See
+the <b>EXAMPLES</b> section for some ideas.</p>
+
+<a name="singleout"></a><h3>Concatenating STDOUT and STDERR into a single file</h3>
+
+<p>Rather than accumulating hundreds of .o and .e files, it is sometimes better to concatenate the
+output into single files.  To do so, use <b>--singleout</b>.</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm -f file.swarm --singleout --job-name combined
+<b>[biowulf]$</b> ls
+combined.e  combined.o  file.swarm</pre>
+
+<p class="alert">NOTE: the <b>--singleout</b> <em>appends</em> to the files.  This means that if you 
+run multiple swarms from the same directory with <b>--singleout</b>, all of which have the same <b>--job-name</b>,
+the contents will all be written to the same file.</p>
+
+<!-- ======================================================================================================== -->
+<!-- EXAMPLES -->
+<!-- ======================================================================================================== -->
+
+<div class="heading"><a name="examples"></a>Examples</div>
+<a href="/apps/swarm.html" style="font-size:12px">back to top</a><br />
+
+<table><tr><td>
+  <table width=270px align=left style="margin-right:10px;"><tr><td>
+    <div class="toc">
+      <div class="tocHeading">Quick Links</div>
+      <div class="tocItem"><a href="#stdin">STDIN/STDOUT</a></div>
+      <div class="tocItem"><a href="#bundling">-b, --bundle</a></div>
+      <div class="tocItem"><a href="#gandt">-g and -t</a></div>
+      <div class="tocItem"><a href="#p">-p, --processes-per-subjob</a></div>
+      <div class="tocItem"><a href="#time">--time</a></div>
+      <div class="tocItem"><a href="#dependency">--dependency</a></div>
+      <div class="tocItem"><a href="#fixed">Fixed output path</a></div>
+      <div class="tocItem"><a href="#mixed">Mixed asynchronous and serial commands</a></div>
+      <div class="tocItem"><a href="#module">--module</a></div>
+      <div class="tocItem"><a href="#environment">Setting environment variables</a></div>
+      <div class="tocItem"><a href="#sbatch">--sbatch</a></div>
+      <div class="tocItem"><a href="#devel">--devel, --verbose</a></div>
+    </div>
+  </table>
+</td><td>
+  To see how swarm works, first create a file containing a few simple
+  commands, then use swarm to submit them to the batch queue:
+</td></tr></table>
+
+<pre class="term"><b>[biowulf]$</b> cat &gt; cmdfile
+date
+hostname
+ls -l
+^D
+<b>[biowulf]$</b> swarm -f cmdfile</pre>
+
+<p>Use <b>sjobs</b> to monitor the status of your request; an
+"R" in the "St"atus column indicates your job is running.
+This particular example will probably run to completion
+before you can give the qstat command. To see the output from the commands, see
+the files named <b>swarm_<em>#_#</em>.o</b>.</p>
+
+<center><hr width="500" /></center>
+<a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
+
+<!-- ------------------------------------------------------------------------------------- -->
+<!-- STDIN/STOUT -->
+<!-- ------------------------------------------------------------------------------------- -->
+
+<p><a name="stdin"></a><b>A program that reads to STDIN and writes to STDOUT</b></p>
+<p>For each invocation of the program the names for the input and output files
+vary:</p>
+<pre class="term"><b>[biowulf]$</b> cat &gt; runbix
+./bix &lt; testin1 &gt; testout1
+./bix &lt; testin2 &gt; testout2
+./bix &lt; testin3 &gt; testout3
+./bix &lt; testin4 &gt; testout4
+^D</pre>
+
+<center><hr width="500" /></center>
+<a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
+
+<!-- ------------------------------------------------------------------------------------- -->
+<!-- bundling -->
+<!-- ------------------------------------------------------------------------------------- -->
+
+<p><a name="bundling"></a><b>Bundling large numbers of commands</b></p>
+<p>If you have over 1000 commands, especially if each one runs for a short
+time, you should 'bundle' your jobs with the <b>-b</b> flag. If the 
+swarmfile contains 2500 commands, the following swarm command will group them into
+bundles of 40 commands each, producing 64 bundles. Swarm will then submit two
+bundles as a single swarm job, so there will be 32 (2500/64) swarm jobs.</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm -f cmdfile -b 40</pre>
+
+<p>Note that commands in a bundle will run sequentially on the assigned node.
+
+<center><hr width="500" /></center>
+<a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
+
+<!-- ------------------------------------------------------------------------------------- -->
+<!-- gandt -->
+<!-- ------------------------------------------------------------------------------------- -->
+
+<p><a name="gandt"></a><b>Using -g and -t options</b></p>
+<p>If the subjobs require significant amounts of memory (&gt; 1.5 GB) or threads (&gt; 1 per core), a swarm can
+run fewer subjobs per node than the number of cores available
+on a node.  For example, if the commands in a swarmfile need up to 40 GB of
+memory each using 8 threads, running swarm with --devel shows what might happen:</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm -f swarmfile -g 40 -t 8 --devel
+14 commands run in 14 subjobs, each requiring 40 gb and 8 threads</pre>
+
+<p>If a command requires to use as many cpus on a node as possible, then the option <b>-t auto</b>
+should be added.  This causes each subjob in the swarmfile to allocate an entire node exclusively to the subjob, allowing
+the subjob to use all available cpus on the node.</p>
+
+<center><hr width="500" /></center>
+<a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
+
+<!-- ------------------------------------------------------------------------------------- -->
+<!-- p -->
+<!-- ------------------------------------------------------------------------------------- -->
+
+<p><a name="p"></a><b>Using -p option</b></p>
+<p>By default, swarm allocates a single command line per subjob.  If the command is single-threaded, then swarm wastes half the
+cpus allocated, because the slurm batch system allocates no less than a single core (or two cpus) per subjob.  This effect
+can be seen using the <b>jobload</b> command for a 4-command swarm:</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm -f swarmfile
+219433
+<b>[biowulf]$</b>$ jobload -u user
+         JOBID         TIME   NODES   CPUS  THREADS   LOAD             MEMORY
+                                     Alloc  Running                Used/Alloc
+      219433_3         0:37  cn0070      2        1    50%      1.0 GB/1.5 GB
+      219433_2         0:37  cn0070      2        1    50%      1.0 GB/1.5 GB
+      219433_1         0:37  cn0069      2        1    50%      1.0 GB/1.5 GB
+      219433_0         0:37  cn0069      2        1    50%      1.0 GB/1.5 GB
+
+USER SUMMARY
+     Jobs: 2
+    Nodes: 2
+     CPUs: 4
+ Load Avg: 50%</pre>
+
+<p>In order to use all the cpus allocated to a single-threaded swarm, the option <b>-p</b> will set the number
+of commands run per subjob.  Including <b>-p 2</b>, half as many subjobs are created, each using twice as many cpus and twice as much memory:</p>
+<pre class="term"><b>[biowulf]$</b> swarm -f swarmfile -p 2
+219434
+<b>[biowulf]$</b>$ jobload -u user
+         JOBID         TIME   NODES   CPUS  THREADS   LOAD             MEMORY
+                                     Alloc  Running                Used/Alloc
+      219434_1         0:24  cn0069      2        2   100%      2.0 GB/3.0 GB
+      219434_0         0:24  cn0069      2        2   100%      2.0 GB/3.0 GB
+
+USER SUMMARY
+     Jobs: 2
+    Nodes: 2
+     CPUs: 4
+ Load Avg: 100%</pre>
+
+<p class="alert"><b>NOTE:</b> The cpus on the biowulf cluster are <i>hypercores</i>, and some programs run more inefficiently
+when packed onto hypercores.  Please test your application to see if it actually benefits from running two commands per core rather than one.</p>
+<p>Keep in mind:</p>
+<ul>
+<li><b>-p</b> is only available to single-threaded swarms (i.e. <b>-t 1</b>).</li>
+<li>The default file output format is different using <b>-p</b>.  The file names end with
+an extra suffix indicating the cpu from the subjob:</li>
+</ul>
+
+<pre class="term">
+<b>[biowulf]$</b>$ swarm -f ../file.swarm -p 2
+14 commands run in 7 subjobs, each command requiring 1.5 gb and 1 thread, packing 2 processes per subjob
+221574
+<b>[biowulf]$</b>$ ls
+swarm_221574_0_0.e  swarm_221574_1_1.e  swarm_221574_3_0.e  swarm_221574_4_1.e  swarm_221574_6_0.e
+swarm_221574_0_0.o  swarm_221574_1_1.o  swarm_221574_3_0.o  swarm_221574_4_1.o  swarm_221574_6_0.o
+swarm_221574_0_1.e  swarm_221574_2_0.e  swarm_221574_3_1.e  swarm_221574_5_0.e  swarm_221574_6_1.e
+swarm_221574_0_1.o  swarm_221574_2_0.o  swarm_221574_3_1.o  swarm_221574_5_0.o  swarm_221574_6_1.o
+swarm_221574_1_0.e  swarm_221574_2_1.e  swarm_221574_4_0.e  swarm_221574_5_1.e
+swarm_221574_1_0.o  swarm_221574_2_1.o  swarm_221574_4_0.o  swarm_221574_5_1.o</pre>
+
+<center><hr width="500" /></center>
+<a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
+
+<!-- ------------------------------------------------------------------------------------- -->
+<!-- time option -->
+<!-- ------------------------------------------------------------------------------------- -->
+
+<p><a name="time"></a><b>Setting walltime with --time</b></p>
+<P>By default all jobs and subjobs have a walltime of 4 hours.  If a swarm subjob exceeds 4 hours, <b>it will be killed!</b>.
+On the other hand, if your swarm subjobs have a very short walltime, then their priority on the queue may be elevated.  Therefore,
+it is best practice to set a walltime using the <b>--time</b> option that reflects the estimated execution time of the subjobs.
+For example, if the command lines in a swarm are expected to require no more than half an hour to complete, the swarm command should be:</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm -f swarmfile --time 00:30:00</pre>
+
+<p>Because a subjob is typically running a single command from the swarmfile, the value of <b>--time</b> can be considered
+the amount of time to run a single command.  When a swarm is bundled, the value for <b>--time</b> is then
+multiplied by the bundle factor.  For example, if
+a swarm that normally creates 14 commands is bundled to run 4 commands serially, the value of <b>--time</b> is
+multiplied by 4:</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm -f swarmfile <b>--time 00:30:00 -b 4</b> --devel
+14 commands run in 3 subjobs, each command requiring 1.5 gb and 1 thread, running 4 processes serially per subjob, allocating 3 cpus
+sbatch --array=0-3 --job-name=swarm <b>--time=2:00:00</b> --cpus-per-task=2 --partition=norm --mem=1536</pre>
+
+<p>If a swarm has more than 1000 commands and is autobundled, there is a chance that the time requested will exceed
+the maximum allowed.  In that case, an error will be thrown:</p>
+
+<pre class="term">
+ERROR: Total time for bundled commands is greater than partition walltime limit.
+Try lowering the time per command (--time=04:00:00), lowering the bundle factor
+(if not autobundled), picking another partition, or splitting up the swarmfile.</pre>
+
+
+<p>See the <a href="/docs/b2-userguide.html#wall"> Biowulf User Guide for a discussion of walltime limits</a>.</p>
+
+<center><hr width="500" /></center>
+<a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
+
+<!-- ------------------------------------------------------------------------------------- -->
+<!-- dependency -->
+<!-- ------------------------------------------------------------------------------------- -->
+
+<p><a name="dependency"></a><b>Handling job dependencies</b></p>
+
+<P>
+If a swarm is run as a single step in a pipeline, job dependencies can be handled with the <b>--dependency</b> options.
+For example, a first script (first.sh) is to be run to generate some initial data files. Once this job is finished, a swarm of
+commands (swarmfile.txt) is run to take the output of the first script and process it. Then, a last script (last.sh) is run
+to consolidate the output of the swarm and further process it into its final form.
+</P>
+
+<P>
+Below, the swarm is run with a dependency on the first script. Then the last script is run with a dependency on the swarm.
+The swarm will sit in a pending state until the first job (10001) is completed, and the last job will sit in a pending state until
+the entire swarm (10002) is completed.
+</P>
+
+<pre class="term"><b>[biowulf]$</b> sbatch first.sh
+10001
+<b>[biowulf]$</b> swarm -f swarmfile.txt --dependency afterany:10001
+10002
+<b>[biowulf]$</b> sbatch --dependency=afterany:10002 last.sh
+10003</pre>
+
+<P>
+The jobid of a job can be captured from the sbatch command and passed to subsequent submissions in a script (master.sh).
+For example, here is a bash script which automates the above procedure, passing the variable $id to the first script. In this way,
+the master script can be reused for different inputs:
+
+<pre class="term"><b>[biowulf]$</b> cat master.sh
+#!/bin/bash
+jobid1=$(sbatch first.sh)
+echo $jobid1
+jobid2=$(swarm -f swarmfile.txt --dependency afterany:$jobid1)
+echo $jobid2
+jobid3=$(sbatch --dependency=afterany:$jobid2 last.sh)
+echo $jobid3</pre>
+
+<P>Now, master.sh can be submitted with a single argument</p>
+
+<pre class="term"><b>[biowulf]$</b> bash master.sh mydata123
+10001
+10002
+10003
+<b>[biowulf]$</b></pre>
+
+<p>You can check on the job status using squeue:</pre>
+
+<pre class="term"><b>[biowulf]$</b> squeue -u user
+             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)
+       10002_[0-3]      norm    swarm     user PD       0:00      1 (Dependency)
+             10003      norm  last.sh     user PD       0:00      1 (Dependency)
+             10001      norm first.sh     uwer  R       0:33      1 cn0121</pre>
+
+<P>
+The dependency key 'afterany' means run only after the entire job finishes, regardless of its exit status.  Swarm passes the exit
+status of the last command executed back to Slurm, and Slurm consolidates all the exit statuses of the subjobs in the job array into
+a single exit status.
+</p>
+
+<P>The final statuses for the jobs can be seen with sacct.  The individual subjobs from swarm are designated
+by <b>jobid_subjobid</b>:</p>
+
+<pre class="term"><b>[biowulf]$</b> sacct
+       JobID    JobName  Partition    Account  AllocCPUS      State ExitCode
+------------ ---------- ---------- ---------- ---------- ---------- --------
+10001          first.sh       norm       user          2  COMPLETED      0:0
+10001.batch       batch                  user          1  COMPLETED      0:0
+10002_3           swarm       norm       user          2     FAILED      2:0
+10002_3.bat+      batch                  user          1     FAILED      2:0
+10003           last.sh       norm       user          2  COMPLETED      0:0
+10003.batch       batch                  user          1  COMPLETED      0:0
+10002_0           swarm       norm       user          2  COMPLETED      0:0
+10002_0.bat+      batch                  user          1  COMPLETED      0:0
+10002_1           swarm       norm       user          2  COMPLETED      0:0
+10002_1.bat+      batch                  user          1  COMPLETED      0:0
+10002_2           swarm       norm       user          2  COMPLETED      0:0
+10002_2.bat+      batch                  user          1  COMPLETED      0:0</pre>
+
+<p>If any of the subjobs in the swarm failed, the job is marked as <b>FAILED</b>.  It almost all cases, it is better
+to rely on <b>afterany</b> rather than <b>afterok</b>, since the latter may cause the dependent job to 
+remain queued forever:</P>
+
+<pre class="term"><b>[biowulf]$</b> sjobs
+                                                       ................Requested............................
+User       JobId    JobName    Part  St      Runtime   Nodes  CPUs     Mem        Dependency     Features             Nodelist
+user       10003    last.sh    norm   PD          0:00   1       1   2.0GB/cpu   afterok:10002_*   (null)               (DependencyNeverSatisfied)</pre>
+
+<p>See <a href="/docs/b2-userguide.html#depend">the Biowulf User Guide</a>, or <a href="http://slurm.schedmd.com/job_exit_code.html">
+SchedMD for a discussion on how Slurm handles exit codes</a>.</P>
+
+<p class="alert">NOTE: Setting <b>-p</b> causes multiple commands to run per subjob. Because of this, the exit status of the
+subjob can come from any of the multiple processes in the subjob. </p>
+
+
+<center><hr width="500" /></center>
+<a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
+
+<!-- ------------------------------------------------------------------------------------- -->
+<!-- Fixed filepath -->
+<!-- ------------------------------------------------------------------------------------- -->
+
+<p><a name="fixed"></a><b>A program that writes to a fixed filepath</b></p>
+<p>If a program writes to a fixed filename, then you may need to run the
+program in different directories. First create the necessary directories (for
+instance run1, run2), and in the swarmfile cd to the unique output
+directory before running the program: (cd using either an absolute path
+beginning with "/" or a relative path from your home directory). Lines with
+leading "#" are considered comments and ignored.</p>
+<pre class="term"><b>[biowulf]$</b> cat &gt; batchcmds
+# Run ped program using different directory
+# for each run
+cd pedsystem/run1; ../ped
+cd pedsystem/run2; ../ped
+cd pedsystem/run3; ../ped
+cd pedsystem/run4; ../ped
+...
+
+<b>[biowulf]$</b> swarm -f batchcmds</pre>
+
+<center><hr width="500" /></center>
+<a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
+
+<!-- ------------------------------------------------------------------------------------- -->
+<!-- mixed -->
+<!-- ------------------------------------------------------------------------------------- -->
+
+<p><a name="mixed"></a><b>Running mixed asynchronous and serial commands in a swarm</b></p>
+
+<p>There are occasions when a single swarm command can contain a mixture of asynchronous and serial commands.  For 
+example, collating the results of several commands into a single output and then running another command on the pooled
+results.  If run interactively, it would look like this:</p>
+
+<pre class="term">
+<b>[biowulf]$</b> cmdA < inp.1 > out.1
+<b>[biowulf]$</b> cmdA < inp.2 > out.2
+<b>[biowulf]$</b> cmdA < inp.3 > out.3
+<b>[biowulf]$</b> cmdA < inp.4 > out.4
+<b>[biowulf]$</b> cmdB -i out.1 -i out.2 -i out.3 -i out.4 > final_result
+</pre>
+
+<p>It would be more efficient if the four <b>cmdA</b> commands could run asynchronously (in parallel), and then
+the last <b>cmdB</b> command would wait until they were all done and then run, all on the same node and in the same
+swarm command.  This can be achieved using process substitution with this one-liner in a swarmfile:</p>
+
+<pre class="term">
+( cmdA < inp.1 > out.1 & cmdA < inp.2 > out.2 & \
+  cmdA < inp.3 > out.3 & cmdA < inp.4 > out.4 & wait ) ; \
+  cmdB -i out.1 -i out.2 -i out.3 -i out.4 > final_result
+</pre> 
+
+<p>Here, the <b>cmdA</b> commands are all run asynchronously in four background processes, and the <b>wait</b> command
+is given to prevent <b>cmdB</b> from running until all the background processes are finished.  Note that line
+continuation markers were used for easier editing.</p>
+
+<center><hr width="500" /></center>
+<a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
+
+<!-- ------------------------------------------------------------------------------------- -->
+<!-- module -->
+<!-- ------------------------------------------------------------------------------------- -->
+
+<p><a name="module"></a><b>Using --module option</b></p>
+<p>It is sometimes difficult to set the environment properly before running commands.  The
+easiest way to do this on Biowulf is with <a href="modules.html">
+environment modules</a>.  Running commands via swarm complicates the issue, because the modules
+must be loaded prior to every line in the swarmfile.  Instead, you can use the <b>--module</b>
+option to load a list of modules:</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm -f testfile --module ucsc matlab python/2.7.1</pre>
+
+<p>Here, the environment is set to use the UCSC executables, Matlab, and an older, non-default
+version of Python.</p>
+
+<p class="alert"><b>NOTE: As of 7 am, Friday August 28, --module will accept a comma-delimited  list, rather than  a space-delimited list.</b></p>
+
+<center><hr width="500" /></center>
+<a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
+
+<!-- ------------------------------------------------------------------------------------- -->
+<!-- lscratch -->
+<!-- ------------------------------------------------------------------------------------- -->
+
+<p><a name="lscratch"></a><b>Using --gres option</b></p>
+<p><a href="http://hpc.nih.gov/docs/userguide.html#local">Local scratch disk space is NOT automatically available under Slurm</a>.  Instead, local scratch disk space
+is allocated using <b>--gres</b>.  Here is an example of how to allocate 200GB of local scratch disk space for <u>each swarm command</u>:</p>
+
+<pre class="term"><b>[biowulf$</b> swarm -f swarmfile --gres=lscratch:200</pre>
+
+<p>Including <b>--gres=lscratch:<i>N</i></b>, where <b><i>N</i></b> is the number of GB required, will create a subdirectory on the node
+corresponding to the jobid, e.g.:</p>
+
+<pre class="term"><b>/lscratch/987654/</b></pre>
+
+<p>This local scratch directory can be accessed dynamically using the <b>$SLURM_JOBID</b> environment variable:</p>
+
+<pre class="term"><b>/lscratch/$SLURM_JOBID/</b></pre>
+
+<center><hr width="500" /></center>
+<a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
+
+<!-- ------------------------------------------------------------------------------------- -->
+<!-- environment variables -->
+<!-- ------------------------------------------------------------------------------------- -->
+
+<p><a name="environment"></a><b>Setting environment variables</b></p>
+<P>If an entire swarm requires one or more environment variables to be set, the sbatch option <b>--export</b>
+can be used to set the variables prior to running.  In this example, we need to set the BOWTIE_INDEXES environment variable
+to the correct path for all subjobs in the swarm:</P>
+
+<pre class="term"><b>[biowulf]$</b> swarm -f swarmfile --sbatch "--export=BOWTIE_INDEXES=/fdb/igenomes/Mus_musculus/UCSC/mm9/Sequence/BowtieIndex/"</pre>
+
+<p class="alert"><b>NOTE:</b> Environment variables set with the <b>--sbatch "--export="</b> option are defined
+<b>PRIOR</b> to the job being submitted.  This prevents setting environment variables using Slurm-generated environment
+variables, such as $SLURM_JOBID or $SLURM_MEM_PER_NODE.</p>
+
+<p>However, if each command line in the swarm requires a unique set of environment variables, this must be done in the swarmfile.  For example, setting TMPDIR to a unique subdirectory of /lscratch/$SLURM_JOBID:</p>
+
+<pre class="term"><b>[biowulf]$</b> cat swarmfile
+export TMPDIR=/lscratch/$SLURM_JOBID/xyz1; mkdir $TMPDIR; cmdxyz -x 1 -y 1 -z 1
+export TMPDIR=/lscratch/$SLURM_JOBID/xyz2; mkdir $TMPDIR; cmdxyz -x 2 -y 2 -z 2
+export TMPDIR=/lscratch/$SLURM_JOBID/xyz3; mkdir $TMPDIR; cmdxyz -x 3 -y 3 -z 3
+export TMPDIR=/lscratch/$SLURM_JOBID/xyz4; mkdir $TMPDIR; cmdxyz -x 4 -y 4 -z 4</pre>
+
+<P>Further, if individual commands within each command line require unique environment variables, this can be done by prefacing the command itself with the variable set:</P>
+
+<pre class="term"><b>[biowulf]$</b> cat swarmfile
+MYENV=1 command ; MYENV=2 command ; MYENV=3 command
+MYENV=4 command ; MYENV=5 command ; MYENV=6 command</pre>
+
+<center><hr width="500" /></center>
+<a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
+
+<!-- ------------------------------------------------------------------------------------- -->
+<!-- sbatch -->
+<!-- ------------------------------------------------------------------------------------- -->
+
+<p><a name="sbatch"></a><b>Using sbatch flags</b></p>
+<p>Swarm creates a single <a href="http://hpc.nih.gov/docs/b2-userguide.html#submit">job array via the sbatch command</a>
+; all valid sbatch commandline options are also valid for swarm.
+However, they must be passed with a single <b>--sbatch</b> option, surrounded
+by quotation marks.  In this example some extra sbatch options are added.</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm -f testfile --sbatch "--mail-type=FAIL --export=var=100,nctype=12 --workdir=/data/user/test"</pre>
+
+<p>In this case,
+  <ul>
+    <li><b>--mail-type=FAIL</b>: causes an email to be sent if a subjob fails for some reason</li>
+    <li><b>--export=var=100,nctype=12</b>: sets two environment variables <b><em>var</em></b> and <b><em>nctype</em></b> to 100 and 12 prior to running</li>
+    <li><b>--workdir=/data/user/test</b>: relocate to that directory prior to running any commands</li>
+  </ul>
+</p>
+
+<center><hr width="500" /></center>
+<a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
+
+<!-- ------------------------------------------------------------------------------------- -->
+<!-- devel, verbose -->
+<!-- ------------------------------------------------------------------------------------- -->
+
+<p><a name="devel"></a><b>Using --devel and --verbose options</b></p>
+
+<p>Before submitting a large complex swarm to the batch system, it is better
+to see what would happen before it's too late.  In this case, the <b>--devel</b> option
+will display a good deal of information.  This example shows a <b>huge</b> number of
+commands autobundled to run 346 command lines serially per core.</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm -f file.swarm --devel
+345029 commands run in 998 subjobs, each requiring 1 gb and 1 thread, running 346 commands serially per subjob</pre>
+
+<p><b>--verbose</b> accepts a number between 0 (the same as <b>--silent</b>) and 6.  Increasing the verbosity level with <b>--verbose</b> and including <b>--devel</b> will give a visual representation
+of the swarm, along with lots of information about the swarm:</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm --devel --verbose 5 --file file.swarm -g 5 -p 4 -b 4
+basedir = /spin1/swarm/user
+script dir = /spin1/swarm/user/cF2_0V7N
+------------------------------------------------------------
+SWARM
+├── subjob 0: 16 commands (4 cpus, 20.00 gb)
+|   ├── cmd 0 ; cmd 1 ; cmd 2 ; cmd 3 ;
+|   ├── cmd 4 ; cmd 5 ; cmd 6 ; cmd 7 ;
+|   ├── cmd 8 ; cmd 9 ; cmd 10 ; cmd 11 ;
+|   ├── cmd 12 ; cmd 13 ; cmd 14 ; cmd 15 ;
+├── subjob 1: 16 commands (4 cpus, 20.00 gb)
+|   ├── cmd 16 ; cmd 17 ; cmd 18 ; cmd 19 ;
+|   ├── cmd 20 ; cmd 21 ; cmd 22 ; cmd 23 ;
+|   ├── cmd 24 ; cmd 25 ; cmd 26 ; cmd 27 ;
+|   ├── cmd 28 ; cmd 29 ; cmd 30 ; cmd 31 ;
+------------------------------------------------------------
+2 subjobs, 32 commands, 8 output files
+32 commands run in 2 subjobs, each command requiring 5 gb and 1 thread, packing 4 processes per subjob, running 4 processes serially per subjob
+sbatch --array=0-1 --job-name=swarm --output=/dev/null --error=/dev/null --cpus-per-task=4 --mem=20480 /spin1/swarm/user/cF2_0V7N.batch</pre>
+
+<p>This shows a swarm of 32 commands (show as "cmd 0" ==> "cmd 31") within 2 subjobs.  Each command requires 5 gb of memory,
+and the commands are bundled to run 4 commands sequentially on the cpus allocated.</p>
+
+<center><hr width="500" /></center>
+<a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
+
+<!-- ======================================================================================================== -->
+<!-- generating a swarm -->
+<!-- ======================================================================================================== -->
+
+<div class="heading"><A name="generate">Generating a swarm script</a></div>
+<a href="/apps/swarm.html" style="font-size:12px">back to top</a><br />
+<P>
+Users will typically want to write a script to create a large swarm file. This script can be written in any scripting language, such as bash, perl, or the language of your choice. Some examples are given below to get you started.
+<P>
+<b>Example 1: processing all files in a directory</b><br>
+Suppose you have 800 image files in a directory. You want to set up a swarm job to run an FSL command (e.g. 'mcflirt') on each one of these files.
+<P>
+<pre class="term"># this file is make-swarmfile
+
+cd /data/user/mydir   
+touch swarm.cmd
+for file in `ls`
+do
+echo "mcflirt -in $file -out $file.mcf1 -mats -plots -refvol 90 -rmsrel -rmsabs" >> swarm.cmd
+done</pre>
+
+<p>Execute this file with</p>
+<pre class="term">bash make-swarmfile</pre>
+
+<p>You should get a file called swarm.cmd which is suitable for submission to the swarm command.</p>
+
+<b>Example 2: Use swarm to pull sequences out of the NCBI nt blast database.</b><br>
+Suppose you have a file containing 1,000,000 GI numbers of sequences. You want to pull these sequences out of the Helix/Biowulf NCBI nt Blast database. You can divide your GI file into chunks, and run a swarm of jobs, each one working on one chunk of GIs, to pull these sequences out of the database.
+<P>
+<textarea class="term">#!/usr/local/bin/perl
+
+$dir = `pwd`;
+# create a directory for all the output sequences
+mkdir "${dir}/seqs";
+chdir "${dir}/seqs";
+
+# split the list of GIs (in file ../gi.list)  into files containing 10000 GIs each. 
+# The 'split' command will create files called xaa, xab etc.
+system("split -l 10000 ../gi.list");
+
+# get a list of all these files
+my @files = &lt;/$dir/seqs/*&gt;;
+
+# create the swarmfile -- you will need to load the blast/2.2.26 module first
+open (SWARM, "> swarm.cmd");
+foreach $file (@files) {
+  print SWARM "cd ${dir}/seqs; fastacmd -p F -d /fdb/blastdb/nt -i $file -o $file.fas\n";
+}
+close (SWARM);
+
+print "Submitting swarm jobs\n";
+`swarm -f ${dir}/seqs/swarm.cmd --module blast/2.2.26`;</textarea>
+
+<P>
+Once the swarm jobs are complete, you could if desired combine all the sequences into a single file with
+<pre class="term"><b>[biowulf]$</b> cat x*.fas > myseqs.fas</pre>
+<P>
+
+<!-- ======================================================================================================== -->
+<!-- MONITORING -->
+<!-- ======================================================================================================== -->
+
+<div class="heading"><a name="monitor"></a>Monitoring a swarm</div>
+<a href="/apps/swarm.html" style="font-size:12px">back to top</a><br />
+
+<p>Monitoring a swarm is handled the same way<a href="http://hpc.nih.gov/docs/b2-userguide.html#monitor">as any
+other batch job on the cluster</a>, using
+<b>sjobs</b>,
+<b>squeue</b>,
+<b>jobload</b> and
+<b>sacct</b>.
+</p>
+
+<!-- ======================================================================================================== -->
+<!-- DELETING -->
+<!-- ======================================================================================================== -->
+
+<div class="heading"><a name="delete"></a>Deleting/Canceling a swarm</div>
+<a href="/apps/swarm.html" style="font-size:12px">back to top</a><br />
+
+<p>Because a swarm is treated as a single job by Slurm, deleting a swarm is handled with the <a href="http://hpc.nih.gov/docs/b2-userguide.html#delete">same command as other batch jobs</a>, 
+<b>scancel</b>.
+</p>
+
+<div class="heading"><a name="download"></a>Downloading swarm</div>
+<a href="/apps/swarm.html" style="font-size:12px">back to top</a><br />
+<p>
+Swarm is <a href="/download/swarm.tgz">available for download here</a>.
+Keep in mind that swarm was written for our own systems.  It will need to 
+be adapted for other batch systems to work properly.
+</p>
+
+<!-- End content area - do not edit below this line -->
+</div>
+<div align="right" class="lastmod"><script type="text/javascript" language="JavaScript" src="/js/lastmod.js"></script></div>
+<div class="footarea">
+<div class="footer">
+<a href="/" class="footlink">HPC @ NIH </a> ~
+<a href="/about/contact.html" class="footlink">Contact</a> 
+</div>
+<div class="footer2">
+<a href="/docs/disclaimer.html" class="footlink">Disclaimer</a> ~ 
+<a href="/docs/privacy.html" class="footlink">Privacy</a> ~ 
+<a href="/docs/accessibility.html" class="footlink">Accessibility</a> ~ 
+<a href="http://cit.nih.gov/" class="footlink">CIT</a> ~ 
+<a href="http://www.nih.gov/" class="footlink">NIH</a> ~ 
+<a href="http://www.dhhs.gov/" class="footlink">DHHS</a> ~ 
+<a href="http://www.firstgov.gov/" class="footlink">USA.gov</a>
+</div>
+</div>
+<div><img src="/images/bluegreen_bottom900.jpg" alt="" /></div>
+</div>
+<br />
+</body>
+</html>

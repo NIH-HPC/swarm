@@ -1,0 +1,206 @@
+This directory contains files required for swarm.
+
+Versions are controlled using git.  To see what versions are available, type
+
+  git log
+
+When a new file is copied here, first add the files then commit:
+
+  git add *
+  git commit
+
+To restore a previous version of a file, find the version id and restore with:
+
+  git checkout [version id]
+
+To go back to the latest version, type:
+
+  git checkout --
+
+--disk will get replaced with --tmp
+
+--tmp implies clearscratch
+
+ When --tmp is given, not only would --exclusive and --nodes-per-task=1 will be set, but the
+clearscratch command will get run.  
+
+--prologue and --epilogue will be removed, because they are too complicated and overlap with sbatch options.
+
+--stagein and --stageout will be added.  --stagein and --stageout would accept a single argument.  The argument would be
+a file, a directory, or a set of files or directories.  These options would either rsync one or more files or directories to the
+local /scratch disk, or else rsync them to the cwd. 
+
+Wait, maybe this would be a generic tool outside of swarm?
+Differences between old swarm and new swarm:
+
+FUNCTIONALITY:
+
+OLD                           NEW
+
+* node allocation                        core allocation, lines per task
+* uniform node type                      "anything goes"
+* local script directory (.swarm)        central script directory (/spin1/swarm)
+* fixed output file name                 output 
+
+OPTIONS:
+
+SAME
+
+-f, --file
+-g, --gb-per-process (--gb-per-task)
+-t, --threads-per-process (--threads-per-task)
+-b, --bundle
+--noht
+--usecsh
+--module
+--no-comment
+--comment-char
+--singleout
+
+DEPRECATED / REMOVED
+
+--autobundle            ==>  default, not needed, deprecated
+--jobarray              ==> default, eliminated
+--prologue,--epilogue   ==> not supported by Slurm, eliminated
+
+
+CHANGED
+
+--disk-per-process     ==>  --lgres="lscratch:100" (hendled by Slurm)
+--resource-list        ==> --license and --gres
+-q                      ==> --partition
+
+NEW
+
+--pack  (commandlines in task, running in parallel)
+--logdir (write Slurm output/error to different directory)
+--job-name  (set name of swarm jobarray)
+--time    (default is 4 hours)
+--exclusive (allocate entire node to yourself)
+--sbatch (include any other sbatch option)
+
+
+IDEA:
+
+A more robust way of handling --singleout and to generate a usage message at the bottom of a run
+ might be to encapsulate the subjob scripts within an srun call:
+
+  srun --epilog='concatenate output; sacct -j ... ' bash cmd.0
+
+PROBLEMS:
+
+Unfortunately, this adds another job step to the swarm subjob:
+
+       JobID  Partition    AllocGRES  AllocCPUS    CPUTime    Elapsed     ReqMem     MaxRSS      State ExitCode
+------------ ---------- ------------ ---------- ---------- ---------- ---------- ---------- ---------- --------
+2160740_0          norm                       4   00:00:24   00:00:06        4Gn               RUNNING      0:0
+2160740_0.0                                   4   00:00:00   00:00:00        4Gn               RUNNING      0:0
+
+Also, if a user cancels the swarm (2160740) or the top job step (2160740_0), or if the sbatch command hits the
+walltime, the --epilog step is NOT run.  Only if the .0 jobstep is canceled (2160740_0.0), or if the --time option
+is applied to the srun will the --epilog step run.
+This is the biggest pain of swarm.
+
+Error and output are written to temporary files, and are concatenated into a single file at the conclusion
+of each subjob.  Unfortunately, the temporary files can't be written into the same directory designated
+by the jobid, because the jobid is not known at the time of submission.  Instead, they are written into
+the user directory.
+
+This could be solved with --prolog, but the subjob command script would need to be run within srun.
+* To be thorough, every sbatch command MUST include sbatch --ntasks=, --ntasks-per-node=, and --cpus-per-task=.  If not
+  given, all these values are set to 1, meaning 1 cpu on one node.
+
+* If NOTHING is given, the environment variables SLURM_NPROCS and SLURM_NTASKS will NOT be set
+
+* If only --ntasks=1 is given, SLURM_NPROCS and SLURM_NTASKS will be set to 1 each, and a single cpu will be allocated
+  on a single node.
+
+* Each increment of --ntasks will allocate one more cpu, on whatever nodes are available.
+
+* If --ntasks-per-node is given and is greater that 1, then the cpus allocated by --ntasks will be distributed across
+  multiple nodes.  For example,
+
+    --ntasks=2 --ntasks-per-node=1
+
+  will give two nodes, with one cpu per node
+
+    --ntasks=2 --ntasks-per-node=2
+
+  will give two nodes, with two cpus per node
+
+IMPORTANT NOTE:  slurm is very controlling of cpu usage.  If you have a multithreaded application, and you only allocate
+1 cpu, slurm will FORCE the multithreaded application to run ONLY ONE 1 CPU.  Which means it will run like crap.  This
+prevents multiple users on the same node from clobbering each other over cpu usage.
+
+* If --cpus-per-task is given and is greater than 1, and nothing else is given, then slurm will only allocate nodes 
+  that can accomodate this value.  For example,
+
+    --cpus-per-task=8
+
+  will give 1 node with at least 8 cpus (could be c8, c16, c24, c32, whatever).  It will NOT spread those cpus over
+  multiple nodes.
+
+    --ntasks=2 --cpus-per-task=4
+
+  could allocate 2 x c4, or 1 x c8 ( or greater ).  You MIGHT get a single node with 8 cpus, or two nodes with 4 cpus each.
+
+* The best control is to give all three, within reason.  Most typically, you will only have to give --ntasks and EITHER
+  --ntasks-per-node or --cpus-per-task.  But occasionally all three are warranted.
+
+** EXAMPLES **
+
+  * Distributed, 40-core MD run, no concerns about processor types or balance
+
+    --ntasks=40
+
+    This will give a hodge-podge of nodetypes
+
+  * Distributed, 40-core MD run, balanced in 4-core blocks
+
+    --ntasks=5 --cpus-per-task=8
+
+    This will assure that only nodes with 8 or more cpus per node will get used.
+
+    --ntasks=10 --cpus-per-task=4 --ntasks-per-node=4
+
+    This will allocate c4 or greater, but only allocating 4 cpus per node.
+
+     Note that the last two examples will be difficult to tell how many cpus total were allocated from the job's 
+     environment.  SLURM_NPROC == SLURM_NTASKS is the number of tasks, NOT the number of cpus.  You would need to
+     play games with SLURM_NNODES and SLURM_JOB_CPUS_PER_NODE values, and these might be given in complex format:
+     e.g. SLURM_JOB_CPUS_PER_NODE = 4(x2),12,20.
+
+     So perhaps the best way to ensure a distributed run with balance is to use constraints:
+
+     --ntasks=40 --constraint=c16
+
+     This would ONLY use c16 nodes.
+
+  * Multithreaded 16-core tophat run
+
+     --ntasks=1 --cpus-per-task=16
+
+     or
+
+     --ntasks=16 --ntasks-per-node=16
+
+     Note that using constraints in this case 
+
+     --ntasks=16 --constraint=c16
+
+     MIGHT NOT work as expected, because the cpus might be distributed across multiple nodes.  
+
+* The environment variables SLURM_NPROCS and SLURM_NTASKS won't get set unless you explicitly specify the number
+  of cores/tasks.
+
+  These commands will NOT set SLURM_NPROCS or SLURM_NTASKS:
+
+    sbatch --nodes=1 --cpus-per-task=2 
+    sbatch --nodes=3 --ntasks-per-node=2
+
+  You MUST ALWAYS include --ntasks in the sbatch command, regardless of what else is given:
+
+    sbatch --ntasks=2 --nodes=1
+    sbatch --ntasks=4 --cpus-per-task=2
+
+
