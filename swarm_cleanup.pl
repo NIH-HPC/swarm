@@ -15,14 +15,16 @@ swarm_cleanup.pl -- remove old swarm temp files and directories
 
 options:
 
-  -u,--user    run for a single user
-  --dev       remove devel directories
-  --orphans   remove obsolete and orphaned directories
-  --fail     remove submission failures
+  -u,--user     run for a single user
+  --dev         remove devel directories
+  --orphans     remove obsolete and orphaned directories
+  --fail        remove submission failures
+  --age         restrict deletion to directories at least
+                this many days old (default = 5 days)
 
-  -l,--log     log actions to this file
+  -l,--log      log actions to this file
   -v,--verbose  be chatty
-  --debug     run in debug mode (prevents -o option)
+  --debug       run in debug mode (prevents -o option)
   -h,--help     print this message
 
 Last modification date Sep 30, 2015 (David Hoover)
@@ -49,10 +51,17 @@ GetOptions(
   "help" => sub { print $description; exit; },
   "v" => \$OPT{verbose},
   "verbose" => \$OPT{verbose},
-);
+  "age=i" => \$OPT{age},
+) || die($description);
 
+$PAR->{minage} = $OPT{age} if (defined $OPT{age});
 $OPT{verbose} = 1 if $OPT{debug};
 
+# Translate user to uid
+$OPT{uid} = (getpwnam($OPT{user}))[2] if $OPT{user};
+print "uid = $OPT{uid}\n";
+
+die("You must be root!\n") if ($<);
 my $jobs = getCurrentJobs();
 
 if ($OPT{"clean-dev"}) {
@@ -291,7 +300,7 @@ sub getCurrentJobs
   print "Getting job states\n" if $OPT{verbose};
   my $hr;
   JOB: foreach my $ref (@{$jobs->{job_array}}) {
-    next JOB if ((defined $OPT{user}) && ($ref->{"user"} ne $OPT{user}));
+    next JOB if ((defined $OPT{user}) && ($ref->{"user_id"} != $OPT{uid}));
     next JOB unless ($ref->{"array_job_id"}); # only keep job arrays
     my $state = $slurm->job_state_string($ref->{"job_state"});
     $hr->{$ref->{"array_job_id"}}{$state} = 1;
