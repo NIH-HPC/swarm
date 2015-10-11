@@ -59,7 +59,6 @@ $OPT{verbose} = 1 if $OPT{debug};
 
 # Translate user to uid
 $OPT{uid} = (getpwnam($OPT{user}))[2] if $OPT{user};
-print "uid = $OPT{uid}\n";
 
 die("You must be root!\n") if ($<);
 my $jobs = getCurrentJobs();
