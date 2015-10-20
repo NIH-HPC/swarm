@@ -35,7 +35,7 @@ $|=1;  # turns off output buffering
 
 my $PAR;
 
-$PAR->{minage} = 5; # files must be at least 5 days old before doing anything
+$PAR->{minage} = 7; # files must be at least 7 days old before doing anything
 
 my %OPT;  # options
 GetOptions(
@@ -521,7 +521,8 @@ sub print_action
   my $action;
   if (defined $hr->{delete}) {
     if ($hr->{delete} == 1) { 
-      if ($hr->{age} > 5) {
+# Do not delete a job whose directory is less than 7 days old
+      if ($hr->{age} > 7) {
         $action = "DELETE";
       }
       else { $action = "KEEP"; }

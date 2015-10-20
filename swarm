@@ -35,6 +35,7 @@ require File::Spec::Unix;
 use File::Path qw(make_path);
 use lib "/usr/local/slurm/lib/perl5/site_perl/5.18.2/x86_64-linux-thread-multi-ld";
 use Slurm;
+use FileHandle;
 use strict;
 
 my $PAR;
@@ -52,6 +53,7 @@ distributeCommands();
 report();
 writeCommandFiles() unless $OPT{'no-scripts'};
 writeBatchScript() unless $OPT{'no-scripts'};
+sleep(2); # sleep 2 seconds to prevent weirdness
 submitSlurm();
 createSymlink() unless $OPT{'no-scripts'};
 writeLog() unless $OPT{'no-run'};
@@ -244,77 +246,62 @@ sub write_s_if_needed
   else { return ""; }
 }
 #==============================================================================
+sub insertLmodInit
+{
+  return unless $OPT{module};
+  my $str;
+  if ($PAR->{shell} eq '/bin/bash') { $str .= "source /usr/local/lmod/lmod/lmod/init/bash\n"; }
+  elsif ($PAR->{shell} eq '/bin/tcsh') { $str .= "source /usr/local/lmod/lmod/lmod/init/csh\n"; }
+  $str .= "module load $OPT{module}\n";
+  return $str;
+}
+#==============================================================================
 sub writeCommandFiles
 {
   mkdir $PAR->{tempdir};
   my $len = length($#{$SWARM->{CMDLISTS}});
-  my $len3 = length($OPT{p}) if $OPT{p};
+# Walk through each subjob
   foreach my $subjob (0 .. $#{$SWARM->{CMDLISTS}}) {
+    my %fileContents;
     my $suffix = sprintf "%0${len}d",$subjob;
-    my $k=-1;
-    my $clust;
-    open FILE, ">$PAR->{tempdir}/cmd.$suffix" if (!$OPT{p});
-# DO NOT SELF DESTRUCT, SYSADMINS WANT TO SEE WHAT'S HAPPENING -- hooverdm, 2015-09-29
-#    print FILE $OPT{'keep-scripts'} if (!$OPT{p}); # Don't do any clean up if told not to
-#    print FILE "rm $PAR->{tempdir}/cmd.$suffix\n" if (!$OPT{p}); # Force the script to self-delete
-# STUPID STUPID STUPID
-# Under tcsh, 'module' is an alias, which means there is no valid exit status.
-    if ($OPT{module}) {
-      if ($PAR->{shell} eq '/bin/bash') {
-        print FILE "source /usr/local/lmod/lmod/lmod/init/bash\n";
-      }
-      elsif ($PAR->{shell} eq '/bin/tcsh') {
-        print FILE "source /usr/local/lmod/lmod/lmod/init/csh\n";
-      }
-      print FILE "module load $OPT{module}\n";
-    }
+    my $commandFileName = $PAR->{tempdir}."/cmd.$suffix";
+# Walk through each commandline
     foreach my $comm (@{${$SWARM->{CMDLISTS}}[$subjob]}) {
-      if ($OPT{p}) {
-        $clust .= ${$SWARM->{COMMANDS}}[$comm]."\n";
-        if ((($comm+1) % $PAR->{b}) == 0) {
-          $k++;
-          my $tag = sprintf "%0${len3}d",$k;
-          open FILE, ">$PAR->{tempdir}/cmd.${suffix}_${tag}";
-          if ($OPT{module}) {
-            if ($PAR->{shell} eq '/bin/bash') {
-              print FILE "source /usr/local/lmod/lmod/lmod/init/bash\n";
-            }
-            elsif ($PAR->{shell} eq '/bin/tcsh') {
-              print FILE "source /usr/local/lmod/lmod/lmod/init/csh\n";
-            }
-            print FILE "module load $OPT{module}\n";
-          }
-          print FILE $clust;
-          close FILE;
-          undef $clust;
-        }
-      }
-      else {
-        print FILE ${$SWARM->{COMMANDS}}[$comm]."\n";
-      }
+      $commandFileName = $PAR->{tempdir}."/cmd.$suffix"."_".($comm % 2) if $OPT{p};
+      $fileContents{$commandFileName} .= insertLmodInit();
+      $fileContents{$commandFileName} .= ${$SWARM->{COMMANDS}}[$comm]."\n";
     }
-    close FILE if (!$OPT{p});
-# don't lose the leftovers
-    if ($clust) {
-      $k++;
-      my $tag = sprintf "%0${len3}d",$k;
-      open FILE, ">$PAR->{tempdir}/cmd.${suffix}_${tag}";
-      print FILE $OPT{'keep-scripts'}; # Don't do any clean up if told not to
-      print FILE "rm $PAR->{tempdir}/cmd.${suffix}_${tag}\n"; # Force the script to self-delete
-      if ($OPT{module}) {
-        if ($PAR->{shell} eq '/bin/bash') {
-          print FILE "source /usr/local/lmod/lmod/lmod/init/bash\n";
-        }
-        elsif ($PAR->{shell} eq '/bin/tcsh') {
-          print FILE "source /usr/local/lmod/lmod/lmod/init/csh\n";
-        }
-        print FILE "module load $OPT{module}\n";
-      }
-      print FILE $clust;
-      close FILE;
-      undef $clust;
+# Print the contents
+    foreach my $file (sort keys %fileContents) {
+      printToFile($file,$fileContents{$file});
     }
   }
+}
+#==============================================================================
+sub printToFile
+# Open file, write contents, flush and close.  'nuff said.
+{
+  my ($file,$contents) = @_;
+  my $fh = FileHandle->new;
+  if ($fh->open("> $file")) {
+    print $fh $contents;
+    $fh->flush;
+    $fh->close;
+  }
+  else { dieWithError("Can't write to $file\n"); }
+}
+#==============================================================================
+sub appendToFile
+# Open file with append, write contents, flush and close.  'nuff said.
+{
+  my ($file,$contents) = @_;
+  my $fh = FileHandle->new;
+  if ($fh->open(">> $file")) {
+    print $fh $contents;
+    $fh->flush;
+    $fh->close;
+  }
+  else { dieWithError("Can't write to $file\n"); }
 }
 #==============================================================================
 sub writeBatchScript
@@ -324,16 +311,12 @@ sub writeBatchScript
 #
 #   bash [ commandfile ]
 {
-  open FILE, ">$PAR->{batchfile}";
+  my $fileContents;
   my $len = length($#{$SWARM->{CMDLISTS}});
   my $len3 = length($OPT{p}) if $OPT{p};
-  print FILE "#!/bin/bash\n";
+  $fileContents .= "#!/bin/bash\n";
 
-# DO NOT SELF DESTRUCT, SYSADMINS WANT TO SEE WHAT'S HAPPENING -- hooverdm, 2015-09-29
-  #print FILE $OPT{'keep-scripts'}; # Don't do any clean up if told not to
-  #print FILE "rm -f $PAR->{batchfile} 2>/dev/null\n"; # Force the script to self-delete
-
-  print FILE <<EOF1;
+  $fileContents .= <<EOF1;
 
 # Determine the jobid and task id on the fly
 d=$PAR->{basedir}/\${SLURM_ARRAY_JOB_ID}
@@ -346,14 +329,14 @@ EOF1
     if ($OPT{p}) {
       foreach my $i (0 .. $OPT{p}-1) {
         my $tag = sprintf "%0${len3}d",$i;
-        print FILE "[[ -s \${d}/cmd.\${z}_$tag ]] && { ";
-        print FILE "echo \${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag started on \$HOSTNAME at \$(date +'\%F \%T') > $PAR->{singleoutbase}_$tag.o ; ";
-        print FILE "echo '++++++++++++++++++++++++++++++++++++++++++' >> $PAR->{singleoutbase}_$tag.o; }\n";
+        $fileContents .= "[[ -s \${d}/cmd.\${z}_$tag ]] && { ";
+        $fileContents .= "echo \${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag started on \$HOSTNAME at \$(date +'\%F \%T') > $PAR->{singleoutbase}_$tag.o ; ";
+        $fileContents .= "echo '++++++++++++++++++++++++++++++++++++++++++' >> $PAR->{singleoutbase}_$tag.o; }\n";
       }
     }
     else {
-      print FILE "echo \${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID} started on \$HOSTNAME at \$(date +'\%F \%T')\n";
-      print FILE "echo '++++++++++++++++++++++++++++++++++++++++++'\n";
+      $fileContents .= "echo \${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID} started on \$HOSTNAME at \$(date +'\%F \%T')\n";
+      $fileContents .= "echo '++++++++++++++++++++++++++++++++++++++++++'\n";
     }  
   }
     
@@ -362,60 +345,61 @@ EOF1
   if ($OPT{p}) {
     foreach my $i (0 .. $OPT{p}-1) {
       my $tag = sprintf "%0${len3}d",$i;
-      print FILE "[[ -s \${d}/cmd.\${z}_$tag ]] && ( $PAR->{shell} \${d}/cmd.\${z}_$tag ";
+      $fileContents .= "[[ -s \${d}/cmd.\${z}_$tag ]] && ( $PAR->{shell} \${d}/cmd.\${z}_$tag ";
 # Determine output/error redirects
       if ($OPT{singleout}) {
-        print FILE "1>> $PAR->{singleoutbase}_$tag.o 2>> $PAR->{singleoutbase}_$tag.e ; ";
-        print FILE "echo '++++++++++++++++++++++++++++++++++++++++++' >> $PAR->{singleoutbase}_$tag.o ; ";
-        print FILE "echo \${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag finished on \$HOSTNAME at \$(date +'\%F \%T') 1>> $PAR->{singleoutbase}_$tag.o ) &\n";
+        $fileContents .= "1>> $PAR->{singleoutbase}_$tag.o 2>> $PAR->{singleoutbase}_$tag.e ; ";
+        $fileContents .= "echo '++++++++++++++++++++++++++++++++++++++++++' >> $PAR->{singleoutbase}_$tag.o ; ";
+        $fileContents .= "echo \${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag finished on \$HOSTNAME at \$(date +'\%F \%T') 1>> $PAR->{singleoutbase}_$tag.o ) &\n";
       }
       else {
         if ($OPT{noout}) {
-          print FILE "1> /dev/null ";
+          $fileContents .= "1> /dev/null ";
         }
         else {
-          print FILE "1> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag.o ";
+          $fileContents .= "1> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag.o ";
         }
         if ($OPT{noerr}) {
-          print FILE "2> /dev/null ";
+          $fileContents .= "2> /dev/null ";
         }
         else {
-          print FILE "2> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag.e ";
+          $fileContents .= "2> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag.e ";
         }
-        print FILE ") &\n";
+        $fileContents .= ") &\n";
       }
     }
-    print FILE "wait\n";
-    print FILE "exitcode=0\n";
+    $fileContents .= "wait\n";
+    $fileContents .= "exitcode=0\n";
   }
   else {
-    print FILE "$PAR->{shell} \${d}/cmd.\${z}\n";
+    $fileContents .= "$PAR->{shell} \${d}/cmd.\${z}\n";
 # Capture final exit code
-    print FILE "exitcode=\$?\n";
+    $fileContents .= "exitcode=\$?\n";
   }
 
   if ($OPT{singleout}) {
     if (!$OPT{p}) {
-      print FILE "echo '++++++++++++++++++++++++++++++++++++++++++'\n";
-      print FILE "echo \${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID} finished on \$HOSTNAME at \$(date +'\%F \%T')\n";
+      $fileContents .= "echo '++++++++++++++++++++++++++++++++++++++++++'\n";
+      $fileContents .= "echo \${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID} finished on \$HOSTNAME at \$(date +'\%F \%T')\n";
     }
 
-    print FILE "lockfile $PAR->{tempdir}/\${SLURM_ARRAY_JOB_ID}.lock\n";
+    $fileContents .= "lockfile $PAR->{tempdir}/\${SLURM_ARRAY_JOB_ID}.lock\n";
     if ($OPT{p}) {
       foreach my $i (0 .. $OPT{p}-1) {
         my $tag = sprintf "%0${len3}d",$i;
-        print FILE (generate_singleout_block("_$tag"));
+        $fileContents .= (generate_singleout_block("_$tag"));
       }
     }
     else {
-      print FILE (generate_singleout_block());
+      $fileContents .= (generate_singleout_block());
     }
-    print FILE "rm -f $PAR->{tempdir}/\${SLURM_ARRAY_JOB_ID}.lock\n";
+    $fileContents .= "rm -f $PAR->{tempdir}/\${SLURM_ARRAY_JOB_ID}.lock\n";
   }
 
-  print FILE "exit \$exitcode\n"; # Exit with the final exit code from the given command
+  $fileContents .= "exit \$exitcode\n"; # Exit with the final exit code from the given command
 
-  close FILE;
+# Print the batch file
+  printToFile($PAR->{batchfile},$fileContents);
 }
 #==============================================================================
 sub submitSlurm
@@ -939,16 +923,12 @@ sub dieWithError
 }
 #==============================================================================
 sub writeLog
-{
 # log some useful information
-  open(LOG, ">>$PAR->{logfile}") || die "ERROR: Can't open logfile $PAR->{logfile} $!\n";
-  chmod 0666, $PAR->{logfile};
-
-# Make Susan happy
-  my $x = $PAR->{sbatch_options};
+{
+  my $x = $PAR->{sbatch_options};   # Make Susan happy
   $x=~s/%A/$PAR->{jobid}/g;
 
-  print LOG "date="       .$PAR->{date}            ."; "
+  my $fileContents = "date=".$PAR->{date}            ."; "
           . "host="       .$PAR->{host}            ."; "
           . "jobid="      .$PAR->{jobid}           ."; "
           . "user="       .$PAR->{user}            ."; "
@@ -958,7 +938,9 @@ sub writeLog
           . "njobs="      .$PAR->{subjobs}         ."; "
           . "job-name="   .$PAR->{'job-name'}      ."; "
           . "command="    .$PAR->{commandLine}     ."\n";
-  close(LOG);
+
+  appendToFile($PAR->{logfile},$fileContents);
+  chmod 0666, $PAR->{logfile};
 }
 #==============================================================================
 sub isDirCreateable
