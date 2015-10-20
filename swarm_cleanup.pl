@@ -3,15 +3,24 @@
 use lib "/usr/local/slurm/lib/site_perl/5.12.1/x86_64-linux-thread-multi";
 use lib "/usr/local/slurm/lib/perl5/site_perl/5.18.2/x86_64-linux-thread-multi-ld";
 use File::Basename;
+use File::Path;
 use Getopt::Long;
 Getopt::Long::Configure("bundling");
 use Slurm;
-
+use FileHandle;
+use POSIX qw(strftime);
 use strict;
+$|=1;  # turns off output buffering
 
-my $description = <<EOF;
+my $PAR;
+
+$PAR->{minage} = 7; # files must be at least 7 days old before doing anything
+$PAR->{logfile} = "/usr/local/logs/swarm_cleanup.log";
+my $PAR->{description} = <<EOF;
 
 swarm_cleanup.pl -- remove old swarm temp files and directories
+
+Actions are logged to $PAR->{logfile} 
 
 options:
 
@@ -20,154 +29,57 @@ options:
   --orphans     remove obsolete and orphaned directories
   --fail        remove submission failures
   --age         restrict deletion to directories at least
-                this many days old (default = 5 days)
+                this many days old (default = $PAR->{minage} days)
 
-  -l,--log      log actions to this file
   -v,--verbose  be chatty
-  --debug       run in debug mode (prevents -o option)
+  --debug       run in debug mode
   -h,--help     print this message
 
-Last modification date Sep 30, 2015 (David Hoover)
+Last modification date Oct 20, 2015 (David Hoover)
 
 EOF
 
-$|=1;  # turns off output buffering
-
-my $PAR;
-
-$PAR->{minage} = 7; # files must be at least 7 days old before doing anything
 
 my %OPT;  # options
-GetOptions(
-  "u=s" => \$OPT{user}, # restrict to this user
-  "user=s" => \$OPT{user}, # restrict to this user
-  "l=s" => \$OPT{log}, # log actions
-  "log=s" => \$OPT{log}, # log actions
-  "dev" => \$OPT{"clean-dev"}, # only clean dev directories
-  "orphan" => \$OPT{"clean-orphans"}, # only clean orphan directories
-  "fail" => \$OPT{"clean-failures"}, # only clean orphan directories
-  "debug" => \$OPT{debug}, # debug mode
-  "h" => sub { print $description; exit; },
-  "help" => sub { print $description; exit; },
-  "v" => \$OPT{verbose},
-  "verbose" => \$OPT{verbose},
-  "age=i" => \$OPT{age},
-) || die($description);
+set_options();
 
-$PAR->{minage} = $OPT{age} if (defined $OPT{age});
-$OPT{verbose} = 1 if $OPT{debug};
-
-# Translate user to uid
-$OPT{uid} = (getpwnam($OPT{user}))[2] if $OPT{user};
-
-die("You must be root!\n") if ($<);
+# Pull jobs from slurm cache via perl API
 my $jobs = getCurrentJobs();
 
-if ($OPT{"clean-dev"}) {
-  clean_devdirs();
-}
-elsif ($OPT{"clean-orphans"}) {
-  clean_orphandirs();
-}
-elsif ($OPT{"clean-failures"}) {
-  clean_failures();
-}
-else {
-  clean_jobdirs();
-}
-
-#  else {
-##    print "unknown\n";
-##    print "  $y->{$id}\n";
-#
-## Is the directory empty?
-#
-#    if ((-d $y->{$id}) && (emptydir($y->{$id})) && (older_than_three_days($y->{$id}))) {
-#      print " --> EMPTY" if $OPT{debug};
-#      $delete = 1;
-#    }
-#
-#  }
-#
-#  if ($delete) {
-#    print " --> DELETE\n" if $OPT{debug};
-#    my $cmd = "test -d $y->{$id} && rm -rf $y->{$id} ; test -f $y->{$id}.batch && rm -f $y->{$id}.batch";
-#    if ($OPT{debug}) {
-#      print "$cmd\n" if ($OPT{verbose} > 1);
-#    }
-#    else {
-#      system($cmd);
-#      system("echo \$\(date \+\"%F %T\"\)  $user/$id >> $OPT{log}") if $OPT{log};
-#    }
-#  }
-#  else {
-#    print "\n" if $OPT{debug};
-#  }
-#}
-
-#print "Looking for singleout files\n" if $OPT{debug};
-#my $z = getSingleoutFiles();
-#foreach my $id (sort keys %{$z}) {
-#  foreach my $file (@{$z->{$id}}) {
-#
-#    my $delete;
-#
-#    my $user = basename(dirname($z->{$id}));
-#    print "$user/$id: " if $OPT{debug};
-#
-#    print "$file: " if $OPT{debug};
-#    if (not defined $x->{$id}) {
-#      $x->{$id} = getStatesForJob($id); 
-#    }
-#    print " --> $x->{$id}" if $OPT{debug};
-#
-## If the job state is NOT an active state, then the Job is inactive -- we can delete it
-#    if ($x->{$id}!~/CONFIGURING|COMPLETING|PENDING|RUNNING|RESIZING|SUSPENDED/) {
-#
-#      if (older_than_three_days($file)) {
-#        $delete = 1;
-#      }
-#    }
-#
-#    if ($delete) {
-#      print " --> DELETE\n" if $OPT{debug};
-#      my $cmd = "rm -f $file";
-#      if ($OPT{debug}) {
-#        print "$cmd\n" if ($OPT{verbose} > 1);
-#      }
-#      else {
-#        system($cmd);
-#      }
-#    }
-#    else {
-#      print "\n" if $OPT{debug};
-#    }
-#  }
-#}
-
+if    ($OPT{"clean-dev"})      { clean_devdirs(); }
+elsif ($OPT{"clean-orphans"})  { clean_orphandirs(); }
+elsif ($OPT{"clean-failures"}) { clean_failures(); }
+else                           { clean_jobdirs(); }
 
 #==============================================================================
-#sub older_than_one_month
-#{
-#  my $dirname = shift;
-#  my $mtime = (stat($dirname))[9];
-#  print " --> $mtime" if $OPT{debug};
-#  return 1 if ((time()-$mtime) > (86400*31));
-#}
-#==============================================================================
-sub older_than_one_week
+sub set_options
 {
-  my $dirname = shift;
-  my $mtime = (stat($dirname))[9];
-  return 1 if ((time()-$mtime) > (86400*7));
+  GetOptions(
+    "u=s" => \$OPT{user}, # restrict to this user
+    "user=s" => \$OPT{user}, # restrict to this user
+    "dev" => \$OPT{"clean-dev"}, # only clean dev directories
+    "orphan" => \$OPT{"clean-orphans"}, # only clean orphan directories
+    "fail" => \$OPT{"clean-failures"}, # only clean orphan directories
+    "debug" => \$OPT{debug}, # debug mode
+    "h" => sub { print $PAR->{description}; exit; },
+    "help" => sub { print $PAR->{description}; exit; },
+    "v" => \$OPT{verbose},
+    "verbose" => \$OPT{verbose},
+    "age=i" => \$OPT{age},
+  ) || die($PAR->{description});
+
+# Change minimum age  
+  $PAR->{minage} = $OPT{age} if (defined $OPT{age});
+
+# Change verbosity
+  $OPT{verbose} = 1 if $OPT{debug};
+  
+# Translate user to uid
+  $OPT{uid} = (getpwnam($OPT{user}))[2] if $OPT{user};
+ 
+# Must be root 
+  die("You must be root!\n") if ($<);
 }
-#==============================================================================
-#sub older_than_three_days
-#{
-#  my $dirname = shift;
-#  my $mtime = (stat($dirname))[9];
-#  return 1 if ((time()-$mtime) > (86400*3));
-#}
 #==============================================================================
 sub emptydir {
   my $dirname = shift;
@@ -451,16 +363,6 @@ sub clean_orphandirs
     }
   }
 }
-
-# Really delete it
-#    if (($delete) && (!$OPT{debug})) {
-#      print "  deleting $tmpdir->{$dir} ...\n";
-#      system("rm -rf $tmpdir->{$dir}");
-#      if (-f "$tmpdir->{$dir}.batch") {
-#        print "  deleting $tmpdir->{$dir}.batch ...\n";
-#        system("rm -f $tmpdir->{$dir}.batch");
-#      }
-#    }
 #==============================================================================
 sub get_state
 {
@@ -546,8 +448,8 @@ sub print_action
     print "="x70,"\n";
     $PAR->{header} = 1;
   }
-      
-  printf("%-16s %-10s  %-3s  %.1f  %-3s : %-6s  %s\n",
+
+  my $line = sprintf("%-16s %-10s  %-3s  %.1f  %-3s : %-6s  %s\n",
     $hr->{user},
     $hr->{dir},
     $end,
@@ -557,12 +459,16 @@ sub print_action
     $hr->{state},
   );
 
+  print $line;
+
 # Now really delete stuff
   if ($action eq 'DELETE') {
     if ($OPT{"clean-dev"} || $OPT{"clean-failures"}) {
       if (-d $hr->{path}) {
         print "  rm -rf $hr->{path}\n" if ($OPT{verbose});
-        system("rm -rf $hr->{path}") if (!$OPT{debug});
+        if (!$OPT{debug}) {
+          if (rmtree($hr->{path})) { appendToFile($PAR->{logfile},(strftime("%F %T",(localtime(time))[0 .. 5]))." ".$hr->{path}."\n"); }
+        }
       }
     }
     elsif ($OPT{"clean-orphans"}) {
@@ -576,11 +482,26 @@ sub print_action
         if (-d $real_dir) {
           print "  rm -f $hr->{path}\n" if $OPT{verbose};
           print "  rm -rf $real_dir\n" if $OPT{verbose};
-          system("rm -f $hr->{path}") if (!$OPT{debug});
-          system("rm -rf $real_dir") if (!$OPT{debug});
+          if (!$OPT{debug}) {
+            if (rmtree($hr->{path})) { appendToFile($PAR->{logfile},(strftime("%F %T",(localtime(time))[0 .. 5]))." ".$hr->{path}."\n"); }
+            if (rmtree($real_dir)) { appendToFile($PAR->{logfile},(strftime("%F %T",(localtime(time))[0 .. 5]))." ".$real_dir."\n"); }
+          }
         }
       }
     }
   }
+}
+#==============================================================================
+sub appendToFile
+# Open file with append, write contents, flush and close.  'nuff said.
+{
+  my ($file,$contents) = @_;
+  my $fh = FileHandle->new;
+  if ($fh->open(">> $file")) {
+    print $fh $contents;
+    $fh->flush;
+    $fh->close;
+  }
+  else { dieWithError("Can't write to $file\n"); }
 }
 #==============================================================================
