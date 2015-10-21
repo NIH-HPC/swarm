@@ -16,7 +16,7 @@ my $PAR;
 
 $PAR->{minage} = 7; # files must be at least 7 days old before doing anything
 $PAR->{logfile} = "/usr/local/logs/swarm_cleanup.log";
-my $PAR->{description} = <<EOF;
+$PAR->{description} = <<EOF;
 
 swarm_cleanup.pl -- remove old swarm temp files and directories
 
@@ -496,12 +496,9 @@ sub appendToFile
 # Open file with append, write contents, flush and close.  'nuff said.
 {
   my ($file,$contents) = @_;
-  my $fh = FileHandle->new;
-  if ($fh->open(">> $file")) {
-    print $fh $contents;
-    $fh->flush;
-    $fh->close;
-  }
-  else { dieWithError("Can't write to $file\n"); }
+  my $fh = FileHandle->new($file,">>");
+  print $fh $contents;
+  $fh->flush;
+  $fh->close;
 }
 #==============================================================================
