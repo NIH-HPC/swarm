@@ -9,6 +9,7 @@ Getopt::Long::Configure("bundling");
 use Slurm;
 use FileHandle;
 use POSIX qw(strftime);
+use Date::Parse qw(str2time);
 use strict;
 $|=1;  # turns off output buffering
 
@@ -44,7 +45,9 @@ my %OPT;  # options
 set_options();
 
 # Pull jobs from slurm cache via perl API
-my $jobs = getCurrentJobs();
+my $JOBS;
+
+getCurrentJobs();
 
 if    ($OPT{"clean-dev"})      { clean_devdirs(); }
 elsif ($OPT{"clean-orphans"})  { clean_orphandirs(); }
@@ -207,29 +210,37 @@ sub getCurrentJobs
 {
   print "Getting jobs\n" if $OPT{verbose};
   my $slurm = Slurm::new();
-  my $jobs = $slurm->load_jobs();
-  print "Getting job states\n" if $OPT{verbose};
-  my $hr;
-  JOB: foreach my $ref (@{$jobs->{job_array}}) {
+  my $j = $slurm->load_jobs();
+  print "Getting job states and ages since ending\n" if $OPT{verbose};
+  JOB: foreach my $ref (@{$j->{job_array}}) {
     next JOB if ((defined $OPT{user}) && ($ref->{"user_id"} != $OPT{uid}));
     next JOB unless ($ref->{"array_job_id"}); # only keep job arrays
     my $state = $slurm->job_state_string($ref->{"job_state"});
-    $hr->{$ref->{"array_job_id"}}{$state} = 1;
+# Accumulate the states
+    $JOBS->{$ref->{array_job_id}}{states}{$state} = 1;
+    if (($ref->{end_time} > 0) && ($ref->{job_state} > 1)) {
+# Find minimal value of days_since_ending
+      $JOBS->{$ref->{array_job_id}}{days_since_ending}=minValue(((time()-$ref->{end_time})/86400),$JOBS->{$ref->{array_job_id}}{days_since_ending});
+    }
   } 
-  
-  return $hr;
+  return;  
 }
 #==============================================================================
 sub getStatesForJob
 {
-  my $id = shift;
-  my $cmd = "sacct -j $id --format=JobID,State --noheader";
+  my ($id) = shift;
+  my $cmd = "sacct -j $id --format=JobID,State,End --noheader --parsable2";
   $cmd .= " -u $OPT{user}" if $OPT{user};
   chomp(my $ret = `$cmd`);
   my $hr;
   foreach my $line (split /\n/,$ret) {
-    if ($line=~/^(\d+)\S*\s*(.*)$/) {
-      $hr->{$1}{$2}=1;
+    if ($line=~/^(\d+)_[^\|]+\|(\w+).*?\|(\S+)$/) {
+      my ($jobid,$state) = ($1,$2);
+      my $end = str2time($3);
+# Accumulate the states
+      $hr->{$jobid}{states}{$state} = 1;
+# Find minimal value of days_since_ending
+      $JOBS->{$jobid}{days_since_ending}=minValue(((time()-$end)/86400),$JOBS->{$jobid}{days_since_ending});
     }
   }
  
@@ -254,21 +265,24 @@ sub clean_jobdirs
     #  print_action({user=>$user,dir=>$id,path=>$joblink->{$id},delete=>0,link=>1,age=>$age});
     #}
     #elsif ($s->{ended} == 1) {
-    if (not defined $jobs->{$id}) { # unknown to perl api, assumed completed
+    if (not defined $JOBS->{$id}) { # unknown to perl api, assumed completed
       my $s = get_state($id,$age); # Perl API may fail, and sacct may give nonsense
       if ($s->{ended} == 1) {
-        print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$id,path=>$joblink->{$id},delete=>1,link=>1,age=>$age});
+# override the $age if the days_since_ending is known
+        my $dse = $JOBS->{$id}{days_since_ending} if (defined $JOBS->{$id}{days_since_ending});
+        print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$id,path=>$joblink->{$id},delete=>1,link=>1,age=>$age,dse=>$dse});
       }
       elsif ($s->{ended} == 0) {
         print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$id,path=>$joblink->{$id},delete=>0,link=>1,age=>$age});
       } 
       else {
-        print_action({user=>$user,dir=>$id,path=>$joblink->{$id},delete=>0,link=>1,age=>$age});
+        print_action({ended=>$s->{ended},user=>$user,dir=>$id,path=>$joblink->{$id},delete=>0,link=>1,age=>$age});
       }
     }
     else {
-      my $state = join ',',(sort keys %{$jobs->{$id}});
-      print_action({state=>$state,ended=>0,user=>$user,dir=>$id,path=>$joblink->{$id},delete=>0,link=>1,age=>$age});
+      my $state = join ',',(sort keys %{$JOBS->{$id}});
+      my $dse = $JOBS->{$id}{days_since_ending} if (defined $JOBS->{$id}{days_since_ending});
+      print_action({state=>$state,ended=>0,user=>$user,dir=>$id,path=>$joblink->{$id},delete=>0,link=>1,age=>$age,dse=>$dse});
     }
   }
 }
@@ -374,12 +388,12 @@ sub get_state
   return $hr if ($age < $PAR->{minage}); # don't bother unless dir is old enough
 
   my @z;
-  if (not defined $jobs->{$jobid}) { # unknown to perl api
+  if (not defined $JOBS->{$jobid}) { # unknown to perl api
     my $x = getStatesForJob($jobid); 
-    @z = (sort keys %{$x->{$jobid}});
+    @z = (sort keys %{$x->{$jobid}{states}});
   }
   else {
-    @z = (sort keys %{$jobs->{$jobid}});
+    @z = (sort keys %{$JOBS->{$jobid}{states}});
   }
   if (@z) { # job states can be known
     my $list = join ",",@z;
@@ -407,7 +421,9 @@ sub print_action
   my $end;
   if (defined $hr->{ended}) {
     if ($hr->{ended} == 0) { $end = "Q/R"; }
-    else { $end = "END"; }
+    elsif ($hr->{ended} == 1) { $end = "END"; }
+    elsif ($hr->{ended} == -1) { $end = "SKP"; }
+    else { $end = "UNK"; }
   }
   else { $end = "UNK"; }
 
@@ -423,9 +439,12 @@ sub print_action
   my $action;
   if (defined $hr->{delete}) {
     if ($hr->{delete} == 1) { 
-# Do not delete a job whose directory is less than 7 days old
-      if ($hr->{age} > 7) {
-        $action = "DELETE";
+# Do not delete a job whose directory is less than 7 days old and whose most recent subjob ended less than 7 days ago
+      if ($hr->{age} > $PAR->{minage}) {
+        if ((defined $hr->{dse}) && ($hr->{dse} > $PAR->{minage})) {
+          $action = "DELETE";
+        }
+        else { $action = "KEEP"; }
       }
       else { $action = "KEEP"; }
     }
@@ -436,11 +455,12 @@ sub print_action
   }
 
   unless ($PAR->{header}) {
-    printf("%-16s %-10s  %-3s  %-3s  %-3s : %-6s  %s\n",
+    printf("%-16s %-10s  %-3s  %-4s  %-3s  %-3s : %-6s  %s\n",
       "user",
       "basename",
       "STA",
       "AGE", 
+      "DSE", 
       "TYP",
       "ACTION",
       "EXTRA",
@@ -449,11 +469,12 @@ sub print_action
     $PAR->{header} = 1;
   }
 
-  my $line = sprintf("%-16s %-10s  %-3s  %.1f  %-3s : %-6s  %s\n",
+  my $line = sprintf("%-16s %-10s  %-3s  %4.1f  %3.1f  %-3s : %-6s  %s\n",
     $hr->{user},
     $hr->{dir},
     $end,
     $hr->{age},
+    $hr->{dse},
     $type,
     $action,
     $hr->{state},
@@ -502,3 +523,25 @@ sub appendToFile
   $fh->close;
 }
 #==============================================================================
+sub maxValue
+{
+  my ($a,$b) = @_;
+  if ((defined $a) && (defined $b)) {
+    if ($a < $b) { return $b; }
+    else { return $a; }
+  }
+  elsif ((defined $b) && (not defined $a)) { return $b; }
+  elsif ((defined $a) && (not defined $b)) { return $a; }
+}
+#==============================================================================
+sub minValue
+{
+  my ($a,$b) = @_;
+  if ((defined $a) && (defined $b)) {
+    if ($a > $b) { return $b; }
+    else { return $a; }
+  }
+  elsif ((defined $b) && (not defined $a)) { return $b; }
+  elsif ((defined $a) && (not defined $b)) { return $a; }
+}
+#============================================================================================================================
