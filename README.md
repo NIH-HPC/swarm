@@ -57,4 +57,48 @@ Because the space in /spin1/swarm is limited, old directories need to be removed
 -- If there is a proper jobid symlink (meaning that the job was successfully submitted), the directory and symlink are removed one week after the entire swarm job array has ended
 -- If the job submission failed (_FAIL) or if the swarm was created in development mode (dev), then the subdirectory and symlink are removed when the modification time of the directory exceeds one week.
 
+When run in --debug mode, swarm_cleanup.pl prints out a very nice description of what it might do:
+
+```
+Getting jobs
+Getting job states and ages since ending
+Getting symlinks for real jobs
+Walking through directories
+user              basename          STA   AGE   DSE  TYP : ACTION  EXTRA
+================================================================================
+chenp4            4073854           Q/R   14.9  ---  LNK : KEEP    states
+ebrittain         4400424           END   10.0  0.2  LNK : KEEP    FAILED
+sudregp           4467927           END    8.9  8.9  LNK : DELETE  COMPLETED,FAILED
+  rm -f /spin1/swarm/sudregp/4467927
+  rm -rf /spin1/swarm/sudregp/tmpXhlnoNq0
+sudregp           4467928           SKP    6.9  ---  LNK : KEEP
+bartesaghia       4501010           END    9.2  9.2  LNK : DELETE  COMPLETED
+  rm -f /spin1/swarm/bartesaghia/4501010
+  rm -rf /spin1/swarm/bartesaghia/tmpdR_NPaOk
+bartesaghia       4501011           END    9.1  9.1  LNK : DELETE  COMPLETED
+  rm -f /spin1/swarm/bartesaghia/4501011
+  rm -rf /spin1/swarm/bartesaghia/tmpOePKGVUa
+```
+
+Each subdirectory is given as a single line.  The user and basename (jobid for successful submissions) start each line.  The other fields are:
+
+STA: state of the job
+---- Q/R: queued or running
+---- END: the job has ended
+---- SKP: sacct was skipped, so no information is known about the job
+---- DEV: developemnt run
+---- FAIL: submission failed
+---- UNK: unknown state
+
+AGE: modification time of the subdirectory
+
+DSE: days since ending, only known for ended jobs
+
+TYP: type of basename, either symlink (LNK) or directory (DIR)
+
+ACTION: what action is taken, either (DELETE) or (KEEP)
+
+EXTRA: extra information, such as the unique list of states of all the subjobs within the swarm
+
+
 

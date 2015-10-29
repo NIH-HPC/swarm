@@ -425,7 +425,18 @@ sub print_action
     elsif ($hr->{ended} == -1) { $end = "SKP"; }
     else { $end = "UNK"; }
   }
-  else { $end = "UNK"; }
+  else { 
+    #if ($OPT{"clean-dev"} || $OPT{"clean-failures"}) {
+    if ($OPT{"clean-dev"}) {
+      $end = "DEV"; 
+    }
+    elsif ($OPT{"clean-failures"}) {
+      $end = "FAIL";
+    }
+    else {
+      $end = "UNK"; 
+    }
+  }
 
 # What type is the file?
   my $type;
@@ -441,7 +452,10 @@ sub print_action
     if ($hr->{delete} == 1) { 
 # Do not delete a job whose directory is less than 7 days old and whose most recent subjob ended less than 7 days ago
       if ($hr->{age} > $PAR->{minage}) {
-        if ((defined $hr->{dse}) && ($hr->{dse} > $PAR->{minage})) {
+        if (not defined $hr->{dse}) {
+          $action = "DELETE";
+        }
+        elsif ($hr->{dse} > $PAR->{minage}) {
           $action = "DELETE";
         }
         else { $action = "KEEP"; }
@@ -455,7 +469,7 @@ sub print_action
   }
 
   unless ($PAR->{header}) {
-    printf("%-16s %-10s  %-3s  %-4s  %-3s  %-3s : %-6s  %s\n",
+    printf("%-16s  %-16s  %-4s  %-4s  %-3s  %-3s : %-6s  %s\n",
       "user",
       "basename",
       "STA",
@@ -465,11 +479,18 @@ sub print_action
       "ACTION",
       "EXTRA",
     );
-    print "="x70,"\n";
+    print "="x80,"\n";
     $PAR->{header} = 1;
   }
 
-  my $line = sprintf("%-16s %-10s  %-3s  %4.1f  %3.1f  %-3s : %-6s  %s\n",
+  if ((not defined $hr->{dse}) || ($end eq 'SKP')) {
+    $hr->{dse} = '---';
+  }
+  else {
+    $hr->{dse} = sprintf("%3.1f",$hr->{dse});
+  }
+
+  my $line = sprintf("%-16s  %-16s  %-4s  %4.1f  %3s  %-3s : %-6s  %s\n",
     $hr->{user},
     $hr->{dir},
     $end,
