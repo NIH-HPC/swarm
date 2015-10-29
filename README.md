@@ -10,14 +10,16 @@ The swarm script accepts a number of input parameters along with a file containi
 
 swarm writes everything in /spin1/swarm, under a user-specific directory:
 
-> /spin1/swarm/user/
-> ├── 4506756 -> /spin1/swarm/user/tmpYMaPNXtq
-> └── tmpYMaPNXtq
->     ├── cmd.0
->     ├── cmd.1
->     ├── cmd.2
->     ├── cmd.3
->     └── swarm.batch
+```
+/spin1/swarm/user/
+├── 4506756 -> /spin1/swarm/user/tmpYMaPNXtq
+└── tmpYMaPNXtq
+    ├── cmd.0
+    ├── cmd.1
+    ├── cmd.2
+    ├── cmd.3
+    └── swarm.batch
+```
 
 swarm (running as the user) first creates a subdirectory within the user's directory with a completely random name beginning with 'tmp'.  The command scripts are named 'cmd.#', with # being the index of the job array.  The batch script is simply named 'swarm.batch'.  All of these are written into the temporary subdirectory.
 
@@ -25,24 +27,28 @@ When a swarm job is successfully submitted to slurm, a jobid is obtained, and a 
 
 If a submission fails, then the symlink created will instead have the string '_FAIL' tagged onto the end:
 
-> /spin1/swarm/user/
-> ├── tmpyeTeQTAV
-> │   ├── cmd.000
-> │   ├── cmd.001
-> │   ├── cmd.002
-> │   ├── cmd.003
-> │   └── swarm.batch
-> └── tmpyeTeQTAV_FAIL -> /spin1/swarm/user/tmpyeTeQTAV
+```
+/spin1/swarm/user/
+├── tmpyeTeQTAV
+│   ├── cmd.000
+│   ├── cmd.001
+│   ├── cmd.002
+│   ├── cmd.003
+│   └── swarm.batch
+└── tmpyeTeQTAV_FAIL -> /spin1/swarm/user/tmpyeTeQTAV
+```
 
 When a user runs swarm in development mode (--devel), a subdirectory is created and filled, but the job is not submitted.  These subdirectories are identified with the prefix 'dev':
 
-> /spin1/swarm/user
-> └── dev3Pr6KE9F
->     ├── cmd.0
->     ├── cmd.1
->     ├── cmd.2
->     ├── cmd.3
->     └── swarm.batch
+```
+/spin1/swarm/user
+└── dev3Pr6KE9F
+    ├── cmd.0
+    ├── cmd.1
+    ├── cmd.2
+    ├── cmd.3
+    └── swarm.batch
+```
 
 ## Clean up
 
