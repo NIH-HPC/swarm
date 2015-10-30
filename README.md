@@ -105,5 +105,10 @@ Each subdirectory is given as a single line.  The user and basename (jobid for s
 
 **EXTRA:** extra information, such as the unique list of states of all the subjobs within the swarm
 
+## Logging
+
+swarm logs to /usr/local/logs/swarm_on_slurm.log
+
+swarm_cleanup.pl logs to /usr/local/logs/swarm_cleanup.log
 
 
