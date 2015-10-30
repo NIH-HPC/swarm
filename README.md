@@ -54,12 +54,12 @@ When a user runs swarm in development mode (--devel), a subdirectory is created 
 
 Because the space in /spin1/swarm is limited, old directories need to be removed.  We want to keep the directories and files around for a while to use in investigations, but not forever.  The leftovers are cleaned up daily by /usr/local/sbin/swarm_cleanup.pl in a root cron job on biowulf.  At the moment, subdirectories and their accompanying symlinks are deleted under these circumstances:
 
-..* Proper jobid symlink (tmpXXXXXXXX, meaning that the job was successfully submitted)
-...the directory and symlink are removed **one week after the entire swarm job array has ended**
-..* Job submission failed (tmpXXXXXXXX_FAIL)
-...the subdirectory and symlink are removed when the **modification time of the directory exceeds one week**
-..* Development mode (devXXXXXXXX)
-...the subdirectory and symlink are removed when the **modification time of the directory exceeds one week**
+  *Proper jobid symlink (tmpXXXXXXXX, meaning that the job was successfully submitted)
+   the directory and symlink are removed **one week after the entire swarm job array has ended**
+  *Job submission failed (tmpXXXXXXXX_FAIL)
+   the subdirectory and symlink are removed when the **modification time of the directory exceeds one week**
+  *Development mode (devXXXXXXXX)
+   the subdirectory and symlink are removed when the **modification time of the directory exceeds one week**
 
 When run in --debug mode, swarm_cleanup.pl prints out a very nice description of what it might do:
 
