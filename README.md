@@ -54,12 +54,17 @@ When a user runs swarm in development mode (--devel), a subdirectory is created 
 
 Because the space in /spin1/swarm is limited, old directories need to be removed.  We want to keep the directories and files around for a while to use in investigations, but not forever.  The leftovers are cleaned up daily by /usr/local/sbin/swarm_cleanup.pl in a root cron job on biowulf.  At the moment, subdirectories and their accompanying symlinks are deleted under these circumstances:
 
--- If there is a proper jobid symlink (meaning that the job was successfully submitted), the directory and symlink are removed one week after the entire swarm job array has ended
--- If the job submission failed (_FAIL) or if the swarm was created in development mode (dev), then the subdirectory and symlink are removed when the modification time of the directory exceeds one week.
+..* Proper jobid symlink (tmpXXXXXXXX, meaning that the job was successfully submitted)
+...the directory and symlink are removed **one week after the entire swarm job array has ended**
+..* Job submission failed (tmpXXXXXXXX_FAIL)
+...the subdirectory and symlink are removed when the **modification time of the directory exceeds one week**
+..* Development mode (devXXXXXXXX)
+...the subdirectory and symlink are removed when the **modification time of the directory exceeds one week**
 
 When run in --debug mode, swarm_cleanup.pl prints out a very nice description of what it might do:
 
 ```
+$ swarm_cleanup.pl --debug
 Getting jobs
 Getting job states and ages since ending
 Getting symlinks for real jobs
@@ -82,23 +87,23 @@ bartesaghia       4501011           END    9.1  9.1  LNK : DELETE  COMPLETED
 
 Each subdirectory is given as a single line.  The user and basename (jobid for successful submissions) start each line.  The other fields are:
 
-STA: state of the job
----- Q/R: queued or running
----- END: the job has ended
----- SKP: sacct was skipped, so no information is known about the job
----- DEV: developemnt run
----- FAIL: submission failed
----- UNK: unknown state
+**STA:** state of the job
+...Q/R: queued or running
+...END: the job has ended
+...SKP: sacct was skipped, so no information is known about the job
+...DEV: developemnt run
+...FAIL: submission failed
+...UNK: unknown state
 
-AGE: modification time of the subdirectory
+**AGE:** modification time of the subdirectory
 
-DSE: days since ending, only known for ended jobs
+**DSE:** days since ending, only known for ended jobs
 
-TYP: type of basename, either symlink (LNK) or directory (DIR)
+**TYP:** type of basename, either symlink (LNK) or directory (DIR)
 
-ACTION: what action is taken, either (DELETE) or (KEEP)
+**ACTION:** what action is taken, either (DELETE) or (KEEP)
 
-EXTRA: extra information, such as the unique list of states of all the subjobs within the swarm
+**EXTRA:** extra information, such as the unique list of states of all the subjobs within the swarm
 
 
 
