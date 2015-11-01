@@ -100,10 +100,10 @@ sub getJobLinks
   print "Getting symlinks for real jobs\n" if $OPT{verbose};
   my $cmd;
   if ($OPT{user}) {
-    $cmd = "find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type l 2>/dev/null";
+    $cmd = "/bin/find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type l 2>/dev/null";
   }
   else {
-    $cmd = "find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type l 2>/dev/null";
+    $cmd = "/bin/find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type l 2>/dev/null";
   }
   chomp(my $ret = `$cmd`);
   my $s;
@@ -120,10 +120,10 @@ sub getFailLinks
   print "Getting symlinks for real jobs\n" if $OPT{verbose};
   my $cmd;
   if ($OPT{user}) {
-    $cmd = "find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type l 2>/dev/null";
+    $cmd = "/bin/find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type l 2>/dev/null";
   }
   else {
-    $cmd = "find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type l 2>/dev/null";
+    $cmd = "/bin/find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type l 2>/dev/null";
   }
   chomp(my $ret = `$cmd`);
   my $s;
@@ -140,10 +140,10 @@ sub getDevDirectories
   print "Getting dev directories\n" if $OPT{verbose};
   my $cmd;
   if ($OPT{user}) {
-    $cmd = "find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type d -name 'dev*' 2>/dev/null";
+    $cmd = "/bin/find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type d -name 'dev*' 2>/dev/null";
   }
   else {
-    $cmd = "find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type d -name 'dev*' 2>/dev/null";
+    $cmd = "/bin/find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type d -name 'dev*' 2>/dev/null";
   }
   chomp(my $ret = `$cmd`);
   my $s;
@@ -160,10 +160,10 @@ sub getOrphanDirectories
   print "Getting orphan directories without symlink (this will take some time)\n" if $OPT{verbose};
   my $cmd;
   if ($OPT{user}) {
-    $cmd = "find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type d 2>/dev/null";
+    $cmd = "/bin/find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type d 2>/dev/null";
   }
   else {
-    $cmd = "find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type d 2>/dev/null";
+    $cmd = "/bin/find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type d 2>/dev/null";
   }
   chomp(my $ret = `$cmd`);
   my $s;
@@ -173,10 +173,10 @@ sub getOrphanDirectories
     next DIR if ($name=~/^tmp/);
 # Now turn around and find if there are any symlinks pointing to that file
     if ($OPT{user}) {
-      $cmd = "find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -lname $dir 2>/dev/null";
+      $cmd = "/bin/find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -lname $dir 2>/dev/null";
     }
     else {
-      $cmd = "find /spin1/swarm/ -mindepth 2 -maxdepth 2 -lname $dir 2>/dev/null";
+      $cmd = "/bin/find /spin1/swarm/ -mindepth 2 -maxdepth 2 -lname $dir 2>/dev/null";
     } 
     chomp(my $ret2 = `$cmd`);
     if (!$ret2) {
@@ -229,7 +229,7 @@ sub getCurrentJobs
 sub getStatesForJob
 {
   my ($id) = shift;
-  my $cmd = "sacct -j $id --format=JobID,State,End --noheader --parsable2";
+  my $cmd = "/usr/local/slurm/bin/sacct -j $id --format=JobID,State,End --noheader --parsable2";
   $cmd .= " -u $OPT{user}" if $OPT{user};
   chomp(my $ret = `$cmd`);
   my $hr;
@@ -351,7 +351,7 @@ sub clean_orphandirs
       }
       else {
 # Look in swarm log to see if it is on the verge of running
-        chomp(my $stupid = `grep $dir /usr/local/logs/sbatch.log`);
+        chomp(my $stupid = `/bin/grep $dir /usr/local/logs/sbatch.log`);
         if ($stupid=~/ SUBM\[ERROR\]: $user /) {
           print_action({state=>'SUBM[ERROR]',ended=>1,user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>1,link=>0,age=>$age});
         } 
