@@ -26,17 +26,20 @@ Actions are logged to $PAR->{logfile}
 options:
 
   -u,--user     run for a single user
+  -j,--jobid    run for a single job
   --dev         remove devel directories
   --orphans     remove obsolete and orphaned directories
   --fail        remove submission failures
   --age         restrict deletion to directories at least
                 this many days old (default = $PAR->{minage} days)
 
-  -v,--verbose  be chatty
+  -v,--verbose  be very chatty
+  -q,--quiet    just show summary
+  -s,--silent   report nothing
   --debug       run in debug mode
   -h,--help     print this message
 
-Last modification date Oct 20, 2015 (David Hoover)
+Last modification date Nov 06, 2015 (David Hoover)
 
 EOF
 
@@ -54,12 +57,21 @@ elsif ($OPT{"clean-orphans"})  { clean_orphandirs(); }
 elsif ($OPT{"clean-failures"}) { clean_failures(); }
 else                           { clean_jobdirs(); }
 
+unless ($OPT{silent}) {
+  print "="x70,"\n";
+  printf "Swarm directories scanned: %d\n",$PAR->{scanned_count};
+  printf "Swarm directories deleted: %d\n",$PAR->{deleted_count};
+  print "="x70,"\n";
+}
+
 #==============================================================================
 sub set_options
 {
   GetOptions(
     "u=s" => \$OPT{user}, # restrict to this user
     "user=s" => \$OPT{user}, # restrict to this user
+    "j=s" => \$OPT{jobid}, # restrict to this jobid
+    "jobid=s" => \$OPT{jobid}, # restrict to this jobid
     "dev" => \$OPT{"clean-dev"}, # only clean dev directories
     "orphan" => \$OPT{"clean-orphans"}, # only clean orphan directories
     "fail" => \$OPT{"clean-failures"}, # only clean orphan directories
@@ -69,13 +81,21 @@ sub set_options
     "v" => \$OPT{verbose},
     "verbose" => \$OPT{verbose},
     "age=i" => \$OPT{age},
+    "s" => \$OPT{silent},
+    "silent" => \$OPT{silent},
+    "q" => \$OPT{quiet},
+    "quiet" => \$OPT{quiet},
   ) || die($PAR->{description});
 
 # Change minimum age  
   $PAR->{minage} = $OPT{age} if (defined $OPT{age});
 
 # Change verbosity
-  $OPT{verbose} = 1 if $OPT{debug};
+  if ($OPT{debug}) {
+    if (!$OPT{silent} && !$OPT{quiet}) {
+      $OPT{verbose} = 1;
+    }
+  }
   
 # Translate user to uid
   $OPT{uid} = (getpwnam($OPT{user}))[2] if $OPT{user};
@@ -99,17 +119,19 @@ sub getJobLinks
 # Find symlinks pointing to tmp directories
   print "Getting symlinks for real jobs\n" if $OPT{verbose};
   my $cmd;
+  my ($ex1,$depth);
+  $depth = 2;
   if ($OPT{user}) {
-    $cmd = "/bin/find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type l 2>/dev/null";
+    $ex1 = "$OPT{user}/";
+    $depth = 1;
   }
-  else {
-    $cmd = "/bin/find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type l 2>/dev/null";
-  }
+  $cmd = "/bin/find /spin1/swarm/$ex1 -mindepth $depth -maxdepth $depth -type l 2>/dev/null";
   chomp(my $ret = `$cmd`);
   my $s;
-  foreach my $link (split /\n/,$ret) {
-    my $id = basename($link);
-    if ($id=~/^\d+$/) { $s->{$id} = $link; } # only keep numerical symlinks
+  LINK: foreach my $link (split /\n/,$ret) {
+    my $jobid = basename($link);
+    next LINK if ($OPT{jobid} && ($jobid ne $OPT{jobid}));
+    if ($jobid=~/^\d+$/) { $s->{$jobid} = $link; } # only keep numerical symlinks
   }
   return $s;
 }
@@ -128,8 +150,8 @@ sub getFailLinks
   chomp(my $ret = `$cmd`);
   my $s;
   foreach my $link (split /\n/,$ret) {
-    my $id = basename($link);
-    if ($id=~/_FAIL$/) { $s->{$id} = $link; }
+    my $jobid = basename($link);
+    if ($jobid=~/_FAIL$/) { $s->{$jobid} = $link; }
   }
   return $s;
 }
@@ -213,10 +235,11 @@ sub getCurrentJobs
   my $j = $slurm->load_jobs();
   print "Getting job states and ages since ending\n" if $OPT{verbose};
   JOB: foreach my $ref (@{$j->{job_array}}) {
-    next JOB if ((defined $OPT{user}) && ($ref->{"user_id"} != $OPT{uid}));
-    next JOB unless ($ref->{"array_job_id"}); # only keep job arrays
-    my $state = $slurm->job_state_string($ref->{"job_state"});
+    next JOB if ((defined $OPT{user}) && ($ref->{user_id} != $OPT{uid}));
+    next JOB if ((defined $OPT{jobid}) && ($ref->{array_job_id} != $OPT{jobid}));
+    next JOB unless ($ref->{array_job_id}); # only keep job arrays
 # Accumulate the states
+    my $state = $slurm->job_state_string($ref->{job_state});
     $JOBS->{$ref->{array_job_id}}{states}{$state} = 1;
     if (($ref->{end_time} > 0) && ($ref->{job_state} > 1)) {
 # Find minimal value of days_since_ending
@@ -228,8 +251,8 @@ sub getCurrentJobs
 #==============================================================================
 sub getStatesForJob
 {
-  my ($id) = shift;
-  my $cmd = "/usr/local/slurm/bin/sacct -j $id --format=JobID,State,End --noheader --parsable2";
+  my ($jobid) = shift;
+  my $cmd = "/usr/local/slurm/bin/sacct -j $jobid --format=JobID,State,End --noheader --parsable2";
   $cmd .= " -u $OPT{user}" if $OPT{user};
   chomp(my $ret = `$cmd`);
   my $hr;
@@ -252,37 +275,44 @@ sub clean_jobdirs
   my $joblink = getJobLinks();
   print "Walking through directories\n" if $OPT{verbose};
 # Walk through all directories and determine if it and the associated batch file be removed
-  DIR: foreach my $id (sort keys %{$joblink}) {
+  DIR: foreach my $jobid (sort keys %{$joblink}) {
   
 # Don't even bother unless the link is at least one day old 
-    my $age = ((time()-(stat($joblink->{$id}))[9])/86400);
-    my $user = basename(dirname($joblink->{$id}));
+    my $age = ((time()-(stat($joblink->{$jobid}))[9])/86400);
+    my $user = basename(dirname($joblink->{$jobid}));
 
 # Because we already know the job id, and by definition if the job is not available via the
 # Slurm Perl API then the job is completed, all we have to check is whether the job is
 # defined in the jobarray.
     #if ($s->{ended} == -1) {
-    #  print_action({user=>$user,dir=>$id,path=>$joblink->{$id},delete=>0,link=>1,age=>$age});
+    #  print_action({user=>$user,dir=>$jobid,path=>$joblink->{$jobid},delete=>0,link=>1,age=>$age});
     #}
     #elsif ($s->{ended} == 1) {
-    if (not defined $JOBS->{$id}) { # unknown to perl api, assumed completed
-      my $s = get_state($id,$age); # Perl API may fail, and sacct may give nonsense
+    if (not defined $JOBS->{$jobid}) { # unknown to perl api, assumed completed
+      my $s = get_state($jobid,$age); # Perl API may fail, and sacct may give nonsense
       if ($s->{ended} == 1) {
 # override the $age if the days_since_ending is known
-        my $dse = $JOBS->{$id}{days_since_ending} if (defined $JOBS->{$id}{days_since_ending});
-        print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$id,path=>$joblink->{$id},delete=>1,link=>1,age=>$age,dse=>$dse});
+        my $dse = $JOBS->{$jobid}{days_since_ending} if (defined $JOBS->{$jobid}{days_since_ending});
+        print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$jobid,path=>$joblink->{$jobid},delete=>1,link=>1,age=>$age,dse=>$dse});
       }
       elsif ($s->{ended} == 0) {
-        print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$id,path=>$joblink->{$id},delete=>0,link=>1,age=>$age});
+        print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$jobid,path=>$joblink->{$jobid},delete=>0,link=>1,age=>$age});
       } 
       else {
-        print_action({ended=>$s->{ended},user=>$user,dir=>$id,path=>$joblink->{$id},delete=>0,link=>1,age=>$age});
+        print_action({ended=>$s->{ended},user=>$user,dir=>$jobid,path=>$joblink->{$jobid},delete=>0,link=>1,age=>$age});
       }
     }
     else {
-      my $state = join ',',(sort keys %{$JOBS->{$id}});
-      my $dse = $JOBS->{$id}{days_since_ending} if (defined $JOBS->{$id}{days_since_ending});
-      print_action({state=>$state,ended=>0,user=>$user,dir=>$id,path=>$joblink->{$id},delete=>0,link=>1,age=>$age,dse=>$dse});
+      my $state = join ',',(sort keys %{$JOBS->{$jobid}{states}});
+      my $dse = $JOBS->{$jobid}{days_since_ending} if (defined $JOBS->{$jobid}{days_since_ending});
+#+------------------------------------------------------------------------------
+#| STUPID STUPID STUPID
+#| 
+#|   Not all subjobs in a job array appear in Slurm Perl API, so the 
+#|   days_since_ending value and states are incorrect.  ALL jobs must be
+#|   pulled from sacct.  Yuck.
+#+------------------------------------------------------------------------------
+      print_action({state=>$state,ended=>0,user=>$user,dir=>$jobid,path=>$joblink->{$jobid},delete=>0,link=>1,age=>$age,dse=>$dse});
     }
   }
 }
@@ -292,12 +322,12 @@ sub clean_failures
   my $fail = getFailLinks();
   print "Walking through directories\n" if $OPT{verbose};
 # Walk through all directories and determine if it and the associated batch file be removed
-  DIR: foreach my $id (sort keys %{$fail}) {
+  DIR: foreach my $jobid (sort keys %{$fail}) {
   
 # Don't even bother unless the link is at least one day old 
-    my $age = ((time()-(stat($fail->{$id}))[9])/86400);
-    my $user = basename(dirname($fail->{$id}));
-    print_action({user=>$user,dir=>$id,path=>$fail->{$id},delete=>1,link=>1,age=>$age});
+    my $age = ((time()-(stat($fail->{$jobid}))[9])/86400);
+    my $user = basename(dirname($fail->{$jobid}));
+    print_action({user=>$user,dir=>$jobid,path=>$fail->{$jobid},delete=>1,link=>1,age=>$age});
   }
 }
 #==============================================================================
@@ -306,12 +336,12 @@ sub clean_devdirs
   my $dev = getDevDirectories();
   print "Walking through directories\n" if $OPT{verbose};
 # Walk through all directories and determine if it and the associated batch file be removed
-  DIR: foreach my $id (sort keys %{$dev}) {
+  DIR: foreach my $jobid (sort keys %{$dev}) {
   
 # Don't even bother unless the link is at least one day old 
-    my $age = ((time()-(stat($dev->{$id}))[9])/86400);
-    my $user = basename(dirname($dev->{$id}));
-    print_action({user=>$user,dir=>$id,path=>$dev->{$id},delete=>1,link=>0,age=>$age});
+    my $age = ((time()-(stat($dev->{$jobid}))[9])/86400);
+    my $user = basename(dirname($dev->{$jobid}));
+    print_action({user=>$user,dir=>$jobid,path=>$dev->{$jobid},delete=>1,link=>0,age=>$age});
   }
 }
 #==============================================================================
@@ -415,7 +445,7 @@ sub get_state
 sub print_action
 {
   my $hr = shift;
-
+  $PAR->{scanned_count}++;
 
 # Has the job ended?
   my $end;
@@ -468,45 +498,48 @@ sub print_action
     $action = "UNK";
   }
 
-  unless ($PAR->{header}) {
-    printf("%-16s  %-16s  %-4s  %-4s  %-3s  %-3s : %-6s  %s\n",
-      "user",
-      "basename",
-      "STA",
-      "AGE", 
-      "DSE", 
-      "TYP",
-      "ACTION",
-      "EXTRA",
+  if ((!$OPT{silent}) && (!$OPT{quiet})){
+    unless ($PAR->{header}) {
+      printf("%-16s  %-16s  %-4s  %-4s  %-3s  %-3s : %-6s  %s\n",
+        "user",
+        "basename",
+        "STA",
+        "AGE", 
+        "DSE", 
+        "TYP",
+        "ACTION",
+        "EXTRA",
+      );
+      print "="x80,"\n";
+      $PAR->{header} = 1;
+    }
+
+    if ((not defined $hr->{dse}) || ($end eq 'SKP')) {
+      $hr->{dse} = '---';
+    }
+    else {
+      $hr->{dse} = sprintf("%3.1f",$hr->{dse});
+    }
+  
+    my $line = sprintf("%-16s  %-16s  %-4s  %4.1f  %3s  %-3s : %-6s  %s\n",
+      $hr->{user},
+      $hr->{dir},
+      $end,
+      $hr->{age},
+      $hr->{dse},
+      $type,
+      $action,
+      $hr->{state},
     );
-    print "="x80,"\n";
-    $PAR->{header} = 1;
+  
+      print $line;
   }
-
-  if ((not defined $hr->{dse}) || ($end eq 'SKP')) {
-    $hr->{dse} = '---';
-  }
-  else {
-    $hr->{dse} = sprintf("%3.1f",$hr->{dse});
-  }
-
-  my $line = sprintf("%-16s  %-16s  %-4s  %4.1f  %3s  %-3s : %-6s  %s\n",
-    $hr->{user},
-    $hr->{dir},
-    $end,
-    $hr->{age},
-    $hr->{dse},
-    $type,
-    $action,
-    $hr->{state},
-  );
-
-  print $line;
 
 # Now really delete stuff
   if ($action eq 'DELETE') {
     if ($OPT{"clean-dev"} || $OPT{"clean-failures"}) {
       if (-d $hr->{path}) {
+        $PAR->{deleted_count}++;
         print "  rm -rf $hr->{path}\n" if ($OPT{verbose});
         if (!$OPT{debug}) {
           if (rmtree($hr->{path})) { appendToFile($PAR->{logfile},(strftime("%F %T",(localtime(time))[0 .. 5]))." ".$hr->{path}."\n"); }
@@ -524,6 +557,7 @@ sub print_action
         if (-d $real_dir) {
           print "  rm -f $hr->{path}\n" if $OPT{verbose};
           print "  rm -rf $real_dir\n" if $OPT{verbose};
+          $PAR->{deleted_count}++;
           if (!$OPT{debug}) {
             if (rmtree($hr->{path})) { appendToFile($PAR->{logfile},(strftime("%F %T",(localtime(time))[0 .. 5]))." ".$hr->{path}."\n"); }
             if (rmtree($real_dir)) { appendToFile($PAR->{logfile},(strftime("%F %T",(localtime(time))[0 .. 5]))." ".$real_dir."\n"); }
