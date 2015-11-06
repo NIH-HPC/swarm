@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/local/bin/perl
 
 use lib "/usr/local/slurm/lib/site_perl/5.12.1/x86_64-linux-thread-multi";
 use lib "/usr/local/slurm/lib/perl5/site_perl/5.18.2/x86_64-linux-thread-multi-ld";
