@@ -50,6 +50,8 @@ set_options();
 # Pull jobs from slurm cache via perl API
 my $JOBS;
 
+printSwarmUsage() unless($OPT{silent});
+
 getCurrentJobs();
 
 if    ($OPT{"clean-dev"})      { clean_devdirs(); }
@@ -63,6 +65,10 @@ unless ($OPT{silent}) {
   printf "Swarm directories deleted: %d\n",$PAR->{deleted_count};
   print "="x70,"\n";
 }
+# In order to see the effect of cleanup, we need to wait at least
+# 60 seconds for the quota to refresh
+sleep(70) unless ($OPT{debug});
+printSwarmUsage() unless($OPT{silent});
 
 #==============================================================================
 sub set_options
@@ -598,5 +604,24 @@ sub minValue
   }
   elsif ((defined $b) && (not defined $a)) { return $b; }
   elsif ((defined $a) && (not defined $b)) { return $a; }
+}
+#==============================================================================
+sub printSwarmUsage
+{
+  use DBI;
+  my $dbh = DBI->connect("DBI:mysql:;mysql_read_default_group=helixmon;mysql_read_default_file=/usr/local/etc/my.cnf;mysql_connect_timeout=10",undef,undef,{RaiseError=>0});
+  my $sql = "SELECT * FROM quota_spin1 WHERE volume = 'swarm'";
+  my $sth = $dbh->prepare($sql);
+  $sth->execute;
+  my $l = $sth->fetchrow_hashref();
+  my $string = sprintf("/swarm usage: %6.2f GB (%4.1f%%), %7d files (%4.1f%%)\n",
+      ( $l->{Dusage}/1024/1024 ),
+      ( ($l->{Dusage}/$l->{Dquota})*100 ),
+      ( $l->{Fusage} ),
+      ( ($l->{Fusage}/$l->{Fquota})*100 ),
+  );
+  $sth->finish;
+  $dbh->disconnect();
+  print $string;
 }
 #============================================================================================================================
