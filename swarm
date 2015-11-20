@@ -38,6 +38,12 @@ use Slurm;
 use FileHandle;
 use strict;
 
+$SIG{HUP}  = \&catch_sig;
+$SIG{INT}  = \&catch_sig;
+$SIG{KILL} = \&catch_sig;
+$SIG{TERM} = \&catch_sig;
+$SIG{STOP} = \&catch_sig;
+
 my $PAR;
 my $SWARM;
 setDefaults();
@@ -55,6 +61,8 @@ writeCommandFiles() unless $OPT{'no-scripts'};
 writeBatchScript() unless $OPT{'no-scripts'};
 sleep(2); # sleep 2 seconds to prevent weirdness
 submitSlurm();
+print "Sleeping...\n";
+sleep(10);
 createSymlink() unless $OPT{'no-scripts'};
 writeLog() unless $OPT{'no-run'};
 
@@ -459,7 +467,6 @@ sub submitSlurm
       $PAR->{jobid} = $1;
     }
     else {
-      symlink ("$PAR->{tempdir}","$PAR->{tempdir}_FAIL");
       dieWithError("Something went wrong with sbatch!  I don't know the jobid!");
     }
   }
@@ -933,6 +940,8 @@ EOF
 sub dieWithError
 {
   my $message = shift;
+# Mark the tempdir as failed
+  symlink ("$PAR->{tempdir}","$PAR->{tempdir}_FAIL");
   die "ERROR: $message\n";
 }
 #==============================================================================
@@ -1089,4 +1098,15 @@ sub clock_to_seconds
   }
 }
 #==============================================================================
-
+sub catch_sig
+# If a signal is thrown during the process, attempt to be neat
+{
+  if ($PAR->{jobid}) {
+    warn("WARNING: swarm ended after job was submitted, canceling job $PAR->{jobid}\n");
+    system("scancel $PAR->{jobid}");
+  }
+  else {
+    dieWithError("swarm ended before job was submitted");
+  }
+}
+#==============================================================================
