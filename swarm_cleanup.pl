@@ -198,7 +198,7 @@ sub getOrphanDirectories
   DIR: foreach my $dir (split /\n/,$ret) {
     my $name = basename($dir);
     next DIR if ($name=~/^dev/);
-    next DIR if ($name=~/^tmp/);
+    #next DIR if ($name=~/^tmp/);
 # Now turn around and find if there are any symlinks pointing to that file
     if ($OPT{user}) {
       $cmd = "/bin/find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -lname $dir 2>/dev/null";

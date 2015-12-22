@@ -61,8 +61,6 @@ writeCommandFiles() unless $OPT{'no-scripts'};
 writeBatchScript() unless $OPT{'no-scripts'};
 sleep(2); # sleep 2 seconds to prevent weirdness
 submitSlurm();
-print "Sleeping...\n";
-sleep(10);
 createSymlink() unless $OPT{'no-scripts'};
 writeLog() unless $OPT{'no-run'};
 
@@ -759,7 +757,7 @@ EOF
   }
 
   if (defined $OPT{g}) { # assign to --mem, converted to MB
-    dieWithError("-g must be between 0.1 and 250") if (($OPT{g} <= 0.1) || ($OPT{g} >= 250));
+    dieWithError("-g must be between 0.1 and 1000") if (($OPT{g} <= 0.1) || ($OPT{g} >= 1000));
   }
   else {
     $OPT{g} = 1.5;
@@ -941,7 +939,9 @@ sub dieWithError
 {
   my $message = shift;
 # Mark the tempdir as failed
-  symlink ("$PAR->{tempdir}","$PAR->{tempdir}_FAIL");
+  if (-d $PAR->{tempdir}) {
+    symlink ("$PAR->{tempdir}","$PAR->{tempdir}_FAIL") unless ($OPT{debug} || $OPT{devel});
+  }
   die "ERROR: $message\n";
 }
 #==============================================================================
