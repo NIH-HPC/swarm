@@ -671,6 +671,12 @@ EOF
     if (defined $ENV{SBATCH_PARTITION}) {
       $SLURMOPT{binary}{partition} = $ENV{SBATCH_PARTITION};
     }
+    elsif (defined $SBATCHOPT) {
+      if ($SBATCHOPT=~/(--partition\s*=?\s*)(\w+)/) {
+        $SLURMOPT{binary}{partition} = $2;
+        $SBATCHOPT=~s/${1}${2}//g;
+      }
+    }
     else {
       $SLURMOPT{binary}{partition} = "norm";
     }
