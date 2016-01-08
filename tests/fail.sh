@@ -7,8 +7,20 @@ swarm=$1
 [[ $swarm == "-h" ]] && { echo "This script runs swarm tests which are expected to fail"; exit; }
 [[ ! -x $swarm ]] && { echo "$swarm is not executable" ; exit 1; }
 
+function printRed {
+    echo -e "\x01\033[31m\x02${1}\x01\033[0m\x02"
+}
+function printGreen {
+    echo -e "\x01\033[32m\x02${1}\x01\033[0m\x02"
+}
+function printYellow {
+    echo -e "\x01\033[33m\x02${1}\x01\033[0m\x02"
+}
+function printBlue {
+    echo -e "\x01\033[34m\x02${1}\x01\033[0m\x02"
+}
+
 # This is the function we will use to run the tests
-source ~/.function_depot.sh
 function __test_swarm {
   printYellow $1
   ec=0
