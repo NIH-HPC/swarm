@@ -88,12 +88,12 @@ bartesaghia       4501011           END    9.1  9.1  LNK : DELETE  COMPLETED
 Each subdirectory is given as a single line.  The user and basename (jobid for successful submissions) start each line.  The other fields are:
 
 **STA:** state of the job
-...Q/R: queued or running
-...END: the job has ended
-...SKP: sacct was skipped, so no information is known about the job
-...DEV: developemnt run
-...FAIL: submission failed
-...UNK: unknown state
+  ...Q/R: queued or running
+  ...END: the job has ended
+  ...SKP: sacct was skipped, so no information is known about the job
+  ...DEV: developemnt run
+  ...FAIL: submission failed
+  ...UNK: unknown state
 
 **AGE:** modification time of the subdirectory
 
@@ -113,6 +113,6 @@ swarm_cleanup.pl logs to /usr/local/logs/swarm_cleanup.log
 
 ## Testing
 
-In the tests subdirectory, there are two scripts that can be run to test the current build of swarm.  test.sh runs a series of swarm commands that are expected to succeed, and fail.sh runs a series of swarm commands that are expected to fail.  They are run in --devel mode, so nothing is ever submitted to the cluster nor logged.
+In the tests subdirectory, there are two scripts that can be run to test the current build of swarm.  test.sh runs a series of swarm commands that are expected to succeed, and fail.sh runs a series of swarm commands that are expected to fail.  They are run in **--devel** mode, so nothing is ever submitted to the cluster nor logged.
 
-The script sample.pl extracts the last 100 or so lines from the swarm logfile and generates possible options for testing swarm.  The --sbatch option is screwed up because it doesn't contain any quotes, so you will need to add those back in to construct proper swarm commands.
+The script sample.pl extracts the last 100 or so lines from the swarm logfile and generates possible options for testing swarm.  The **--sbatch** option is screwed up because it doesn't contain any quotes, so you will need to add those back in to construct proper swarm commands.
