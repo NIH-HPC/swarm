@@ -59,7 +59,7 @@ distributeCommands();
 report();
 writeCommandFiles() unless $OPT{'no-scripts'};
 writeBatchScript() unless $OPT{'no-scripts'};
-sleep(2); # sleep 2 seconds to prevent weirdness
+sleep(2) unless $OPT{debug}; # sleep 2 seconds to prevent weirdness
 submitSlurm();
 createSymlink() unless $OPT{'no-scripts'};
 writeLog() unless $OPT{'no-run'};
@@ -85,7 +85,8 @@ sub setDefaults
   $PAR->{commentChar} = '#';
 
 # The logfile which will be updated
-  $PAR->{logfile} = "/usr/local/logs/swarm_on_slurm.log";
+  #$PAR->{logfile} = "/usr/local/logs/swarm_on_slurm.log";
+  $PAR->{logfile} = "swarm_on_slurm.log";
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 # There is no need to keep track of MaxSubmit because swarm will now submit jobarrays.  Each swarm
@@ -582,7 +583,16 @@ sub getCommandLineOptions
 # capture command line 
     
   $PAR->{commandLine} = $0;
-  foreach (@ARGV) { $PAR->{commandLine} .= " $_"; }
+  my $quotenext;
+  foreach my $arg (@ARGV) { 
+    if ($quotenext) {
+      $PAR->{commandLine} .= " '$arg'"; 
+      undef $quotenext;
+      next;
+    } 
+    $quotenext=1 if ($arg=~/^--sbatch$/);
+    $PAR->{commandLine} .= " $arg"; 
+  }
 
   GetOptions(
 
