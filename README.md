@@ -113,6 +113,6 @@ swarm_cleanup.pl logs to /usr/local/logs/swarm_cleanup.log
 
 ## Testing
 
-In the tests subdirectory, there are two scripts that can be run to test the current build of swarm.  test.sh runs a series of swarm commands that are expected to succeed, and fail.sh runs a series of swarm commands that are expected to fail.  They are run in **--devel** mode, so nothing is ever submitted to the cluster nor logged.
+In the tests subdirectory, there are two scripts that can be run to test the current build of swarm.  **test.sh** runs a series of swarm commands that are expected to succeed, and **fail.sh** runs a series of swarm commands that are expected to fail.  They are run in **--devel** mode, so nothing is ever submitted to the cluster nor logged.
 
-The script sample.pl extracts the last 100 or so lines from the swarm logfile and generates possible options for testing swarm.  The **--sbatch** option is screwed up because it doesn't contain any quotes, so you will need to add those back in to construct proper swarm commands.
+The script **sample.pl** extracts the last 100 or so lines from the swarm logfile and generates possible options for testing swarm.  The **--sbatch** option is screwed up because it doesn't contain any quotes, so you will need to add those back in to construct proper swarm commands.
