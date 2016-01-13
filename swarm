@@ -38,6 +38,9 @@ use Slurm;
 use FileHandle;
 use strict;
 
+use Sys::Hostname;
+dieWithError("Don't run on helix!  Run on the biowulf cluster!") if (hostname() =~ /helix/);
+
 $SIG{HUP}  = \&catch_sig;
 $SIG{INT}  = \&catch_sig;
 $SIG{KILL} = \&catch_sig;
@@ -100,7 +103,7 @@ sub setDefaults
 
 # Make sure sbatch is accessible
   my $sbatch_check = `which sbatch 2>/dev/null`;
-  die "Can't find sbatch.  Is slurm in your path?\n" unless $sbatch_check;
+  dieWithError("Can't find sbatch.  Is slurm in your path?") unless $sbatch_check;
 }
 #==============================================================================
 sub distributeCommands
