@@ -137,12 +137,12 @@ testcases
 # Walk through each test case
 while read line ; do
 
-# Create a new test script for each test case
+# Create a new test script for each test case, making ABSOLUTELY CERTAIN we are using --devel and --logfile
   ((n++))
   cat <<eof > t$(printf %03d $n).sh
 #!/bin/bash
 a=2 ; while [ \$a -gt 0 ]; do echo 1 ; ((a--)); done > \$0.\$\$
-$swarm -f \$0.\$\$ --devel -v 2 \\
+$swarm -f \$0.\$\$ --devel -v 2 --logfile swarm_on_slurm.log \\
   $line
 ec=\$?
 rm \$0.\$\$

@@ -62,7 +62,7 @@ writeBatchScript() unless $OPT{'no-scripts'};
 sleep(2) unless $OPT{debug}; # sleep 2 seconds to prevent weirdness
 submitSlurm();
 createSymlink() unless $OPT{'no-scripts'};
-writeLog() unless $OPT{'no-run'};
+writeLog() unless $OPT{'no-log'};
 
 #===============================================================================
 sub setDefaults
@@ -85,8 +85,7 @@ sub setDefaults
   $PAR->{commentChar} = '#';
 
 # The logfile which will be updated
-  #$PAR->{logfile} = "/usr/local/logs/swarm_on_slurm.log";
-  $PAR->{logfile} = "swarm_on_slurm.log";
+  $PAR->{logfile} = "/usr/local/logs/swarm_on_slurm.log";
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 # There is no need to keep track of MaxSubmit because swarm will now submit jobarrays.  Each swarm
@@ -636,6 +635,8 @@ sub getCommandLineOptions
 # hidden options
     "user=s"            => \$OPT{user},      # test specific user
     "no-run"            => \$OPT{'no-run'},  # don't actually run
+    "no-log"            => \$OPT{'no-log'},  # don't actually write to logfile
+    "logfile=s"         => \$OPT{logfile},   # alternate logfile
     "test"              => \$OPT{test},      # deprecated: the same as --debug 
     "p=i"               => \$OPT{p},      # run 2 commands per core for single threaded bundled swarms 
     "processes-per-subjob=i"  => \$OPT{p},      # run 2 commands per core for single threaded bundled swarms 
@@ -714,12 +715,19 @@ EOF
   if ($OPT{devel}) {
     $OPT{'no-scripts'} = 1 unless $OPT{"keep-scripts"};
     $OPT{'no-run'} = 1;
+    $OPT{'no-log'} = 1;
     $OPT{debug} = 1;
     $OPT{verbose} = 3 unless (defined $OPT{verbose});
   }
   elsif ($OPT{debug}) {
     $OPT{verbose} = 2;
-    $OPT{'no-run'} = 1;
+    $OPT{'no-log'} = 1;
+  }
+
+# $OPT{'no-log'} override
+  if ((defined $OPT{logfile}) && ($OPT{logfile} ne $PAR->{logfile})) {
+    undef $OPT{'no-log'};
+    $PAR->{logfile} = $OPT{logfile};
   }
 
 # Default verbosity
@@ -883,6 +891,7 @@ EOF
 
 # Set keep-scripts if singleout
   $OPT{"keep-scripts"} = '#' if $OPT{singleout};
+
 }
 #==============================================================================
 sub print_options
