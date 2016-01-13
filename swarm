@@ -608,6 +608,8 @@ sub getCommandLineOptions
     "gb-per-process=f"  => \$OPT{g},
     "t=s"               => \$OPT{t},
     "threads-per-process=s" => \$OPT{t},
+    "p=i"               => \$OPT{p},      # run 2 commands per core for single threaded bundled swarms 
+    "processes-per-subjob=i"  => \$OPT{p},      # run 2 commands per core for single threaded bundled swarms 
     "usecsh"            => \$OPT{usecsh},    # use tcsh shell instead of bash
     "c=s"               => \$OPT{commentChar}, # comment character
     "comment-char=s"    => \$OPT{commentChar}, # comment character
@@ -626,8 +628,6 @@ sub getCommandLineOptions
 # interactive stuff
     "h"                 => \$OPT{h},
     "help"              => \$OPT{h},
-    "k"                 => \$OPT{"keep-scripts"}, # don't remove command and control scripts
-    "keep-scripts"      => \$OPT{"keep-scripts"}, # don't remove command and control scripts
     "no-scripts"        => \$OPT{'no-scripts'}, # don't print scripts (requires debug}
     "debug"             => \$OPT{debug},     # --verbose=1, --no-run
     "devel"             => \$OPT{devel},     # --verbose=2, --no-run, --no-scripts
@@ -640,9 +640,6 @@ sub getCommandLineOptions
     "no-run"            => \$OPT{'no-run'},  # don't actually run
     "no-log"            => \$OPT{'no-log'},  # don't actually write to logfile
     "logfile=s"         => \$OPT{logfile},   # alternate logfile
-    "test"              => \$OPT{test},      # deprecated: the same as --debug 
-    "p=i"               => \$OPT{p},      # run 2 commands per core for single threaded bundled swarms 
-    "processes-per-subjob=i"  => \$OPT{p},      # run 2 commands per core for single threaded bundled swarms 
 
 # sbatch options (specific)
     "hint=s"            => \$SLURMOPT{binary}{hint},
@@ -716,7 +713,7 @@ EOF
 
 # development run
   if ($OPT{devel}) {
-    $OPT{'no-scripts'} = 1 unless $OPT{"keep-scripts"};
+    $OPT{'no-scripts'} = 1;
     $OPT{'no-run'} = 1;
     $OPT{'no-log'} = 1;
     $OPT{debug} = 1;
@@ -851,11 +848,6 @@ EOF
 #    $OPT{R} = join ',',@tmp;
 #  }
 
-# comment out clean up lines if keep-scripts set
-  if ($OPT{"keep-scripts"} || $OPT{debug}) {
-    $OPT{"keep-scripts"}= '#';
-  }
-
 # Convert module from comma-delimited list to space-delimited list
   if ($OPT{module}) {
     my @tmp = split /,/,$OPT{module};
@@ -893,8 +885,6 @@ EOF
     $SLURMOPT{binary}{time}=$ENV{SBATCH_TIMELIMIT};
   }
 
-# Set keep-scripts if singleout
-  $OPT{"keep-scripts"} = '#' if $OPT{singleout};
 
 }
 #==============================================================================
@@ -945,7 +935,6 @@ delimited list, rather than a space-delimited list.
 Development options:
 
   -h, --help             print this help message
-  --keep-scripts         don't remove temporary swarm scripts
   --no-scripts           don't create temporary swarm scripts (with --debug
                          or --devel)
   --debug                don't actually run 
