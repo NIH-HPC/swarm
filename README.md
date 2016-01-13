@@ -116,11 +116,17 @@ swarm_cleanup.pl logs to /usr/local/logs/swarm_cleanup.log
 Swarm has several options for testing things.
 
 **--devel:** This option prevents swarm from creating command or batch scripts, prevents it from actually submitting to sbatch, and prevents it from logging to the standard logfile.  It also increases the verbosity level of swarm.
+
 **--verbose:** This option makes swarm more chatty, and accepts an integer from between 0 (silent) and 4.  Running a swarm with many commands at level 4 will give a lot of output, so beware.
+
 **--debug:** This option is similar to --devel, except that the scripts are actually created.
+
 **--no-run:** A hidden alacarte option, prevents swarm from actually submitting to sbatch.
+
 **--no-log:** A hidden alacarte option, prevents swarm from logging.
+
 **--logfile:** A hidden alacarte option, redirects the logfile from the standard logfile to one of your choice.
+
 **--no-scripts:** Don't create command and batch scripts.
 
 In the tests subdirectory, there are two scripts that can be run to test the current build of swarm.  **test.sh** runs a series of swarm commands that are expected to succeed, and **fail.sh** runs a series of swarm commands that are expected to fail.  They are run in **--devel** mode, so nothing is ever submitted to the cluster nor logged.
