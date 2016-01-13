@@ -724,6 +724,7 @@ EOF
   }
   elsif ($OPT{debug}) {
     $OPT{verbose} = 2;
+    $OPT{'no-run'} = 1;
     $OPT{'no-log'} = 1;
   }
 
