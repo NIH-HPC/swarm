@@ -11,7 +11,7 @@
 <script src='/js/dropdown.js'         type="text/javascript"></script>
 
 <!--[if lte IE 7.]>
-<script defer type="text/javascript" src="/js/pngfix.js" ></script>
+<script defer type="text/javascript" src='/js/pngfix.js' ></script>
 <![endif]-->
 <title>Swarm on Biowulf</title>
 </head>
@@ -21,14 +21,14 @@
         <a href="#content-area" id="skiplink"></a>
 </div>
 <div class="container">
-<div><img src="/images/golden_helix_top900.jpg" alt="" /></div>
+<div><img src='/images/golden_helix_top900.jpg' alt="" /></div>
 <table class="head_area" cellpadding="0" cellspacing="0" border="0" width="100%">
 <tr><th scope="col"></th><td scope="col">
 <div class="titleLocation">
 <div><a href="https://hpc.nih.gov" class="siteTitle">HPC <div class="siteTitle2">@</div> NIH</a></div>
 <div class="siteSubTitle">High-Performance Computing at the NIH</div>
 </div>
-<div><img src="/images/shimmy.gif" height="15" border="0" alt="" /></div>
+<div><img src='/images/shimmy.gif' height="15" border="0" alt="" /></div>
 </td>
 <td align="right" valign="top" scope="col">
 <div  class="searchCell">
@@ -84,6 +84,7 @@ title="Click here to add an RSS feed from HPC @ NIH" /></a>
       <ul>
          <li><a class='sublink' href='/storage/index.html'><span>Storage Overview</span></a></li>
          <li><a class='sublink' href='/storage/sharing_data.html'><span>Sharing Data</span></a></li>
+	 <li><a class='sublink' href='/storage/backups.html'><span>Backups</a></li>
       </ul>
    </li>
    <li class='has-sub'><a href='/docs/user_guides.html'><span>User Guides</span></a>
@@ -112,6 +113,7 @@ title="Click here to add an RSS feed from HPC @ NIH" /></a>
         <li><a class='sublink' href='/about/index.html#staff'><span>HPC Staff</span></a></li>
         <li><a class='sublink' href='/about/index.html#history'><span>History</span></a></li>
         <li><a class='sublink' href='/about/recruit.html'><span>Careers</span></a></li>
+	<li><a class='sublink' href='/policies'><span>Policies</span></a></li>
         <li><a class='sublink' href='/about/contact.html'><span>Contact</span></a></li>
      </ul>
    </li>
@@ -438,7 +440,7 @@ commands, swarm may fail unless <b>--usecsh</b> is included.</p>
 semi-colons.  To ease file editing, line continuation markers can be used to break up the single swarm commands
 into multiple lines.  For example, the swarmfile</p>
 
-<pre class="term">cd /data/user/project; KMER="CCCTAACCCTAACCCTAA"; jellyfish count -C -m ${#KMER} -t 32 -c 7 -s 1000000000 -o /lscratch/$SLURM_JOBID/39sHMC_Tumor_genomic <(samtools bam2fq /data/user/bam/0A4HMC/DNA/genomic/39sHMC_genomic.md.bam ); echo ${KMER} | jellyfish query /lscratch/$SLURM_JOBID/39sHMC_Tumor_genomic_0 > 39sHMC_Tumor_genomic.telrpt.count</pre>
+<pre class="term">cd /data/user/project; KMER="CCCTAACCCTAACCCTAA"; jellyfish count -C -m ${#KMER} -t 32 -c 7 -s 1000000000 -o /lscratch/$SLURM_JOB_ID/39sHMC_Tumor_genomic <(samtools bam2fq /data/user/bam/0A4HMC/DNA/genomic/39sHMC_genomic.md.bam ); echo ${KMER} | jellyfish query /lscratch/$SLURM_JOB_ID/39sHMC_Tumor_genomic_0 > 39sHMC_Tumor_genomic.telrpt.count</pre>
 
 <p>can be written like this:</p>
 
@@ -448,9 +450,9 @@ jellyfish count -C
   -t 32 \
   -c 7 \
   -s 1000000000 \
-  -o /lscratch/$SLURM_JOBID/39sHMC_Tumor_genomic \
+  -o /lscratch/$SLURM_JOB_ID/39sHMC_Tumor_genomic \
   <(samtools bam2fq /data/user/bam/0A4HMC/DNA/genomic/39sHMC_genomic.md.bam ); \
-echo ${KMER} | jellyfish query /lscratch/$SLURM_JOBID/39sHMC_Tumor_genomic_0 > 39sHMC_Tumor_genomic.telrpt.count</pre>
+echo ${KMER} | jellyfish query /lscratch/$SLURM_JOB_ID/39sHMC_Tumor_genomic_0 > 39sHMC_Tumor_genomic.telrpt.count</pre>
 
 <h3>Modules</h3>
 
@@ -932,9 +934,27 @@ corresponding to the jobid, e.g.:</p>
 
 <pre class="term"><b>/lscratch/987654/</b></pre>
 
-<p>This local scratch directory can be accessed dynamically using the <b>$SLURM_JOBID</b> environment variable:</p>
+<p>This local scratch directory can be accessed dynamically using the <b>$SLURM_JOB_ID</b> environment variable:</p>
 
-<pre class="term"><b>/lscratch/$SLURM_JOBID/</b></pre>
+<pre class="term"><b>/lscratch/$SLURM_JOB_ID/</b></pre>
+
+<p>Local scratch space is allocated <b>per job</b>.  By default, that means each command or command list (single line in
+swarmfile) is allocated its own independent local scratch space.  <b>HOWEVER</b>, there are two situations where some
+thought must be given to local scratch space:</p>
+
+<ul>
+  <li><b>bundled swarms</b> - <a href="#bundling">Bundled swarms</a> serialize multiple commands into a single job.  Since local scratch space is
+allocated per job, this means that each command in the job inherits the same local scratch space.  This means that each
+command should be written to deal with any "leftover" files from the previous commands.  A simple solution might be to
+clean out the local scratch space at the end of each command.  For example:<br>
+
+    <pre class="term">cd /lscratch/$SLURM_JOB_ID ; command1 arg1 arg2 ; rm -rf /lscratch/$SLURM_JOB_ID/*</pre>
+  </li>
+
+  <li><b>-p 2</b> - If the <tt><b><a href="#p">-p 2</a></b></tt> option is given to swarm, then allocated local scratch space is shared
+between 2 commands in a single job.  In this case, make sure to allocate <b>twice</b> as much local scratch space as
+normal.</li>
+</ul>
 
 <center><hr width="500" /></center>
 <a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
@@ -952,15 +972,15 @@ to the correct path for all subjobs in the swarm:</P>
 
 <p class="alert"><b>NOTE:</b> Environment variables set with the <b>--sbatch "--export="</b> option are defined
 <b>PRIOR</b> to the job being submitted.  This prevents setting environment variables using Slurm-generated environment
-variables, such as $SLURM_JOBID or $SLURM_MEM_PER_NODE.</p>
+variables, such as $SLURM_JOB_ID or $SLURM_MEM_PER_NODE.</p>
 
-<p>However, if each command line in the swarm requires a unique set of environment variables, this must be done in the swarmfile.  For example, setting TMPDIR to a unique subdirectory of /lscratch/$SLURM_JOBID:</p>
+<p>However, if each command line in the swarm requires a unique set of environment variables, this must be done in the swarmfile.  For example, setting TMPDIR to a unique subdirectory of /lscratch/$SLURM_JOB_ID:</p>
 
 <pre class="term"><b>[biowulf]$</b> cat swarmfile
-export TMPDIR=/lscratch/$SLURM_JOBID/xyz1; mkdir $TMPDIR; cmdxyz -x 1 -y 1 -z 1
-export TMPDIR=/lscratch/$SLURM_JOBID/xyz2; mkdir $TMPDIR; cmdxyz -x 2 -y 2 -z 2
-export TMPDIR=/lscratch/$SLURM_JOBID/xyz3; mkdir $TMPDIR; cmdxyz -x 3 -y 3 -z 3
-export TMPDIR=/lscratch/$SLURM_JOBID/xyz4; mkdir $TMPDIR; cmdxyz -x 4 -y 4 -z 4</pre>
+export TMPDIR=/lscratch/$SLURM_JOB_ID/xyz1; mkdir $TMPDIR; cmdxyz -x 1 -y 1 -z 1
+export TMPDIR=/lscratch/$SLURM_JOB_ID/xyz2; mkdir $TMPDIR; cmdxyz -x 2 -y 2 -z 2
+export TMPDIR=/lscratch/$SLURM_JOB_ID/xyz3; mkdir $TMPDIR; cmdxyz -x 3 -y 3 -z 3
+export TMPDIR=/lscratch/$SLURM_JOB_ID/xyz4; mkdir $TMPDIR; cmdxyz -x 4 -y 4 -z 4</pre>
 
 <P>Further, if individual commands within each command line require unique environment variables, this can be done by prefacing the command itself with the variable set:</P>
 
@@ -1131,7 +1151,7 @@ be adapted for other batch systems to work properly.
 
 <!-- End content area - do not edit below this line -->
 </div>
-<div align="right" class="lastmod"><script type="text/javascript" language="JavaScript" src="/js/lastmod.js"></script></div>
+<div align="right" class="lastmod"><script type="text/javascript" language="JavaScript" src='/js/lastmod.js'></script></div>
 <div class="footarea">
 <div class="footer">
 <a href='https://hpc.nih.gov/' class="footlink">HPC @ NIH </a> ~
@@ -1147,7 +1167,7 @@ be adapted for other batch systems to work properly.
 <a href='http://www.firstgov.gov/' class="footlink">USA.gov</a>
 </div>
 </div>
-<div><img src="/images/bluegreen_bottom900.jpg" alt="" /></div>
+<div><img src='/images/bluegreen_bottom900.jpg' alt="" /></div>
 </div>
 <br />
 </body>
