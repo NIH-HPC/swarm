@@ -459,7 +459,7 @@ echo ${KMER} | jellyfish query /lscratch/$SLURM_JOB_ID/39sHMC_Tumor_genomic_0 > 
 <p><a href="modules.html">Environment modules</a> can be loaded for an entire swarm using the <b>--module</b>
 option.  The </p> 
 
-<pre class="term">swarm -f file.swarm --module python tophat ucsc samtools vcftools -g 4 -t 8</pre>
+<pre class="term">swarm -f file.swarm --module python,tophat,ucsc,samtools,vcftools -g 4 -t 8</pre>
 
 <!-- ======================================================================================================== -->
 <!-- Output                                                                                                   -->
@@ -911,7 +911,7 @@ environment modules</a>.  Running commands via swarm complicates the issue, beca
 must be loaded prior to every line in the swarmfile.  Instead, you can use the <b>--module</b>
 option to load a list of modules:</p>
 
-<pre class="term"><b>[biowulf]$</b> swarm -f testfile --module ucsc matlab python/2.7.1</pre>
+<pre class="term"><b>[biowulf]$</b> swarm -f testfile --module ucsc,matlab,python/2.7.1</pre>
 
 <p>Here, the environment is set to use the UCSC executables, Matlab, and an older, non-default
 version of Python.</p>

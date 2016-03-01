@@ -325,10 +325,10 @@ Many applications require specific environment settings prior to execution.  For
 the environment can be set using environment modules.  Passing the environment settings to swarm is
 mediated by the --module option.  For example, if the commands in a swarm require setting the
 environment using the modules for tophat v2.0.6 and samtools v0.1.17, then these modules can be
-included in the swarm command.  Modules are separated only by spaces.
+included in the swarm command.  Modules are separated commas, no spaces allowed.
 .PP
 .nf
-      $ swarm -f cmdfile --module tophat/2.0.6 samtools/0.1.17 -g 4 -t 4
+      $ swarm -f cmdfile --module tophat/2.0.6,samtools/0.1.17 -g 4 -t 4  
 .fi
 .PP
 
