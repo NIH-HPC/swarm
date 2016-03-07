@@ -5,3 +5,6 @@ To make the problem easier to deal with, the way in which swarm creates and hand
 Thus, all swarms that have been successfully placed in the slurm queue have a symlink pointing to the temporary directories, positively identifying the jobs to which the swarm belongs.
 
 This change should be essentially invisible to the user, but make it easier to deal with cleaning up.  It will also simplify retroactive recovery of temporary .o and .e files that remain after --singleout swarms either timeout or are cancelled, if attempted.
+
+
+=
