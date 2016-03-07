@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Love colors
+# Love colors a lot
 function printRed {
     echo -e "\x01\033[31m\x02${1}\x01\033[0m\x02"
 }
