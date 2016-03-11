@@ -328,7 +328,7 @@ sub writeBatchScript
   $fileContents .= <<EOF1;
 
 # Determine the jobid and task id on the fly
-d=$PAR->{basedir}/\${SLURM_ARRAY_JOB_ID}
+d=$PAR->{tempdir}
 z=\$(printf '%0${len}d' \${SLURM_ARRAY_TASK_ID}) 
 EOF1
 
@@ -636,7 +636,6 @@ sub getCommandLineOptions
     "silent"            => \$OPT{silent},   # verbosity level = 0
 
 # hidden options
-    "user=s"            => \$OPT{user},      # test specific user
     "no-run"            => \$OPT{'no-run'},  # don't actually run
     "no-log"            => \$OPT{'no-log'},  # don't actually write to logfile
     "logfile=s"         => \$OPT{logfile},   # alternate logfile
@@ -809,8 +808,6 @@ EOF
     $OPT{g} = 1.5;
   }
   $SLURMOPT{binary}{"mem"} = ceil($OPT{g}*1024); 
-
-  $PAR->{user} = $OPT{user} if $OPT{user} && $OPT{debug};
 
 # After getopts, argv should be -1 for this script.
   dieWithError("excess commandline arguments (@ARGV). See $PAR->{programname} --help") if ($#ARGV > -1 || $#ARGV < -1);
