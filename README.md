@@ -119,7 +119,7 @@ Swarm has several options for testing things.
 
 **--verbose:** This option makes swarm more chatty, and accepts an integer from between 0 (silent) and 4.  Running a swarm with many commands at level 4 will give a lot of output, so beware.
 
-**--debug:** This option is similar to --devel, except that the scripts are actually created.
+**--debug:** This option is similar to --devel, except that the scripts are actually created.  The temporary directory for the swarm.batch and command scripts begins with 'dev', rather than 'tmp' like normal.
 
 **--no-run:** A hidden alacarte option, prevents swarm from actually submitting to sbatch.
 
