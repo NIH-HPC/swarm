@@ -5,3 +5,17 @@ To make the problem easier to deal with, the way in which swarm creates and hand
 Thus, all swarms that have been successfully placed in the slurm queue have a symlink pointing to the temporary directories, positively identifying the jobs to which the swarm belongs.
 
 This change should be essentially invisible to the user, but make it easier to deal with cleaning up.  It will also simplify retroactive recovery of temporary .o and .e files that remain after --singleout swarms either timeout or are cancelled, if attempted.
+
+--------
+
+2016-03-11
+
+David G. pointed out that there is a race condition between creation of the symlink to the temporary script directory and swarm.batch script execution.  Because
+the swarm.batch script uses $SLURM_ARRAY_JOB_ID to locate the command scripts, if the job array begins running before the symlink is in place, the command
+scripts would not be found.
+
+To prevent this, the swarm.batch script now hard-codes the path to the temporary directory, rather than relying on the symlink.
+
+This change will also make it possible to rerun the swarm, because rerunning would not depend on the symlink.  However, rerunning is not without risk, as the
+swarm rerun would need to complete before swarm_cleanup.pl removes the temporary directory and the symlink when the original job was finished more than 
+7 days earlier.
