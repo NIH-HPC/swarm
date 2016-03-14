@@ -132,6 +132,9 @@ cat <<testcases > testcases.list
 --time 14:00:00 --module TORTOISE --sbatch '--cpus-per-task=32 --mem=35g'
 --verbose=1 -g 15 --time=72:00:00
 --verbose=1 --partition=b1 -g 10 --time=36:00:00
+--verbose=1 --partition=norm,b1,largemem -g 10 --time=36:00:00
+--verbose=1 --partition=ccr,niddk,quick -g 10 --time=36:00:00
+--verbose=1 --partition=norm,b1,niddk,ccr,quick -g 10 --time=36:00:00
 testcases
 
 # Walk through each test case

@@ -38,6 +38,7 @@ cat <<testcases > testcases.list
 -t 4 -p 2
 -g 25 -job-name FirstBP --logdir /home/giustefo/ATACseq/Mouse_73//firstbp/
 --time=10-00:00:00 -b 4
+--time=8:00:00 -b 4 --partition norm,quick
 testcases
 
 # Walk through each test case

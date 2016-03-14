@@ -259,8 +259,9 @@ sub insertLmodInit
 {
   return unless $OPT{module};
   my $str;
-  if ($PAR->{shell} eq '/bin/bash') { $str .= "source /usr/local/lmod/lmod/lmod/init/bash\n"; }
-  elsif ($PAR->{shell} eq '/bin/tcsh') { $str .= "source /usr/local/lmod/lmod/lmod/init/csh\n"; }
+  $str .= "source /usr/local/lmod/lmod/lmod/init/bash\n";
+ # if ($PAR->{shell} eq '/bin/bash') { $str .= "source /usr/local/lmod/lmod/lmod/init/bash\n"; }
+ # elsif ($PAR->{shell} eq '/bin/tcsh') { $str .= "source /usr/local/lmod/lmod/lmod/init/csh\n"; }
   $str .= "module load $OPT{module}\n";
   return $str;
 }
@@ -277,7 +278,7 @@ sub writeCommandFiles
 # Walk through each commandline
     foreach my $comm (@{${$SWARM->{CMDLISTS}}[$subjob]}) {
       $commandFileName = $PAR->{tempdir}."/cmd.$suffix"."_".($comm % 2) if $OPT{p};
-      $fileContents{$commandFileName} .= insertLmodInit();
+    #  $fileContents{$commandFileName} .= insertLmodInit();
       $fileContents{$commandFileName} .= ${$SWARM->{COMMANDS}}[$comm]."\n";
     }
 # Print the contents
@@ -324,10 +325,8 @@ sub writeBatchScript
   my $len = length($#{$SWARM->{CMDLISTS}});
   my $len3 = length($OPT{p}) if $OPT{p};
   $fileContents .= "#!/bin/bash\n";
-
+  $fileContents .= insertLmodInit();
   $fileContents .= <<EOF1;
-
-# Determine the jobid and task id on the fly
 d=$PAR->{tempdir}
 z=\$(printf '%0${len}d' \${SLURM_ARRAY_TASK_ID}) 
 EOF1
@@ -1056,13 +1055,23 @@ sub adjustTime
 # Get default_time from partition
   my $slurm = Slurm::new();
   my $partitions = $slurm->load_partitions();
-  foreach my $i (@{$partitions->{partition_array}}) {
-    if ($i->{name} eq $SLURMOPT{binary}{partition} ) {
-      $PAR->{default_time} = ($i->{default_time}*60); # time is in minutes
-      $PAR->{max_time} = ($i->{max_time}*60); # time is in minutes
+
+# Account for multiple partitions
+  $PAR->{default_time} = 999999999999; # really long time
+  $PAR->{max_time} = 999999999999; # really long time
+  foreach my $part (split /,/,$SLURMOPT{binary}{partition}) {
+    my $part_found;
+    foreach my $i (@{$partitions->{partition_array}}) {
+      if ($i->{name} eq $part ) {
+        $part_found=1;
+        my $t = ($i->{default_time}*60); # time is in minutes
+        $PAR->{default_time} = $t if ($t < $PAR->{default_time});
+        $t = ($i->{max_time}*60); # time is in minutes
+        $PAR->{max_time} = $t if ($t < $PAR->{max_time});
+      }
     }
+    ($part_found) || dieWithError("undefined time limit for $SLURMOPT{binary}{partition} partition!");
   }
-  (defined $PAR->{default_time}) || dieWithError("undefined time limit for $SLURMOPT{binary}{partition} partition!");
 
 # Find requested_time from user
   if (defined $SLURMOPT{binary}{time}) {
