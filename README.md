@@ -23,6 +23,14 @@ swarm writes everything in /spin1/swarm, under a user-specific directory:
 
 swarm (running as the user) first creates a subdirectory within the user's directory with a completely random name beginning with 'tmp'.  The command scripts are named 'cmd.#', with # being the index of the job array.  The batch script is simply named 'swarm.batch'.  All of these are written into the temporary subdirectory.
 
+### Details about the batch script
+
+The batch script 'swarm.batch' hard-codes the path to the temporary subdirectory as the location of the command scripts.  This allows the swarm to be rerun, albeit with the same sbatch options.
+
+The module function is initialized and modules are loaded in the batch script.  This limits the number of times 'module load' is called to once per swarm, but it also means that the user could overrule the environment within the swarm commands.
+
+### What happens after submission
+
 When a swarm job is successfully submitted to slurm, a jobid is obtained, and a symlink is created that points to the temporary directory.  This allows for simple identification of swarm array jobs running on the cluster.
 
 If a submission fails, then the symlink created will instead have the string '_FAIL' tagged onto the end:

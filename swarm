@@ -256,12 +256,12 @@ sub write_s_if_needed
 }
 #==============================================================================
 sub insertLmodInit
+# Insert two lines of code to load modules.  NOTE: This only works in a bash script.  It is meant to be
+# inserted into the batch script, not the command scripts, which may use bash or tcsh to run.
 {
   return unless $OPT{module};
   my $str;
   $str .= "source /usr/local/lmod/lmod/lmod/init/bash\n";
- # if ($PAR->{shell} eq '/bin/bash') { $str .= "source /usr/local/lmod/lmod/lmod/init/bash\n"; }
- # elsif ($PAR->{shell} eq '/bin/tcsh') { $str .= "source /usr/local/lmod/lmod/lmod/init/csh\n"; }
   $str .= "module load $OPT{module}\n";
   return $str;
 }
@@ -278,7 +278,6 @@ sub writeCommandFiles
 # Walk through each commandline
     foreach my $comm (@{${$SWARM->{CMDLISTS}}[$subjob]}) {
       $commandFileName = $PAR->{tempdir}."/cmd.$suffix"."_".($comm % 2) if $OPT{p};
-    #  $fileContents{$commandFileName} .= insertLmodInit();
       $fileContents{$commandFileName} .= ${$SWARM->{COMMANDS}}[$comm]."\n";
     }
 # Print the contents
@@ -325,7 +324,14 @@ sub writeBatchScript
   my $len = length($#{$SWARM->{CMDLISTS}});
   my $len3 = length($OPT{p}) if $OPT{p};
   $fileContents .= "#!/bin/bash\n";
+
+# The swarm.batch file loads the modules, and the command scripts will inherit the environment.  Thie
+# can be screwed up if the user fiddles with the environment within the commands.
   $fileContents .= insertLmodInit();
+
+# Generate the rest of the batch script.  NOTE: The path to the temporary directory is hard-coded in
+# the swarm.batch script.  This allows a swarm to be rerun, albeit with the correct sbatch options.
+# These can be found in the swarm logfile.
   $fileContents .= <<EOF1;
 d=$PAR->{tempdir}
 z=\$(printf '%0${len}d' \${SLURM_ARRAY_TASK_ID}) 
