@@ -19,3 +19,13 @@ To prevent this, the swarm.batch script now hard-codes the path to the temporary
 This change will also make it possible to rerun the swarm, because rerunning would not depend on the symlink.  However, rerunning is not without risk, as the
 swarm rerun would need to complete before swarm_cleanup.pl removes the temporary directory and the symlink when the original job was finished more than 
 7 days earlier.
+
+--------
+
+2016-04-19
+
+Created parse_batch_logs.pl that will parse through the archived sbatch logfiles and create a Perl store file that associates the randomly generated string used for the 
+temporary directories in /swarm with a jobid, or an aborted submission.  This store file is now used by swarm_cleanup.pl to speed up the search for jobids associated with
+orphan directories that don't have a symlink.
+
+Additionally, fixed a bug.  Swarms of a single job were being ignored by the parsing expression, and were not being deleted.

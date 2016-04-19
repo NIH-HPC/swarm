@@ -74,7 +74,7 @@ unless ($OPT{silent}) {
 }
 # In order to see the effect of cleanup, we need to wait at least
 # 60 seconds for the quota to refresh
-#sleep(70) unless ($OPT{debug});
+sleep(70) unless ($OPT{debug});
 printSwarmUsage() unless($OPT{silent});
 
 #==============================================================================
