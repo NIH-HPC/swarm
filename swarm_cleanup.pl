@@ -261,12 +261,31 @@ sub getStatesForJob
   my $cmd = "/usr/local/slurm/bin/sacct -j $jobid --format=JobID,State,End --noheader --parsable2";
   $cmd .= " -u $OPT{user}" if $OPT{user};
   chomp(my $ret = `$cmd`);
+  if ($OPT{verbose} && $OPT{jobid}) {
+    print "cmd = $cmd\n";
+    print "$ret\n";
+  }
   my $hr;
   foreach my $line (split /\n/,$ret) {
     if ($line=~/^(\d+)_[^\|]+\|(\w+).*?\|(\S+)$/) {
       my ($jobid,$state) = ($1,$2);
       my $end = str2time($3);
 # Accumulate the states
+      if ($OPT{verbose} && $OPT{jobid}) {
+         print "state = $state\n";
+      }
+      $hr->{$jobid}{states}{$state} = 1;
+# Find minimal value of days_since_ending
+      $JOBS->{$jobid}{days_since_ending}=minValue(((time()-$end)/86400),$JOBS->{$jobid}{days_since_ending});
+    }
+# Swarm of a single job
+    elsif ($line=~/^(\d+)\|(\w+).*?\|(\S+)$/) {
+      my ($jobid,$state) = ($1,$2);
+      my $end = str2time($3);
+# Accumulate the states
+      if ($OPT{verbose} && $OPT{jobid}) {
+         print "state = $state\n";
+      }
       $hr->{$jobid}{states}{$state} = 1;
 # Find minimal value of days_since_ending
       $JOBS->{$jobid}{days_since_ending}=minValue(((time()-$end)/86400),$JOBS->{$jobid}{days_since_ending});
