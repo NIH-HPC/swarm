@@ -15,7 +15,7 @@ $|=1;  # turns off output buffering
 
 my $PAR;
 
-$PAR->{minage} = 7; # files must be at least 7 days old before doing anything
+$PAR->{minage} = 5; # files must be at least this many days old before doing anything
 $PAR->{logfile} = "/usr/local/logs/swarm_cleanup.log";
 $PAR->{description} = <<EOF;
 
