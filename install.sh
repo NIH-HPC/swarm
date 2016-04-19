@@ -29,11 +29,12 @@ usage: $0 [ -h ] [ -f file ] [ -d ]
     $mandir/swarm.1
     $bindir/swarm
     $sbindir/swarm_cleanup.pl
+    $sbindir/parse_sbatch_logs.pl
     $htmldir/swarm.html
 
   If -f is given, only that file will be updated.
 
-  Last updated 3/1/16, David Hoover
+  Last updated 3/19/16, David Hoover
 "
   exit
 }
@@ -81,10 +82,14 @@ if [[ -n $file ]]; then
     swarm_cleanup.pl)
       update_file $sbindir swarm_cleanup.pl 0750
     ;;
+    parse_sbatch_logs.pl)
+      update_file $sbindir parse_sbatch_logs.pl 0750
+    ;;
   esac
 else
   update_file $mandir swarm.1 0644
   update_file $htmldir swarm.html 0644
   update_file $bindir swarm 0755
   update_file $sbindir swarm_cleanup.pl 0750
+  update_file $sbindir parse_sbatch_logs.pl 0750
 fi

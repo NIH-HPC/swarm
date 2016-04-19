@@ -2,6 +2,7 @@
 
 use lib "/usr/local/slurm/lib/site_perl/5.12.1/x86_64-linux-thread-multi";
 use lib "/usr/local/slurm/lib/perl5/site_perl/5.18.2/x86_64-linux-thread-multi-ld";
+use Storable;
 use File::Basename;
 use File::Path;
 use Getopt::Long;
@@ -17,6 +18,8 @@ my $PAR;
 
 $PAR->{minage} = 5; # files must be at least this many days old before doing anything
 $PAR->{logfile} = "/usr/local/logs/swarm_cleanup.log";
+$PAR->{store} = "/usr/local/logs/swarm.store";
+$PAR->{orphan_min_age} = 60; # orphandirectories will only be evaluated if they are at least 60 days old
 $PAR->{description} = <<EOF;
 
 swarm_cleanup.pl -- remove old swarm temp files and directories
@@ -28,7 +31,7 @@ options:
   -u,--user     run for a single user
   -j,--jobid    run for a single job
   --dev         remove devel directories
-  --orphans     remove obsolete and orphaned directories
+  --orphan      remove obsolete and orphaned directories
   --fail        remove submission failures
   --age         restrict deletion to directories at least
                 this many days old (default = $PAR->{minage} days)
@@ -39,7 +42,11 @@ options:
   --debug       run in debug mode
   -h,--help     print this message
 
-Last modification date Nov 06, 2015 (David Hoover)
+  --orphan_min_age
+                minimal days old a directory without a symlink needs to be
+                in order to be deleted (default = $PAR->{orphan_min_age} days)
+
+Last modification date Apr 19, 2016 (David Hoover)
 
 EOF
 
@@ -67,7 +74,7 @@ unless ($OPT{silent}) {
 }
 # In order to see the effect of cleanup, we need to wait at least
 # 60 seconds for the quota to refresh
-sleep(70) unless ($OPT{debug});
+#sleep(70) unless ($OPT{debug});
 printSwarmUsage() unless($OPT{silent});
 
 #==============================================================================
@@ -80,6 +87,7 @@ sub set_options
     "jobid=s" => \$OPT{jobid}, # restrict to this jobid
     "dev" => \$OPT{"clean-dev"}, # only clean dev directories
     "orphan" => \$OPT{"clean-orphans"}, # only clean orphan directories
+    "orphan_min_age" => \$OPT{orphan_min_age}, # minimal age of orphans to delete 
     "fail" => \$OPT{"clean-failures"}, # only clean orphan directories
     "debug" => \$OPT{debug}, # debug mode
     "h" => sub { print $PAR->{description}; exit; },
@@ -96,6 +104,8 @@ sub set_options
 # Change minimum age  
   $PAR->{minage} = $OPT{age} if (defined $OPT{age});
 
+  $PAR->{orphan_min_age} = $OPT{orphan_min_age} if (defined $OPT{orphan_min_age});
+
 # Change verbosity
   if ($OPT{debug}) {
     if (!$OPT{silent} && !$OPT{quiet}) {
@@ -108,6 +118,7 @@ sub set_options
  
 # Must be root 
   die("You must be root!\n") if ($<);
+
 }
 #==============================================================================
 sub emptydir {
@@ -184,28 +195,30 @@ sub getDevDirectories
 #==============================================================================
 sub getOrphanDirectories
 {
-# Find tmp directories without any symlinks
+# Find tmp directories without any symlinks, restricting the search to those directories 60 days or older
   print "Getting orphan directories without symlink (this will take some time)\n" if $OPT{verbose};
   my $cmd;
   if ($OPT{user}) {
-    $cmd = "/bin/find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type d 2>/dev/null";
+    $cmd = "/bin/find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -type d -mtime +$PAR->{orphan_min_age} 2>/dev/null";
   }
   else {
-    $cmd = "/bin/find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type d 2>/dev/null";
+    $cmd = "/bin/find /spin1/swarm/ -mindepth 2 -maxdepth 2 -type d -mtime +$PAR->{orphan_min_age} 2>/dev/null";
   }
+print "$cmd\n" if $OPT{verbose};
   chomp(my $ret = `$cmd`);
   my $s;
   DIR: foreach my $dir (split /\n/,$ret) {
     my $name = basename($dir);
     next DIR if ($name=~/^dev/);
-    next DIR if ($name=~/^tmp/);
+#    next DIR if ($name=~/^tmp/);
 # Now turn around and find if there are any symlinks pointing to that file
     if ($OPT{user}) {
-      $cmd = "/bin/find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -lname $dir 2>/dev/null";
+      $cmd = "/bin/find /spin1/swarm/$OPT{user}/ -mindepth 1 -maxdepth 1 -lname $dir -mtime +$PAR->{orphan_min_age} 2>/dev/null";
     }
     else {
-      $cmd = "/bin/find /spin1/swarm/ -mindepth 2 -maxdepth 2 -lname $dir 2>/dev/null";
+      $cmd = "/bin/find /spin1/swarm/ -mindepth 2 -maxdepth 2 -lname $dir -mtime +$PAR->{orphan_min_age} 2>/dev/null";
     } 
+print "$cmd\n" if $OPT{verbose};
     chomp(my $ret2 = `$cmd`);
     if (!$ret2) {
       $s->{$name} = $dir;
@@ -370,9 +383,35 @@ sub clean_devdirs
   }
 }
 #==============================================================================
+sub findJobidsFromStore
+{
+  my $HR = retreive_old_data();
+  my $old;
+  foreach my $user (sort keys %{$HR->{swarm}}) {
+    foreach my $date (sort keys %{$HR->{swarm}->{$user}}) {
+      foreach my $tag (sort keys %{$HR->{swarm}->{$user}->{$date}}) { 
+        $old->{$tag}->{user}=$user;
+        $old->{$tag}->{jobid}=$HR->{swarm}->{$user}->{$date}->{$tag}->{jobid};
+      }
+    }
+  }
+  return $old;
+}
+#==================================================================================================
+sub retreive_old_data
+{
+  open(FH, ">$PAR->{store}.lck")           or die "can't create lock $PAR->{store}.lck $!";
+  flock(FH, 2)                        or die "can't flock $PAR->{store}.lck $!";
+  my $hr = retrieve($PAR->{store}) if (-f $PAR->{store});
+  close(FH)                           or die "can't remove lock $PAR->{store}.lck $!";
+  unlink "$PAR->{store}.lck";
+  return $hr;
+}
+#==================================================================================================
 sub clean_orphandirs
 {
   my $tmpdir = getOrphanDirectories();
+  my $taghash = findJobidsFromStore();
   print "Walking through directories\n" if $OPT{verbose};
 # Walk through all directories and determine if it and the associated batch file be removed
   DIR: foreach my $dir (sort keys %{$tmpdir}) {
@@ -405,25 +444,27 @@ sub clean_orphandirs
         print_action({user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>1,link=>0,age=>$age,empty=>1});
       }
       else {
-# Look in swarm log to see if it is on the verge of running
-        chomp(my $stupid = `/bin/grep $dir /usr/local/logs/sbatch.log`);
-        if ($stupid=~/ SUBM\[ERROR\]: $user /) {
-          print_action({state=>'SUBM[ERROR]',ended=>1,user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>1,link=>0,age=>$age});
-        } 
-        elsif ($stupid=~/ SUBM\[(\d+)\]: $user /) {
-          my $s = get_state($1,$age);
-          if ($s->{ended} == 1) {
-            print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>1,link=>0,age=>$age});
+# The directory tag is known from the sbatch logfiles
+        if ($taghash->{$dir}->{user} && ($taghash->{$dir}->{user} eq $user)) {
+          if ($taghash->{$dir}->{jobid} eq 'ERROR') {
+            print_action({state=>'SUBM[ERROR]',ended=>1,user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>1,link=>0,age=>$age});
           }
-          elsif ($s->{ended} == 0) {
-            print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0,age=>$age});
-          }
-          else {
-            print_action({user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0});
+          elsif ($taghash->{$dir}->{jobid} =~ /^(\d+)$/) {
+            my $s = get_state($1,$age);
+            if ($s->{ended} == 1) {
+              print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>1,link=>0,age=>$age});
+            }
+            elsif ($s->{ended} == 0) {
+              print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0,age=>$age});
+            }
+            else {
+              print_action({user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0});
+            }
           }
         }
-        elsif ($stupid) {
-          print_action({state=>$stupid,ended=>0,user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0,age=>$age});
+# The directory is just too old, come on now
+        elsif ($age > $PAR->{orphan_min_age}) {
+          print_action({state=>'TOO OLD',user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>1,link=>0,age=>$age});
         }
         else {
           print_action({user=>$user,dir=>$dir,path=>$tmpdir->{$dir},delete=>0,link=>0,age=>$age});
@@ -562,7 +603,7 @@ sub print_action
 
 # Now really delete stuff
   if ($action eq 'DELETE') {
-    if ($OPT{"clean-dev"} || $OPT{"clean-failures"}) {
+    if ($OPT{"clean-dev"} || $OPT{"clean-failures"} || $OPT{"clean-orphans"}) {
       if (-d $hr->{path}) {
         $PAR->{deleted_count}++;
         print "  rm -rf $hr->{path}\n" if ($OPT{verbose});
@@ -570,11 +611,6 @@ sub print_action
           if (rmtree($hr->{path})) { appendToFile($PAR->{logfile},(strftime("%F %T",(localtime(time))[0 .. 5]))." ".$hr->{path}."\n"); }
         }
       }
-    }
-    elsif ($OPT{"clean-orphans"}) {
-
-# do nothing yet
-
     }
     else {
       if (-l $hr->{path}) {
