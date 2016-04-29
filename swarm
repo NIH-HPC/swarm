@@ -55,6 +55,7 @@ my %OPT;
 my %SLURMOPT;
 my $SBATCHOPT;
 getCommandLineOptions();
+validatePartition();
 parseCommands();
 evaluateBundling();
 adjustTime();
@@ -104,6 +105,14 @@ sub setDefaults
 # Make sure sbatch is accessible
   my $sbatch_check = `which sbatch 2>/dev/null`;
   dieWithError("Can't find sbatch.  Is slurm in your path?") unless $sbatch_check;
+
+# Get configuration for partitions
+  my $slurm = Slurm::new();
+  my $x = $slurm->load_partitions();
+  foreach my $i (@{$x->{partition_array}}) {
+    $PAR->{slurm_partitions}{$i->{name}}{default_time} = $i->{default_time};
+    $PAR->{slurm_partitions}{$i->{name}}{max_time} = $i->{max_time};
+  }
 }
 #==============================================================================
 sub distributeCommands
@@ -1048,6 +1057,18 @@ EOF
   return $string;
 }
 #==============================================================================
+sub validatePartition
+# Don't let the use choose an unknown or invalid partition
+{
+  my @names = (sort keys %{$PAR->{slurm_partitions}});
+  foreach my $part (split /,/,$SLURMOPT{binary}{partition}) {
+    dieWithError("Unknown partition '$part'!") unless (grep /^$part$/,@names);
+    dieWithError("Invalid partition '$part'!") if $part eq 'ibddr';
+    dieWithError("Invalid partition '$part'!") if $part eq 'ibfdr';
+    dieWithError("Invalid partition '$part'!") if $part eq 'ibqdr';
+  }
+}
+#==============================================================================
 sub adjustTime
 #
 # Multiply the default time by the bundle factor...
@@ -1058,17 +1079,14 @@ sub adjustTime
 # Don't bother if partition is unlimited
   return if ($SLURMOPT{binary}{partition} eq "unlimited");
 
-# Get default_time from partition
-  my $slurm = Slurm::new();
-  my $partitions = $slurm->load_partitions();
-
 # Account for multiple partitions
   $PAR->{default_time} = 999999999999; # really long time
   $PAR->{max_time} = 999999999999; # really long time
   foreach my $part (split /,/,$SLURMOPT{binary}{partition}) {
     my $part_found;
-    foreach my $i (@{$partitions->{partition_array}}) {
-      if ($i->{name} eq $part ) {
+    foreach my $name (sort keys %{$PAR->{slurm_partitions}}) {
+      if ($name eq $part ) {
+        my $i = $PAR->{slurm_partitions}{$name};
         $part_found=1;
         my $t = ($i->{default_time}*60); # time is in minutes
         $PAR->{default_time} = $t if ($t < $PAR->{default_time});
