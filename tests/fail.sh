@@ -39,6 +39,12 @@ cat <<testcases > testcases.list
 -g 25 -job-name FirstBP --logdir /home/giustefo/ATACseq/Mouse_73//firstbp/
 --time=10-00:00:00 -b 4
 --time=8:00:00 -b 4 --partition norm,quick
+-t auto -g 6 -partition nimh
+-t 4 -g 2 --module samtools/1.2,bedtools --sbatch '--partition=ibqdr --mail-type=BEGIN,END' --job-name=bam2bedgraph
+-c 4
+--partition stupid
+-t 20 -g 8 -module afni --usecsh --partition nimh
+-g 72 --module cufflinks -q nimh
 testcases
 
 # Walk through each test case

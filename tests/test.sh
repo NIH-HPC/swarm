@@ -55,7 +55,6 @@ cat <<testcases > testcases.list
 --time 1:00:00
 --time 10:00:00
 --license matlab
---partition stupid
 --partition nimh
 --qos bogus
 --qos norm
@@ -87,7 +86,7 @@ cat <<testcases > testcases.list
 -g 4 --time 00:10:00 --partition quick --module R
 -g 5 -t 8 --partition=ccr --time=99:00:00 --module htseq
 -g 64 -t 16 --module samtools,seqtk,kraken --time 10:00:00
--g 72 --module cufflinks -q nimh
+-g 72 --module cufflinks --qos nimh
 -g 8 --module python --partition quick
 -g 8 --partition=ccr --time=56:00:00
 -g 8 --time 00:15:00 --dependency=afterany:10558281
@@ -95,7 +94,7 @@ cat <<testcases > testcases.list
 -g 8 -t 1 --partition quick --module fastqc
 -g 8 -t 1 --time 18:00:00 --logdir ~/temp/analysis_results/netMHC/1_4_15_working_folder/ --partition ccr
 -g 8 -t 10 --partition=ccr --time=56:00:00
--t 20 -g 8 -module afni --usecsh --partition nimh
+-t 20 -g 8 --module afni --usecsh --partition nimh
 -t 5 -g 8 --module fastxtoolkit
 -t 8 -g 200 --gres=lscratch:200 --module samtools/1.2 --time=12:00:00 --sbatch '--partition=b1 --mail-type=BEGIN,END'
 -t auto -g 6
@@ -121,10 +120,8 @@ cat <<testcases > testcases.list
 --sbatch '--partition=ccr --time=8:00:00 --job-name CNV_fmtD --mail-type=TIME_LIMIT_90,FAIL --dependency afterany:10611929'
 -t 10 -g 5 --time=24:00:00
 -t 4 -g 2 --module samtools/1.2,bedtools --sbatch '--mail-type=BEGIN,END' --job-name=bam2bedgraph
--t 4 -g 2 --module samtools/1.2,bedtools --sbatch '--partition=ibqdr --mail-type=BEGIN,END' --job-name=bam2bedgraph
 -t 4 -g 2 --module samtools/1.2,bedtools --sbatch '--partition=quick --mail-type=BEGIN,END' --job-name=bam2bedgraph
--t auto -g 6 -partition nimh
--t auto -g 6 -partition nimh --time 1-00:00:00
+-t auto -g 6 --partition nimh --time 1-00:00:00
 -t auto --time 12:00:00 --module R
 --time=00:01:00 --partition=quick --sbatch '--mail-type=TIME_LIMIT_90,FAIL' -g 1
 --time 10:00:00

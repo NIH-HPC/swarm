@@ -27,6 +27,7 @@
 
 # This script is an adaptation of the swarm script for use with SLURM.
 use Getopt::Long qw(:config no_ignore_case);
+Getopt::Long::Configure("bundling"); # allows option bundling
 use POSIX qw(strftime floor ceil);
 use File::Temp qw/tempfile tempdir/;
 use File::Basename qw/basename/;
@@ -625,7 +626,6 @@ sub getCommandLineOptions
     "p=i"               => \$OPT{p},      # run 2 commands per core for single threaded bundled swarms 
     "processes-per-subjob=i"  => \$OPT{p},      # run 2 commands per core for single threaded bundled swarms 
     "usecsh"            => \$OPT{usecsh},    # use tcsh shell instead of bash
-    "c=s"               => \$OPT{commentChar}, # comment character
     "comment-char=s"    => \$OPT{commentChar}, # comment character
     "no-comment"        => \$OPT{nocomment}, # no comment character
     "evaluate"          => \$OPT{evaluate}, # only keep commands that evaluate as true
