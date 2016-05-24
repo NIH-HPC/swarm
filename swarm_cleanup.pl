@@ -218,10 +218,10 @@ print "$cmd\n" if $OPT{verbose};
     else {
       $cmd = "/bin/find /spin1/swarm/ -mindepth 2 -maxdepth 2 -lname $dir -mtime +$PAR->{orphan_min_age} 2>/dev/null";
     } 
-print "$cmd\n" if $OPT{verbose};
     chomp(my $ret2 = `$cmd`);
     if (!$ret2) {
       $s->{$name} = $dir;
+print "\__ $s->{$name} has no symlinks!\n" if $OPT{verbose};
     }
   }
   return $s;
@@ -385,6 +385,7 @@ sub clean_devdirs
 #==============================================================================
 sub findJobidsFromStore
 {
+print "Parsing old swarm logs\n" if $OPT{verbose};
   my $HR = retreive_old_data();
   my $old;
   foreach my $user (sort keys %{$HR->{swarm}}) {
