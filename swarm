@@ -254,6 +254,9 @@ sub report
       my $cores = $cpus/2;
       print ", allocating $cores core".write_s_if_needed($cores)." and $cpus cpu".write_s_if_needed($cpus);
     }
+    if ($PAR->{multinode}) {
+      print " across $PAR->{multinode} nodes";
+    }
     print "\n";
   }
 
@@ -721,6 +724,16 @@ EOF
     }
   }
 
+# Look to see if this is a multinode job
+  my $nodes;
+  if (defined $SBATCHOPT) {
+    if ($SBATCHOPT=~/^\-\-nodes\s*=?\s*(\d+)/) { $nodes = $1; }
+    elsif ($SBATCHOPT=~/ \-\-nodes\s*=?\s*(\d+)/) { $nodes = $1; }
+    elsif ($SBATCHOPT=~/^\-N\s*=?\s*(\d+)/) { $nodes = $1; }
+    elsif ($SBATCHOPT=~/ \-N\s*=?\s*(\d+)/) { $nodes = $1; }
+  }
+  $PAR->{multinode} = $nodes if ($nodes && $nodes > 1);
+
 # Be quiet!
   $OPT{verbose} = 0 if $OPT{silent};
 
@@ -1063,9 +1076,9 @@ sub validatePartition
   my @names = (sort keys %{$PAR->{slurm_partitions}});
   foreach my $part (split /,/,$SLURMOPT{binary}{partition}) {
     dieWithError("Unknown partition '$part'!") unless (grep /^$part$/,@names);
-    dieWithError("Invalid partition '$part'!") if $part eq 'ibddr';
-    dieWithError("Invalid partition '$part'!") if $part eq 'ibfdr';
-    dieWithError("Invalid partition '$part'!") if $part eq 'ibqdr';
+    dieWithError("Partition '$part' is only valid for multinode jobs") if (($part eq 'ibddr') && !$PAR->{multinode});
+    dieWithError("Partition '$part' is only valid for multinode jobs") if (($part eq 'ibfdr') && !$PAR->{multinode});
+    dieWithError("Partition '$part' is only valid for multinode jobs") if (($part eq 'ibqdr') && !$PAR->{multinode});
   }
 }
 #==============================================================================
