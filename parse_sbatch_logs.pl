@@ -5,76 +5,103 @@ use FileHandle;
 use Fcntl ':flock';
 use strict;
 
-my $store = '/usr/local/logs/swarm.store';
-my $sbatch_log_dir="/usr/local/logs/sbatch_log_archives/";
+my $PAR;
 
-my $HR = retreive_old_data();
-my @l = (keys %{$HR->{logfile}});
-if (parse_logfiles($sbatch_log_dir)) {
-  add_new_data_to_store();
+$PAR->{store} = '/usr/local/logs/swarm.store';
+$PAR->{sbatch_log_dir}="/usr/local/logs/sbatch_log_archives/";
+$PAR->{sbatch_log} = "/usr/local/logs/sbatch.log";
+
+my %OPT;
+getOptions();
+
+retreive_old_data();
+my @l = (keys %{$PAR->{data}->{logfile}});
+parse_logfiles($PAR->{sbatch_log_dir});
+add_new_data_to_store() unless $OPT{debug};
+if ($OPT{verbose}) {
+  print_summary();
 }
-print_short_summary();
-#print_summary();
+else {
+  print_short_summary();
+}
 
 #==================================================================================================
 sub retreive_old_data
 {
-  open(FH, ">$store.lck")           or die "can't create lock $store.lck $!";
-  flock(FH, 2)                        or die "can't flock $store.lck $!";
-  my $hr = retrieve($store) if (-f $store);
-  close(FH)                           or die "can't remove lock $store.lck $!";
-  unlink "$store.lck";
-  return $hr;
+  open(FH, ">$PAR->{store}.lck")           or die "can't create lock $PAR->{store}.lck $!";
+  flock(FH, 2)                        or die "can't flock $PAR->{store}.lck $!";
+  $PAR->{data} = retrieve($PAR->{store}) if (-f $PAR->{store});
+  close(FH)                           or die "can't remove lock $PAR->{store}.lck $!";
+  unlink "$PAR->{store}.lck";
+  return;
 }
 #==================================================================================================
 sub add_new_data_to_store
 {
-  open(FH, ">$store.lck")           or die "can't create lock $store.lck $!";
-  flock(FH, 2)                        or die "can't flock $store.lck $!";
-  unlink $store if (-f $store);
-  store($HR,$store);
-  close(FH)                           or die "can't remove lock $store.lck $!";
-  unlink "$store.lck";
+  open(FH, ">$PAR->{store}.lck")           or die "can't create lock $PAR->{store}.lck $!";
+  flock(FH, 2)                        or die "can't flock $PAR->{store}.lck $!";
+  unlink $PAR->{store} if (-f $PAR->{store});
+  store($PAR->{data},$PAR->{store});
+  close(FH)                           or die "can't remove lock $PAR->{store}.lck $!";
+  unlink "$PAR->{store}.lck";
+  chmod 0640,$PAR->{store};
 }
 #==================================================================================================
 sub parse_logfiles
 {
-  my ($sbatch_log_dir) = @_;
-  opendir DIR, $sbatch_log_dir;
+# Find the archived sbatch log files
+  opendir DIR, $PAR->{sbatch_log_dir};
   my @files = grep /^sbatch.log-201\d+$/, readdir DIR;
   @files = sort @files;
   closedir DIR;
 
-  my $count=0;
+# Walk through the log files
   LOGFILE: foreach my $f (@files) {
-    $count++;
-    if (defined $HR->{logfile}->{$f}) {
-    #  print "logfile $f already parsed\n";
+# Skip it if it has already been parsed
+    if (defined $PAR->{data}->{logfile}->{$f}) {
+      print "logfile $f already parsed\n" if $OPT{verbose};
       next LOGFILE;
     }
-#    last if ($count > 4);
-    if (open FILE, "<$sbatch_log_dir/$f") {
-      print "parsing $f\n";
-      LINE: foreach my $line (<FILE>) {
-        next LINE unless ($line=~/ \/spin1\/swarm\//);
-        if ($line =~ /^(\d{4})(\d{2})(\d{2}) (\d\d:\d\d:\d\d) \w+ SUBM\[(\w+)\]: (\w+) .*?\/spin1\/swarm\/(\w+)\/(\w+)\/swarm.batch$/) {
-          add_to_hashref($f,"${1}-${2}-${3} ${4}",$6,$7,$8,$5); 
-        }
-      }
-      close FILE;
-      $HR->{logfile}->{$f} = 1;
-    }
+# Parse the file
+    $PAR->{data}->{logfile}->{$f} = parse_log_file("$PAR->{sbatch_log_dir}/$f");
   }
-  return $count;
+
+# And of course parse the current sbatch.log file
+  print "parsing regular log\n" if $OPT{verbose};
+  parse_log_file($PAR->{sbatch_log});
+
+  return;
+}
+#==================================================================================================
+sub parse_log_file
+{
+  my $f = shift;
+  if (open FILE, "<$f") {
+    print "parsing $f\n";
+    LINE: foreach my $line (<FILE>) {
+      next LINE unless ($line=~/ \/spin1\/swarm\//);
+      if ($line =~ /^(\d{4})(\d{2})(\d{2}) (\d\d:\d\d:\d\d) \w+ SUBM\[(\w+)\]: (\w+) .*?\/spin1\/swarm\/(\w+)\/(\w+)\/swarm.batch$/) {
+        my $date = "${1}-${2}-${3}";
+        my $time = ${4};
+        add_to_hashref($f,"$date $time",$6,$7,$8,$5); 
+        if (!$PAR->{dates_found}{$date}) {
+          print "$date\n" if $OPT{verbose};
+        }
+        $PAR->{dates_found}{$date} = 1;
+      }
+    }
+    close FILE;
+    return 1;
+  }
 }
 #==================================================================================================
 sub add_to_hashref
 {
   my ($logfile,$date,$user,$user2,$tag,$jobid) = @_;
   return unless ($user eq $user2); # ?
-  if (not defined $HR->{swarm}->{$user}->{$date}->{$tag}) {
+  if (not defined $PAR->{data}->{swarm}->{$user}->{$date}->{$tag}) {
     my $time = str2time($date);
-    $HR->{swarm}->{$user}->{$date}->{$tag} = {(
+    $PAR->{data}->{swarm}->{$user}->{$date}->{$tag} = {(
       time => $time,
       jobid => $jobid,
       logfile => $logfile,
@@ -84,13 +111,13 @@ sub add_to_hashref
 #==================================================================================================
 sub print_short_summary
 {
-  my @files = (keys %{$HR->{logfile}});
+  my @files = (keys %{$PAR->{data}->{logfile}});
   print "LOGFILES: ".scalar(@files)."\n";;
 
   my $count=0;
-  foreach my $user (sort keys %{$HR->{swarm}}) {
-    foreach my $date (sort keys %{$HR->{swarm}->{$user}}) {
-      foreach my $tag (sort keys %{$HR->{swarm}->{$user}->{$date}}) { 
+  foreach my $user (sort keys %{$PAR->{data}->{swarm}}) {
+    foreach my $date (sort keys %{$PAR->{data}->{swarm}->{$user}}) {
+      foreach my $tag (sort keys %{$PAR->{data}->{swarm}->{$user}->{$date}}) { 
         $count++; 
       }
     }
@@ -101,83 +128,70 @@ sub print_short_summary
 sub print_summary
 {
   print "LOGFILES CHECKED:\n";
-  foreach my $file (sort keys %{$HR->{logfile}}) {
+  foreach my $file (sort keys %{$PAR->{data}->{logfile}}) {
     print "  $file\n";
   }
 
   print "JOBS:\n";
-  foreach my $user (sort keys %{$HR->{swarm}}) {
-    foreach my $date (sort keys %{$HR->{swarm}->{$user}}) {
-      foreach my $tag (sort keys %{$HR->{swarm}->{$user}->{$date}}) { 
+  foreach my $user (sort keys %{$PAR->{data}->{swarm}}) {
+    foreach my $date (sort keys %{$PAR->{data}->{swarm}->{$user}}) {
+      foreach my $tag (sort keys %{$PAR->{data}->{swarm}->{$user}->{$date}}) { 
         printf ("%s  %-20s  %-20s %-10s %-10s\n",
           $tag,
           $date,
           $user,
-          $HR->{swarm}->{$user}->{$date}->{$tag}->{logfile},
-          $HR->{swarm}->{$user}->{$date}->{$tag}->{jobid},
+          $PAR->{data}->{swarm}->{$user}->{$date}->{$tag}->{logfile},
+          $PAR->{data}->{swarm}->{$user}->{$date}->{$tag}->{jobid},
         );
       }
     }
   }
 }
 #==================================================================================================
+sub getOptions
+{ 
+  use Getopt::Long qw(:config no_ignore_case);
+  Getopt::Long::Configure("bundling"); # allows option bundling
+  GetOptions(
+    'help' => \$OPT{help},
+    'h' => \$OPT{help},
+    'debug' => \$OPT{debug},
+    'd' => \$OPT{debug},
+    'verbose' => \$OPT{verbose},
+    'v' => \$OPT{verbose},
+  ) || printOptions();
 
+  printOptions() if $OPT{help};
 
-#20160403 12:16:03 biowulf SUBM[16684093]: buhuleod /spin1/users/buhuleod/proj1 sbatch --array=0-0 --job-name=swarm --output=/data/buhuleod/proj1/swarm_%A_%a.o --error=/data/buhuleod/proj1/swarm_%A_%a.e --cpus-per-task=2 --mem=10240 --partition=b1 --time=5-00:00:00 /spin1/swarm/buhuleod/tmpysxQQ5Fz/swarm.batch
+  print STDERR "Running in debug mode\n" if $OPT{debug};
+}
+#==================================================================================================
+sub printOptions
+{
+  my $msg = shift;
+  warn "\n$msg\n" if $msg;
 
+  print STDERR <<EOF;
 
-#use Data::Dumper;
+Usage: $0 [ options ]
 
-## Hash of arrays
-#$HoA = {(
-#  flintstones => [ "fred","barney" ],
-#  jetsons => [ "george","jane","elroy" ],
-#  simpsons => [ "homer","marge","bart"],
-#)};
-##print Dumper($HoA);
-#store $HoA, 'HoA.store';
-#
-## hash of hashes
-#$HoH = {(
-#  flintstones => {
-#    lead => "fred",
-#    pal  => "barney",
-#  },
-#  jetsons => {
-#    lead => "george",
-#    wife => "jane",
-#    "his boy" => "elroy",
-#  },
-#  simpsons => {
-#    lead => "homer",
-#    wife => "marge",
-#    kid => "bart",
-#  },
-#)};
-##print Dumper($HoH);
-#store $HoH, 'HoH.store';
-#
-## array of hashes
-#$AoH = [
-#    {
-#       husband  => "barney",
-#       wife     => "betty",
-#       son      => "bamm bamm",
-#    },
-#    {
-#       husband => "george",
-#       wife    => "jane",
-#       son     => "elroy",
-#    },
-#
-#    {
-#       husband => "homer",
-#       wife    => "marge",
-#       son     => "bart",
-#    },
-#  ];
-##print Dumper($AoH);
-#store $AoH, 'AoH.store';
-#
-#
-###$hr = retrieve('HoA.store');
+Options:
+
+  -h, --help     print options list
+  -d, --debug    run in debug mode 
+  -v, --verbose  be chatty
+
+Description:
+
+  Parse sbatch log files and incorporate the results into a store file for
+  swarm_cleonup.pl.
+
+    $PAR->{store}
+
+  Last modification date: Jun 10, 2016
+
+EOF
+  
+  exit;
+}
+#=================================================================================================

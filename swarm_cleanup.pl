@@ -21,39 +21,11 @@ $PAR->{minage} = 5; # files must be at least this many days old before doing any
 $PAR->{logfile} = "/usr/local/logs/swarm_cleanup.log";
 $PAR->{store} = "/usr/local/logs/swarm.store";
 $PAR->{orphan_min_age} = 60; # orphandirectories will only be evaluated if they are at least 60 days old
-$PAR->{description} = <<EOF;
 
-swarm_cleanup.pl -- remove old swarm temp files and directories
+my %OPT;
+getOptions();
 
-Actions are logged to $PAR->{logfile} 
-
-options:
-
-  -u,--user     run for a single user
-  -j,--jobid    run for a single job
-  --dev         remove devel directories
-  --orphan      remove obsolete and orphaned directories
-  --fail        remove submission failures
-  --age         restrict deletion to directories at least
-                this many days old (default = $PAR->{minage} days)
-
-  -v,--verbose  be very chatty
-  -q,--quiet    just show summary
-  -s,--silent   report nothing
-  --debug       run in debug mode
-  -h,--help     print this message
-
-  --orphan_min_age
-                minimal days old a directory without a symlink needs to be
-                in order to be deleted (default = $PAR->{orphan_min_age} days)
-
-Last modification date Apr 19, 2016 (David Hoover)
-
-EOF
-
-
-my %OPT;  # options
-set_options();
+system("/usr/local/sbin/parse_sbatch_logs.pl");
 
 # Pull jobs from slurm cache via perl API
 my $JOBS;
@@ -79,7 +51,7 @@ sleep(360) unless ($OPT{debug});
 printSwarmUsage() unless($OPT{silent});
 
 #==============================================================================
-sub set_options
+sub getOptions
 {
   GetOptions(
     "u=s" => \$OPT{user}, # restrict to this user
@@ -90,6 +62,7 @@ sub set_options
     "orphan" => \$OPT{"clean-orphans"}, # only clean orphan directories
     "orphan_min_age" => \$OPT{orphan_min_age}, # minimal age of orphans to delete 
     "fail" => \$OPT{"clean-failures"}, # only clean orphan directories
+    "d" => \$OPT{debug}, # debug mode
     "debug" => \$OPT{debug}, # debug mode
     "h" => sub { print $PAR->{description}; exit; },
     "help" => sub { print $PAR->{description}; exit; },
@@ -265,6 +238,11 @@ sub getCurrentJobs
 # Find minimal value of days_since_ending
       $JOBS->{$ref->{array_job_id}}{days_since_ending}=minValue(((time()-$ref->{end_time})/86400),$JOBS->{$ref->{array_job_id}}{days_since_ending});
     }
+# Compile a list of users who are currently running jobs
+    if (!$PAR->{users_running_jobs}{$ref->{user_id}}) {
+      my $u = (getpwuid($ref->{user_id}))[0];
+      $PAR->{users_running_jobs}{$u} = 1;
+    }
   } 
   return;  
 }
@@ -323,10 +301,6 @@ sub clean_jobdirs
 # Because we already know the job id, and by definition if the job is not available via the
 # Slurm Perl API then the job is completed, all we have to check is whether the job is
 # defined in the jobarray.
-    #if ($s->{ended} == -1) {
-    #  print_action({user=>$user,dir=>$jobid,path=>$joblink->{$jobid},delete=>0,link=>1,age=>$age});
-    #}
-    #elsif ($s->{ended} == 1) {
     if (not defined $JOBS->{$jobid}) { # unknown to perl api, assumed completed
       my $s = get_state($jobid,$age); # Perl API may fail, and sacct may give nonsense
       if ($s->{ended} == 1) {
@@ -338,7 +312,17 @@ sub clean_jobdirs
         print_action({state=>$s->{state},ended=>$s->{ended},user=>$user,dir=>$jobid,path=>$joblink->{$jobid},delete=>0,link=>1,age=>$age});
       } 
       else {
-        print_action({ended=>$s->{ended},user=>$user,dir=>$jobid,path=>$joblink->{$jobid},delete=>0,link=>1,age=>$age});
+
+#+------------------------------------------------------------------------------
+#| SPECIAL CASE -- very old jobs that are no longer in sacct, and the users are not currently running
+#+------------------------------------------------------------------------------
+
+        if (($age > $PAR->{orphan_min_age}) && (!$PAR->{users_running_jobs}{$user})) {
+          print_action({ended=>1,user=>$user,dir=>$jobid,path=>$joblink->{$jobid},delete=>1,link=>1,age=>$age,dse=>$age});
+        }
+        else {
+          print_action({ended=>$s->{ended},user=>$user,dir=>$jobid,path=>$joblink->{$jobid},delete=>0,link=>1,age=>$age});
+        }
       }
     }
     else {
@@ -676,4 +660,46 @@ sub printSwarmUsage
   );
   print $string;
 }
-#============================================================================================================================
+#==================================================================================================
+sub printOptions
+{
+  my $msg = shift;
+  warn "\n$msg\n" if $msg;
+
+  print STDERR <<EOF;
+
+Usage: $0 [ options ]
+
+Description:
+
+  swarm_cleanup.pl -- remove old swarm temp files and directories
+
+  Actions are logged to $PAR->{logfile} 
+
+Options:
+
+  -u,--user     run for a single user
+  -j,--jobid    run for a single job
+  --dev         remove devel directories
+  --orphan      remove obsolete and orphaned directories
+  --fail        remove submission failures
+  --age         restrict deletion to directories at least
+                this many days old (default = $PAR->{minage} days)
+
+  -v,--verbose  be very chatty
+  -q,--quiet    just show summary
+  -s,--silent   report nothing
+  --debug       run in debug mode
+  -h,--help     print this message
+
+  --orphan_min_age
+                minimal days old a directory without a symlink needs to be
+                in order to be deleted (default = $PAR->{orphan_min_age} days)
+
+  Last modification date Jun 10, 2016 (David Hoover)
+
+EOF
+  
+  exit;
+}
+#=================================================================================================
