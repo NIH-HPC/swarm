@@ -11,6 +11,7 @@ use Slurm;
 use FileHandle;
 use POSIX qw(strftime);
 use Date::Parse qw(str2time);
+use HPCNIH::Staff::MySQL::Catalog;
 use strict;
 $|=1;  # turns off output buffering
 
@@ -664,20 +665,15 @@ sub minValue
 #==============================================================================
 sub printSwarmUsage
 {
-  use DBI;
-  my $dbh = DBI->connect("DBI:mysql:;mysql_read_default_group=helixmon;mysql_read_default_file=/usr/local/etc/my.cnf;mysql_connect_timeout=10",undef,undef,{RaiseError=>0});
-  my $sql = "SELECT * FROM quota_spin1 WHERE volume = 'swarm'";
-  my $sth = $dbh->prepare($sql);
-  $sth->execute;
-  my $l = $sth->fetchrow_hashref();
+  my $cat = HPCNIH::Staff::MySQL::Catalog->new(catalog=>"quota_spin1");
+  my $x = $cat->get_current(entity=>"/spin1/swarm");
+  my $y = $x->{'/spin1/swarm'};
   my $string = sprintf("/swarm usage: %6.2f GB (%4.1f%%), %7d files (%4.1f%%)\n",
-      ( $l->{Dusage}/1024/1024 ),
-      ( ($l->{Dusage}/$l->{Dquota})*100 ),
-      ( $l->{Fusage} ),
-      ( ($l->{Fusage}/$l->{Fquota})*100 ),
+      ( $y->{dusage}/1024/1024 ),
+      ( ($y->{dusage}/$y->{dquota})*100 ),
+      ( $y->{fusage} ),
+      ( ($y->{fusage}/$y->{fquota})*100 ),
   );
-  $sth->finish;
-  $dbh->disconnect();
   print $string;
 }
 #============================================================================================================================
