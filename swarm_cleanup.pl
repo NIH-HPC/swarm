@@ -73,7 +73,11 @@ sub getOptions
     "silent" => \$OPT{silent},
     "q" => \$OPT{quiet},
     "quiet" => \$OPT{quiet},
+    "h" => \$OPT{help},
+    "help" => \$OPT{help},
   ) || die($PAR->{description});
+
+ printOptions() if $OPT{help};
 
 # Change minimum age  
   $PAR->{minage} = $OPT{age} if (defined $OPT{age});
@@ -200,26 +204,6 @@ print "\__ $s->{$name} has no symlinks!\n" if $OPT{verbose};
   }
   return $s;
 }
-#==============================================================================
-#sub getSingleoutFiles
-#{
-#  print "Getting singleout file info\n" if $OPT{verbose};
-#  my $cmd;
-#  if ($OPT{user}) {
-#    $cmd = "find /spin1/swarm/$OPT{user} -mindepth 1 -maxdepth 1 -type f -name '*.o' -o -name '*.e' 2>/dev/null";
-#  }
-#  else {
-#    $cmd = "find /spin1/swarm -mindepth 2 -maxdepth 2 -type f -name '*.o' -o -name '*.e' 2>/dev/null";
-#  }
-#  chomp(my $ret = `$cmd`);
-#  my $s;
-#  foreach my $file (split /\n/,$ret) {
-#    if ($file =~ /\/(\d+)_[\d_]+\.[eo]$/) {
-#      push @{$s->{$1}},$file;
-#    }
-#  }
-#  return $s;
-#}
 #==============================================================================
 sub getCurrentJobs
 {
@@ -695,6 +679,12 @@ Options:
   --orphan_min_age
                 minimal days old a directory without a symlink needs to be
                 in order to be deleted (default = $PAR->{orphan_min_age} days)
+
+Notes:
+
+  Directories and symlinks that correspond to swarms are automatically removed
+  if their age exceeds --orphan_min_age and the user is not currently running
+  any jobs.
 
   Last modification date Jun 10, 2016 (David Hoover)
 
