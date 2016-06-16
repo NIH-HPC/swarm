@@ -656,6 +656,7 @@ sub getCommandLineOptions
     "no-run"            => \$OPT{'no-run'},  # don't actually run
     "no-log"            => \$OPT{'no-log'},  # don't actually write to logfile
     "logfile=s"         => \$OPT{logfile},   # alternate logfile
+    "maxarraysize=i"    => \$OPT{maxarraysize}, # for testing 
 
 # sbatch options (specific)
     "hint=s"            => \$SLURMOPT{binary}{hint},
@@ -909,7 +910,8 @@ EOF
     $SLURMOPT{binary}{time}=$ENV{SBATCH_TIMELIMIT};
   }
 
-
+# Override default maxarraysize if needed
+  $PAR->{maxarraysize} = $OPT{maxarraysize} if $OPT{maxarraysize};
 }
 #==============================================================================
 sub print_options
