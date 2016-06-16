@@ -58,7 +58,6 @@ my $SBATCHOPT;
 getCommandLineOptions();
 validatePartition();
 parseCommands();
-evaluateBundling();
 adjustTime();
 distributeCommands();
 report();
@@ -120,20 +119,39 @@ sub distributeCommands
 # The commands have been parsed into an array, and the number of processes per node has been determined.  Now figure
 # out how to distribute the commands to the command scripts.
 {
-  my $tmp;
-  my $cheat = $PAR->{b};
-  $cheat *= $OPT{p} if ($OPT{p}); 
-  foreach my $i (0 .. $#{$SWARM->{COMMANDS}}) {
-    $PAR->{commands}++;
-    push @{$tmp},$i;
-    if ((($i+1) % $cheat) == 0) {
-      push @{$SWARM->{CMDLISTS}},$tmp;
-      undef $tmp;
-      $PAR->{subjobs}++;
-    }
-  }
-  push @{$SWARM->{CMDLISTS}},$tmp if (defined $tmp);
+  $PAR->{commands} = scalar(@{$SWARM->{COMMANDS}});
 
+  foreach my $i (0 .. $#{$SWARM->{COMMANDS}}) {
+    my ($sj,$cpu);
+# No bundling, no packing
+    if ($PAR->{b} == 1) {
+      if (!$OPT{p}) {
+        $sj = $i % $PAR->{maxarraysize};
+        $cpu = 0;
+      }
+# No bundling, but yes packing
+      else {
+        $sj = (floor($i/2)) % $PAR->{maxarraysize};
+        $cpu = $i % 2;
+      }
+    }
+# Yes bundling, but no packing
+    else {
+      if (!$OPT{p}) {
+        $sj = (floor($i/$PAR->{b})) % $PAR->{maxarraysize};
+        $cpu = 0;
+      }
+# Yes bundling, and yes packing
+      else {
+        $sj = (floor($i/(2*$PAR->{b}))) % $PAR->{maxarraysize};
+        $cpu = $i % 2;
+      }
+    }
+# Add the command number to the list
+    push @{${$SWARM->{CMDLISTS}}[$sj][$cpu]},$i;
+  }
+
+  $PAR->{subjobs} = scalar(@{$SWARM->{CMDLISTS}});
 }
 #==============================================================================
 sub report
@@ -178,56 +196,34 @@ sub report
 
   my $outputfiles;
   print "-"x60,"\n"."SWARM\n" if ($OPT{verbose} > 3);
-  foreach my $i (0 .. $#{$SWARM->{CMDLISTS}}) {
+  foreach my $sj (0 .. $#{$SWARM->{CMDLISTS}}) {
+
+# How many commands will be run in this subjob?
+    my $num_cmds_in_subjob=0;
+    $num_cmds_in_subjob += scalar(@{${$SWARM->{CMDLISTS}}[$sj][0]});
+    $num_cmds_in_subjob += scalar(@{${$SWARM->{CMDLISTS}}[$sj][1]}) if (defined ${$SWARM->{CMDLISTS}}[$sj][1]);
     if ($OPT{verbose} > 3) {
       printf ("%ssubjob %${len1}d: %${len2}d command%s (%d cpu%s, %.2f gb)\n",
         $top,
-        $i,
-        (scalar(@{${$SWARM->{CMDLISTS}}[$i]})),
-        write_s_if_needed(scalar(@{${$SWARM->{CMDLISTS}}[$i]})),
+        $sj,
+        $num_cmds_in_subjob,
+        write_s_if_needed($num_cmds_in_subjob),
         $SLURMOPT{binary}{"cpus-per-task"},
         write_s_if_needed($SLURMOPT{binary}{"cpus-per-task"}),
         ($SLURMOPT{binary}{"mem"}/1024),
       );
     }
     if ($OPT{verbose} > 4) {
-      if ($PAR->{b} > 1) {
-        if (not defined $OPT{p}) {
-          print $pre;
-          foreach my $j (@{${$SWARM->{CMDLISTS}}[$i]}) {
-            if ($OPT{verbose} > 5) { print  ${$SWARM->{COMMANDS}}[$j]." ; "; }
-            else { print  "cmd $j ; "; }
-          }
-          print "\n";
-          $outputfiles++;
+      foreach my $cpu (0 .. $#{${$SWARM->{CMDLISTS}}[$sj]}) {     
+        if ($OPT{verbose} > 5) {
+          my @tmp;
+          foreach my $cmd (@{${$SWARM->{CMDLISTS}}[$sj][$cpu]}) { push @tmp,${$SWARM->{COMMANDS}}[$cmd]; }
+          print $pre . (join ';',@tmp)."\n";
         }
         else {
-          my $k=-1;
-          my $clust;
-          foreach my $j (@{${$SWARM->{CMDLISTS}}[$i]}) {
-            if ($OPT{verbose} > 5) {
-              $clust .=  ${$SWARM->{COMMANDS}}[$j]." ; ";
-            }
-            else { $clust .= "cmd $j ; "; }
-            if ((($j+1) % $PAR->{b}) == 0) {
-              $k++;
-              print $pre.$clust."\n";
-              undef $clust;
-              $outputfiles++;
-            }
-          }
-          print $pre.$clust."\n" if ($clust);
-          $outputfiles++ if ($clust);
+          print $pre . (join ';',@{${$SWARM->{CMDLISTS}}[$sj][$cpu]})."\n";
         }
-      }
-      else {
-        foreach my $j (@{${$SWARM->{CMDLISTS}}[$i]}) {
-          if ($OPT{verbose} > 5) {
-            print  $pre.${$SWARM->{COMMANDS}}[$j]."\n";
-          }
-          else { print  $pre."cmd $j\n"; }
-          $outputfiles++;
-        }
+        $outputfiles++;
       }
     }
   }
@@ -255,7 +251,7 @@ sub report
       print ", allocating $cores core".write_s_if_needed($cores)." and $cpus cpu".write_s_if_needed($cpus);
     }
     if ($PAR->{multinode}) {
-      print " across $PAR->{multinode} nodes";
+      print " across $PAR->{multinode} nodes each";
     }
     print "\n";
   }
@@ -284,14 +280,17 @@ sub writeCommandFiles
   mkdir $PAR->{tempdir};
   my $len = length($#{$SWARM->{CMDLISTS}});
 # Walk through each subjob
-  foreach my $subjob (0 .. $#{$SWARM->{CMDLISTS}}) {
+  foreach my $sj (0 .. $#{$SWARM->{CMDLISTS}}) {
     my %fileContents;
-    my $suffix = sprintf "%0${len}d",$subjob;
+    my $suffix = sprintf "%0${len}d",$sj;
     my $commandFileName = $PAR->{tempdir}."/cmd.$suffix";
 # Walk through each commandline
-    foreach my $comm (@{${$SWARM->{CMDLISTS}}[$subjob]}) {
-      $commandFileName = $PAR->{tempdir}."/cmd.$suffix"."_".($comm % 2) if $OPT{p};
-      $fileContents{$commandFileName} .= ${$SWARM->{COMMANDS}}[$comm]."\n";
+    foreach my $cpu (0 .. $#{${$SWARM->{CMDLISTS}}[$sj]}) {
+      foreach my $comm (@{${$SWARM->{CMDLISTS}}[$sj][$cpu]}) {
+# Change command filename if packing
+        $commandFileName = $PAR->{tempdir}."/cmd.$suffix"."_".($cpu) if $OPT{p};
+        $fileContents{$commandFileName} .= ${$SWARM->{COMMANDS}}[$comm]."\n";
+      }
     }
 # Print the contents
     foreach my $file (sort keys %fileContents) {
@@ -498,13 +497,6 @@ sub createSymlink
   if ($PAR->{jobid}) { 
     symlink ("$PAR->{tempdir}","$PAR->{basedir}/$PAR->{jobid}");
   }
-}
-#==============================================================================
-sub evaluateBundling
-{
-# Determine minimal bundling value -- this is essential autobundle
-  $PAR->{b} = ceil((scalar(@{$SWARM->{COMMANDS}}))/$PAR->{maxarraysize});
-  $PAR->{b} = $OPT{b} if ($OPT{b} > $PAR->{b});
 }
 #==============================================================================
 sub parseCommands
@@ -774,6 +766,7 @@ EOF
 
 # avoid stupidness
   $OPT{b}=1 if ((not defined $OPT{b}) || ($OPT{b} <= 1));
+  $PAR->{b} = $OPT{b};
 
 # set cpus-per-task or ntasks-per-node
   if ($OPT{t}) {
@@ -799,7 +792,7 @@ EOF
 # pack only allowed for single threaded swarms 
   if ($OPT{t} && $OPT{p}) {
     if (($OPT{t} > 1) && ($OPT{p} > 1)) {
-      dieWithError("-t is for multi-threaded commands, -p is for single-threaded commands.  Use one or the other!");
+      dieWithError("-t is for multi-threaded or multi-node commands, -p is for single-threaded commands.  Use one or the other!");
     }
   }
   undef $OPT{p} if ($OPT{p} <= 1);
