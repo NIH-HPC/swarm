@@ -58,8 +58,8 @@ my $SBATCHOPT;
 getCommandLineOptions();
 validatePartition();
 parseCommands();
-adjustTime();
 distributeCommands();
+adjustTime();
 report();
 writeCommandFiles() unless $OPT{'no-scripts'};
 writeBatchScript() unless $OPT{'no-scripts'};
@@ -67,6 +67,7 @@ sleep(2) unless $OPT{debug}; # sleep 2 seconds to prevent weirdness
 submitSlurm();
 createSymlink() unless $OPT{'no-scripts'};
 writeLog() unless $OPT{'no-log'};
+call_newwall();
 
 #===============================================================================
 sub setDefaults
@@ -1078,12 +1079,8 @@ sub validatePartition
 }
 #==============================================================================
 sub adjustTime
-#
-# Multiply the default time by the bundle factor...
+# The timelimit must be changed to account for bundling and/or folding
 {
-# Don't bother unless bundling
-  return if ($PAR->{b} == 1);
-
 # Don't bother if partition is unlimited
   return if ($SLURMOPT{binary}{partition} eq "unlimited");
 
@@ -1115,10 +1112,49 @@ sub adjustTime
 
   #print "requested_time = ".seconds_to_clock($PAR->{requested_time})."\n";
   #print "max_time = ".seconds_to_clock($PAR->{max_time})."\n";
-  $PAR->{adjusted_time} = $PAR->{requested_time} * $PAR->{b};
-  dieWithError("Total time for bundled commands is greater than partition walltime limit.\nTry lowering the time per command (--time=".seconds_to_clock($PAR->{requested_time})."), lowering the bundle factor\n(if not autobundled), picking another partition, or splitting up the swarmfile.") if ($PAR->{adjusted_time} > $PAR->{max_time});
 
-  $SLURMOPT{binary}{time} = seconds_to_clock($PAR->{adjusted_time});
+# Do we need to adjust the time?  With folding, we now have to determine this on a per-subjob basis
+  my $max_adjusted_time = 0;
+  foreach my $sj (0 .. $#{$SWARM->{CMDLISTS}}) {
+    my $max_cmds_in_subjob = scalar(@{${$SWARM->{CMDLISTS}}[$sj][0]});
+    if (defined ${$SWARM->{CMDLISTS}}[$sj][1]) {
+      my $z = scalar(@{${$SWARM->{CMDLISTS}}[$sj][1]});
+      if ($z && ($z > $max_cmds_in_subjob)) {
+        $max_cmds_in_subjob = $z;
+      }
+    }
+    my $adjusted_time = $PAR->{requested_time} * $max_cmds_in_subjob;
+    $max_adjusted_time = $adjusted_time if ($max_adjusted_time < $adjusted_time);
+    push @{$SWARM->{SUBJOB_TIME}},$adjusted_time;
+  }
+
+# Die if the max_adjusted_time is too great
+  dieWithError("Total time for bundled commands is greater than partition walltime limit.\nTry lowering the time per command (--time=".seconds_to_clock($PAR->{requested_time})."), lowering the bundle factor\n(if not autobundled), picking another partition, or splitting up the swarmfile.") if ($max_adjusted_time > $PAR->{max_time});
+
+# Find the most frequently used time
+  $SLURMOPT{binary}{time} = seconds_to_clock(most_frequently_used_time());
+}
+#==============================================================================
+sub most_frequently_used_time
+{
+  my %hash;
+  foreach my $time (@{$SWARM->{SUBJOB_TIME}}) { $hash{$time}++; }
+  my $key;
+  my $value;
+  foreach my $time (sort {$a <=> $b} keys %hash) {
+    my $multiplier = $time/$PAR->{requested_time};
+    print "m = $multiplier, time = $time, number = $hash{$time}\n";
+    if (((not defined $key) && (not defined $value)) || ($hash{$time} > $value)) {
+      $key = $time;
+      $value = $hash{$time};
+    }
+  }
+  return $key;
+}
+#==============================================================================
+sub call_newwall
+{
+  
 }
 #==============================================================================
 sub seconds_to_clock
