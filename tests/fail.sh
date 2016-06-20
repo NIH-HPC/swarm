@@ -45,6 +45,8 @@ cat <<testcases > testcases.list
 --partition stupid
 -t 20 -g 8 -module afni --usecsh --partition nimh
 -g 72 --module cufflinks -q nimh
+--verbose=1 --partition=ccr,niddk,quick -g 10 --time=36:00:00
+--verbose=1 --partition=norm,b1,niddk,ccr,quick -g 10 --time=36:00:00
 testcases
 
 # Walk through each test case
