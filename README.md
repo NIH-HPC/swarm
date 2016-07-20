@@ -6,6 +6,14 @@ Swarm is a script designed to simplify submitting a group of commands to the Bio
 
 The swarm script accepts a number of input parameters along with a file containing a list of commands that otherwise would be run on the command line.  swarm parses the commands from this file and writes them to a series of command scripts.  Then a single batch script is written to execute these command scripts in a slurm job array, using the user's inputs to guide how slurm allocates resources.
 
+### Bundling versus folding
+
+Bundling a swarm means running two or more commands per subjob serially, uniformly.  For example, if there are 1000 commands in a swarm, and the bundle factor is 5, then each subjob will run 5 commands serially, resulting in 200 subjobs in the job array.
+
+Folding a swarm means running commands serially in a subjob only if the number of subjobs exceed the maximum array size (maxarraysize = 1000).  This is a new concept.  Previously, if a swarm exceeded the maxarraysize, then either the swarm would fail, or the swarm would be autobundled until it fit within the maxarraysize number of subjobs.  Thus, if a swarm had 1001 commands, it would be autobundled with a bundle factor of 2 into 500 subjobs, with 2 commands serially each.  With folding, this would still result in 1000 subjobs, but one subjob would have 2 serial commands, while the rest have 1.
+
+Folding was implemented June 21, 2016.
+
 ## Behind the scenes
 
 swarm writes everything in /spin1/swarm, under a user-specific directory:

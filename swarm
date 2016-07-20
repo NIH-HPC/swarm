@@ -990,6 +990,7 @@ Environment variables
   SBATCH_TIMELIMIT       Same as --time
   SBATCH_EXCLUSIVE       Same as --exclusive
 
+  Last modification date: Jun 21, 2016
 EOF
   exit;
 }
@@ -1110,9 +1111,6 @@ sub adjustTime
     $PAR->{requested_time} = $PAR->{default_time};
   } 
 
-  #print "requested_time = ".seconds_to_clock($PAR->{requested_time})."\n";
-  #print "max_time = ".seconds_to_clock($PAR->{max_time})."\n";
-
 # Do we need to adjust the time?  With folding, we now have to determine this on a per-subjob basis
   my $max_adjusted_time = 0;
   foreach my $sj (0 .. $#{$SWARM->{CMDLISTS}}) {
@@ -1131,39 +1129,9 @@ sub adjustTime
 # Die if the max_adjusted_time is too great
   dieWithError("Total time for bundled commands is greater than partition walltime limit.\nTry lowering the time per command (--time=".seconds_to_clock($PAR->{requested_time})."), lowering the bundle factor\n(if not autobundled), picking another partition, or splitting up the swarmfile.") if ($max_adjusted_time > $PAR->{max_time});
 
-# Find the most frequently used time
+# Set time to the maximum amount
   $SLURMOPT{binary}{time} = seconds_to_clock($max_adjusted_time);
 }
-#==============================================================================
-#sub most_frequently_used_time
-#{
-#  my %hash;
-#  foreach my $time (@{$SWARM->{SUBJOB_TIME}}) { $hash{$time}++; }
-#  my $key;
-#  my $value;
-#  foreach my $time (sort {$a <=> $b} keys %hash) {
-#    my $multiplier = $time/$PAR->{requested_time};
-#    print "m = $multiplier, time = $time, number = $hash{$time}\n";
-#    if (((not defined $key) && (not defined $value)) || ($hash{$time} > $value)) {
-#      $key = $time;
-#      $value = $hash{$time};
-#    }
-#  }
-#  $SWARM->{MOST_FREQUENT_TIME} = $key;
-#  return $key;
-#}
-#==============================================================================
-#sub call_newwall
-#{
-#  foreach my $i (0 .. $#{$SWARM->{SUBJOB_TIME}}) {
-#    if (${$SWARM->{SUBJOB_TIME}}[$i] != $SWARM->{MOST_FREQUENT_TIME}) {
-#      my $cmd = "newwall -j $PAR->{jobid}_$i -t ".seconds_to_clock(${$SWARM->{SUBJOB_TIME}}[$i]);
-#      print "$cmd\n";
-#      system($cmd) if ($PAR->{jobid});
-#      #sleep 1;
-#    }
-#  }
-#}
 #==============================================================================
 sub seconds_to_clock
 # converts seconds to clock time (D*-HH:MM:SS)
