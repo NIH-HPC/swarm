@@ -1,0 +1,8 @@
+#!/bin/bash
+usage="usage: $0 jobid"
+jobid=$1
+[[ -n $jobid ]] || { echo $usage; exit 1; }
+ret=$(grep "jobid=$jobid" /usr/local/logs/swarm_on_slurm.log)
+[[ -n $ret ]] || { echo "no swarm found for jobid = $jobid"; exit; }
+echo $ret | tr ';' '\n'
+
