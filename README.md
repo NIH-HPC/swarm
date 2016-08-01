@@ -124,7 +124,7 @@ Each subdirectory is given as a single line.  The user and basename (jobid for s
 
 ## Logging
 
-swarm logs to /usr/local/logs/swarm_on_slurm.log
+swarm logs to /usr/local/logs/swarm.log
 
 swarm_cleanup.pl logs to /usr/local/logs/swarm_cleanup.log
 

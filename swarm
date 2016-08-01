@@ -90,7 +90,7 @@ sub setDefaults
   $PAR->{commentChar} = '#';
 
 # The logfile which will be updated
-  $PAR->{logfile} = "/usr/local/logs/swarm_on_slurm.log";
+  $PAR->{logfile} = "/usr/local/logs/swarm.log";
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 # There is no need to keep track of MaxSubmit because swarm will now submit jobarrays.  Each swarm
