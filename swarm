@@ -822,8 +822,8 @@ EOF
     if (($OPT{g} > 225)  && ($SLURMOPT{binary}{partition} ne "largemem")) {
       dieWithError("-g $OPT{g} requires --partition largemem");
     }
-    elsif (($OPT{g} > 120)  && ( ( $SLURMOPT{binary}{partition} ne "largemem") && ($SLURMOPT{binary}{partition} ne "b1"))) {
-      dieWithError("-g $OPT{g} requires either --partition b1 or --partition largemem");
+    elsif (($OPT{g} > 120)  && ( ( $SLURMOPT{binary}{partition} ne "largemem") )) {
+      dieWithError("-g $OPT{g} requires --partition largemem");
     }
   }
   else {
