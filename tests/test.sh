@@ -133,6 +133,7 @@ cat <<testcases > testcases.list
 --verbose=1 --partition=ccr,niddk,quick -g 10 --time=2:00:00
 --verbose=1 --partition=norm,b1,niddk,ccr,quick -g 10 --time=2:00:00
 --partition ibqdr --logdir Align_FASTQs --sbatch "--nodes=4 --ntasks=8 --ntasks-per-node=2 --cpus-per-task=16 --exclusive" 
+--verbose=1 --maxrunning 3 --time=10:00:00
 testcases
 
 # Walk through each test case

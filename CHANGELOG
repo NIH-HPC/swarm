@@ -29,3 +29,10 @@ temporary directories in /swarm with a jobid, or an aborted submission.  This st
 orphan directories that don't have a symlink.
 
 Additionally, fixed a bug.  Swarms of a single job were being ignored by the parsing expression, and were not being deleted.
+
+--------
+
+2016-11-14
+
+Added support for maximum simultaneously running subjobs (the module function for Slurm jobarrays).  --maxrunning will limit the number of running
+subjobs within a swarm.

@@ -254,6 +254,9 @@ sub report
     if ($PAR->{multinode}) {
       print " across $PAR->{multinode} nodes each";
     }
+    if (defined $OPT{maxrunning}) {
+      print ", with $OPT{maxrunning} subjobs running simultaneously";
+    }
     print "\n";
   }
 
@@ -432,6 +435,7 @@ EOF1
 sub submitSlurm
 {
   $PAR->{sbatch_options} .= "--array=0-$#{$SWARM->{CMDLISTS}}";
+  $PAR->{sbatch_options} .= '%'.$OPT{maxrunning} if (defined $OPT{maxrunning});
   $PAR->{sbatch_options} .= " --job-name=".$PAR->{"job-name"} unless ($SLURMOPT{binary}{"job-name"});
 
 # output and error handled in the batch script
@@ -650,6 +654,7 @@ sub getCommandLineOptions
     "no-log"            => \$OPT{'no-log'},  # don't actually write to logfile
     "logfile=s"         => \$OPT{logfile},   # alternate logfile
     "maxarraysize=i"    => \$OPT{maxarraysize}, # for testing 
+    "maxrunning=i"      => \$OPT{maxrunning}, # limit the number of running jobs, for testing 
 
 # sbatch options (specific)
     "hint=s"            => \$SLURMOPT{binary}{hint},
@@ -903,6 +908,11 @@ EOF
 
 # Override default maxarraysize if needed
   $PAR->{maxarraysize} = $OPT{maxarraysize} if $OPT{maxarraysize};
+
+# Be reasonable
+  if ((defined $OPT{maxrunning}) && ($OPT{maxrunning} < 1)) {
+    undef $OPT{maxrunning};
+  }
 }
 #==============================================================================
 sub print_options
@@ -934,9 +944,6 @@ Usage: swarm [swarm options] [sbatch options]
   -m, --module           provide a list of environment modules to load
                          prior to execution (comma delimited)
 
-NOTE: As of 7 am, Friday August 28th, --module will only accept a comma-
-delimited list, rather than a space-delimited list.
-
   --no-comment           don't ignore text following comment character $PAR->{commentChar}
   -c, --comment-char [chr]  
                          use something other than $PAR->{commentChar} as the comment character
@@ -948,6 +955,8 @@ delimited list, rather than a space-delimited list.
 
   --logdir               directory to which .o and .e files are to be written
                          (default is current working directory)
+
+  --maxrunning           limit the number of simultaenously running subjobs
 
 Development options:
 

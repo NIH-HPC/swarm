@@ -110,8 +110,6 @@ is only useful for multi-threaded commands.
 .B --module [ module1[,module2][,module3] ]
 load a list of environment modules prior to execution. Module names are separated by commas only.
 
-.B NOTE: As of 7 am, Friday August 28, --module will accept a comma-delimited list, rather than a space-delimited list.
-
 .TP
 .B --no-comment
 don't ignore text following a comment character ('#' by default)
@@ -127,6 +125,10 @@ concatenate STDOUT and STDERR to single files, rather an a set of .o and .e file
 .TP
 .B --logdir
 directory to which .o and .e files are to be written (default is current working directory)
+
+.TP
+.B --maxrunning
+limit the number of simultaenously running subjobs
 
 .TP
 .B --no-scripts
