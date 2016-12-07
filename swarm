@@ -229,7 +229,6 @@ sub report
     }
   }
 
-  $outputfiles = 1 if $OPT{singleout};
   if ($OPT{verbose} > 3) {
     print "-"x60,"\n";
     printf "%${len1}d subjob%s, %${len2}d commands, %d output file%s\n",$PAR->{subjobs},write_s_if_needed($PAR->{subjobs}),$PAR->{commands},$outputfiles,write_s_if_needed($outputfiles);
@@ -286,13 +285,15 @@ sub writeCommandFiles
 # Walk through each subjob
   foreach my $sj (0 .. $#{$SWARM->{CMDLISTS}}) {
     my %fileContents;
-    my $suffix = sprintf "%0${len}d",$sj;
-    my $commandFileName = $PAR->{tempdir}."/cmd.$suffix";
+    ###my $suffix = sprintf "%0${len}d",$sj;
+    ###my $commandFileName = $PAR->{tempdir}."/cmd.$suffix";
+    my $commandFileName = $PAR->{tempdir}."/cmd.$sj";
 # Walk through each commandline
     foreach my $cpu (0 .. $#{${$SWARM->{CMDLISTS}}[$sj]}) {
       foreach my $comm (@{${$SWARM->{CMDLISTS}}[$sj][$cpu]}) {
 # Change command filename if packing
-        $commandFileName = $PAR->{tempdir}."/cmd.$suffix"."_".($cpu) if $OPT{p};
+        ###$commandFileName = $PAR->{tempdir}."/cmd.$suffix"."_".($cpu) if $OPT{p};
+        $commandFileName = $PAR->{tempdir}."/cmd.$sj"."_".($cpu) if $OPT{p};
         $fileContents{$commandFileName} .= ${$SWARM->{COMMANDS}}[$comm]."\n";
       }
     }
@@ -348,82 +349,48 @@ sub writeBatchScript
 # Generate the rest of the batch script.  NOTE: The path to the temporary directory is hard-coded in
 # the swarm.batch script.  This allows a swarm to be rerun, albeit with the correct sbatch options.
 # These can be found in the swarm logfile.
-  $fileContents .= <<EOF1;
-d=$PAR->{tempdir}
-z=\$(printf '%0${len}d' \${SLURM_ARRAY_TASK_ID}) 
-EOF1
+###  $fileContents .= <<EOF1;
+###d=$PAR->{tempdir}
+###z=\$(printf '%0${len}d' \${SLURM_ARRAY_TASK_ID}) 
+###EOF1
+  $fileContents .= "d=$PAR->{tempdir}\n";
 
-
-# Print out a start message to make things easier to understand
-  if ($OPT{singleout}) {
-    if ($OPT{p}) {
-      foreach my $i (0 .. $OPT{p}-1) {
-        my $tag = sprintf "%0${len3}d",$i;
-        $fileContents .= "[[ -s \${d}/cmd.\${z}_$tag ]] && { ";
-        $fileContents .= "echo \${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag started on \$HOSTNAME at \$(date +'\%F \%T') > $PAR->{singleoutbase}_$tag.o ; ";
-        $fileContents .= "echo '++++++++++++++++++++++++++++++++++++++++++' >> $PAR->{singleoutbase}_$tag.o; }\n";
-      }
-    }
-    else {
-      $fileContents .= "echo \${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID} started on \$HOSTNAME at \$(date +'\%F \%T')\n";
-      $fileContents .= "echo '++++++++++++++++++++++++++++++++++++++++++'\n";
-    }  
-  }
-    
+# Write the command executed block at the top of the output
+  my $ce_top = "---- COMMAND EXECUTED: ---------------------------------------------------------";
+  my $ce_bot = "--------------------------------------------------------------------------------";
 
 # Run the commands in series on a single node
   if ($OPT{p}) {
     foreach my $i (0 .. $OPT{p}-1) {
-      my $tag = sprintf "%0${len3}d",$i;
-      $fileContents .= "[[ -s \${d}/cmd.\${z}_$tag ]] && ( $PAR->{shell} \${d}/cmd.\${z}_$tag ";
+      ###my $tag = sprintf "%0${len3}d",$i;
+      ###$fileContents .= "[[ -s \${d}/cmd.\${z}_$tag ]] && ( /bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${z}_$tag && /bin/echo '$ce_bot' && $PAR->{shell} \${d}/cmd.\${z}_$tag ";
+      $fileContents .= "[[ -s \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i ]] && ( /bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i && /bin/echo '$ce_bot' && $PAR->{shell} \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i ";
 # Determine output/error redirects
-      if ($OPT{singleout}) {
-        $fileContents .= "1>> $PAR->{singleoutbase}_$tag.o 2>> $PAR->{singleoutbase}_$tag.e ; ";
-        $fileContents .= "echo '++++++++++++++++++++++++++++++++++++++++++' >> $PAR->{singleoutbase}_$tag.o ; ";
-        $fileContents .= "echo \${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag finished on \$HOSTNAME at \$(date +'\%F \%T') 1>> $PAR->{singleoutbase}_$tag.o ) &\n";
+      if ($OPT{noout}) {
+        $fileContents .= "1> /dev/null ";
       }
       else {
-        if ($OPT{noout}) {
-          $fileContents .= "1> /dev/null ";
-        }
-        else {
-          $fileContents .= "1> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag.o ";
-        }
-        if ($OPT{noerr}) {
-          $fileContents .= "2> /dev/null ";
-        }
-        else {
-          $fileContents .= "2> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag.e ";
-        }
-        $fileContents .= ") &\n";
+        ###$fileContents .= "1> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag.o ";
+        $fileContents .= "1> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.o ";
       }
+      if ($OPT{noerr}) {
+        $fileContents .= "2> /dev/null ";
+      }
+      else {
+        ###$fileContents .= "2> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag.e ";
+        $fileContents .= "2> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.e ";
+      }
+      $fileContents .= ") &\n";
+      
     }
     $fileContents .= "wait\n";
     $fileContents .= "exitcode=0\n";
   }
   else {
-    $fileContents .= "$PAR->{shell} \${d}/cmd.\${z}\n";
+    ###$fileContents .= "/bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${z} && /bin/echo '$ce_bot' && $PAR->{shell} \${d}/cmd.\${z}\n";
+    $fileContents .= "/bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${SLURM_ARRAY_TASK_ID} && /bin/echo '$ce_bot' && $PAR->{shell} \${d}/cmd.\${SLURM_ARRAY_TASK_ID}\n";
 # Capture final exit code
     $fileContents .= "exitcode=\$?\n";
-  }
-
-  if ($OPT{singleout}) {
-    if (!$OPT{p}) {
-      $fileContents .= "echo '++++++++++++++++++++++++++++++++++++++++++'\n";
-      $fileContents .= "echo \${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID} finished on \$HOSTNAME at \$(date +'\%F \%T')\n";
-    }
-
-    $fileContents .= "lockfile $PAR->{tempdir}/\${SLURM_ARRAY_JOB_ID}.lock\n";
-    if ($OPT{p}) {
-      foreach my $i (0 .. $OPT{p}-1) {
-        my $tag = sprintf "%0${len3}d",$i;
-        $fileContents .= (generate_singleout_block("_$tag"));
-      }
-    }
-    else {
-      $fileContents .= (generate_singleout_block());
-    }
-    $fileContents .= "rm -f $PAR->{tempdir}/\${SLURM_ARRAY_JOB_ID}.lock\n";
   }
 
   $fileContents .= "exit \$exitcode\n"; # Exit with the final exit code from the given command
@@ -444,23 +411,17 @@ sub submitSlurm
     $PAR->{sbatch_options} .= " --error=/dev/null";
   }
   else {
-    if ($OPT{singleout}) {
-      $PAR->{sbatch_options} .= " --output=$PAR->{tempdir}/\%A_\%a.o";
-      $PAR->{sbatch_options} .= " --error=$PAR->{tempdir}/\%A_\%a.e";
+    if ($OPT{noout}) {
+      $PAR->{sbatch_options} .= " --output=/dev/null";
     }
     else {
-      if ($OPT{noout}) {
-        $PAR->{sbatch_options} .= " --output=/dev/null";
-      }
-      else {
-        $PAR->{sbatch_options} .= " --output=".$OPT{logdir}."/".$PAR->{"job-name"}."_\%A_\%a.o";
-      }
-      if ($OPT{noerr}) {
-        $PAR->{sbatch_options} .= " --error=/dev/null";
-      }
-      else {
-        $PAR->{sbatch_options} .= " --error=".$OPT{logdir}."/".$PAR->{"job-name"}."_\%A_\%a.e";
-      }
+      $PAR->{sbatch_options} .= " --output=".$OPT{logdir}."/".$PAR->{"job-name"}."_\%A_\%a.o";
+    }
+    if ($OPT{noerr}) {
+      $PAR->{sbatch_options} .= " --error=/dev/null";
+    }
+    else {
+      $PAR->{sbatch_options} .= " --error=".$OPT{logdir}."/".$PAR->{"job-name"}."_\%A_\%a.e";
     }
   }
 
@@ -634,7 +595,6 @@ sub getCommandLineOptions
     'module=s'          => \$OPT{module},  # modules are comma delimited 
 
 # special stuff, handle with care
-    "singleout"         => \$OPT{singleout},# concatenate output and error
     "noout"             => \$OPT{noout},#  completely throw away STDOUT
     "noerr"             => \$OPT{noerr},#  completely throw away STDERR
     "logdir=s"          => \$OPT{logdir},# directory to which .o and .e files are written
@@ -675,17 +635,6 @@ sub getCommandLineOptions
   ) || exit 1;
 
   print_options() if $OPT{h};
-
-  if ($OPT{singleout}) {
-    print <<EOF;
-
---singleout has been deprecated in favor of --logdir.  The --logdir option will
-create a new directory for writing .o and .e files.  After the swarm has
-finished, you can then concatenate your .o and .e files.
-
-EOF
-    exit 1;
-  }
 
   if ($OPT{autobundle}) { print STDERR "WARNING: --autobundle has been deprecated\n"; }
 
@@ -892,12 +841,6 @@ EOF
     $OPT{logdir} = $PAR->{pwd};
   }
 
-# Set singleout final output and error file path
-  if ($OPT{singleout}) {
-    $PAR->{singleoutbase} = $PAR->{tempdir}."/".'${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}';
-    $PAR->{singleoutfinal} = $OPT{logdir}."/".$PAR->{"job-name"}.'_${SLURM_ARRAY_JOB_ID}';
-  }
-
 # Set time
   if (defined $ENV{SBATCH_TIMELIMIT}) {
     $SLURMOPT{binary}{time}=$ENV{SBATCH_TIMELIMIT};
@@ -944,11 +887,6 @@ Usage: swarm [swarm options] [sbatch options]
   --no-comment           don't ignore text following comment character $PAR->{commentChar}
   -c, --comment-char [chr]  
                          use something other than $PAR->{commentChar} as the comment character
-
-  --singleout            concatenate STDOUT and STDERR to single files
-                         NOTE: This option is NOT appropriate for swarms of
-                         very short running commands, as the process of
-                         concatenating output can outlast command execution!
 
   --logdir               directory to which .o and .e files are to be written
                          (default is current working directory)
@@ -1035,39 +973,6 @@ sub isDirCreateable
   my $str = File::Spec->rel2abs($path); # convert path to absolute
   while (!-d $str) { $str =~s/\/[^\/]*$//; }
   return 1 if (-w $str);
-}
-#==============================================================================
-sub generate_singleout_block
-{
-  my ($cpu) = shift;
-
-  my $base = $PAR->{singleoutbase}.$cpu;
-  my $final = $PAR->{singleoutfinal};
-
-# If the .e file is NOT empty, then prepend the content with the actual command for reference
-  my $string = <<EOF;
-if [[ -s "$base.o" ]]; then
-    echo ========================================== >> $final.o
-    echo -n "COMMAND: ">> $final.o
-    cat \${d}/cmd.\${z}${cpu} >> $final.o
-    echo ------------------------------------------ >> $final.o
-    cat $base.o >> $final.o
-    echo ========================================== >> $final.o
-fi
-rm -f $base.o
-touch $final.e
-if [[ -s "$base.e" ]]; then
-    echo ========================================== >> $final.e
-    echo -n "COMMAND: " >> $final.e
-    cat \${d}/cmd.\${z}${cpu} >> $final.e
-    echo ------------------------------------------ >> $final.e
-    cat $base.e >> $final.e
-    echo ========================================== >> $final.e
-fi
-rm -f $base.e
-EOF
-
-  return $string;
 }
 #==============================================================================
 sub validatePartition
