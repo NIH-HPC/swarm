@@ -593,6 +593,7 @@ sub getCommandLineOptions
     "noht"              => \$OPT{noht},     # no hyperthreading 
     'm=s'               => \$OPT{module},  # modules are comma delimited 
     'module=s'          => \$OPT{module},  # modules are comma delimited 
+    'err-exit'          => \$OPT{errexit}, # include -e in the shell (requires bash)
 
 # special stuff, handle with care
     "noout"             => \$OPT{noout},#  completely throw away STDOUT
@@ -801,6 +802,9 @@ sub getCommandLineOptions
 # choose shell to run under
   $PAR->{shell} = ($OPT{usecsh}) ? "/bin/tcsh" : "/bin/bash";
 
+# modify shell if wanted
+  $PAR->{shell} .= " -e" if ($OPT{errexit});
+
 # set commentChar
   $PAR->{commentChar} = substr($OPT{commentChar},0,1) if $OPT{commentChar};
 
@@ -881,6 +885,8 @@ Usage: swarm [swarm options] [sbatch options]
                          sequentially
 
   --usecsh               use tcsh as the shell instead of bash
+  --err-exit             exit the subjob immediately on first non-zero exit status
+
   -m, --module           provide a list of environment modules to load
                          prior to execution (comma delimited)
 
