@@ -679,15 +679,12 @@ sub getCommandLineOptions
   if ($OPT{singleout}) {
     print <<EOF;
 
-WARNING: In the event of job failure, .o and .e files will NOT be available
-when using --singleout.
-
---singleout is being deprecated in favor of --logdir.  The --logdir option will
+--singleout has been deprecated in favor of --logdir.  The --logdir option will
 create a new directory for writing .o and .e files.  After the swarm has
 finished, you can then concatenate your .o and .e files.
 
 EOF
-    sleep 5;
+    exit 1;
   }
 
   if ($OPT{autobundle}) { print STDERR "WARNING: --autobundle has been deprecated\n"; }
