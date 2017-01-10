@@ -966,6 +966,7 @@ sub writeLog
           . "ncmds="      .$PAR->{commands}        ."; "
           . "soptions="   .$x                      ."; "
           . "njobs="      .$PAR->{subjobs}         ."; "
+          . "tempname="   .$PAR->{tempname}        ."; "
           . "job-name="   .$PAR->{'job-name'}      ."; "
           . "command="    .$PAR->{commandLine}     ."\n";
 
