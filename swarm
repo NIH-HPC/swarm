@@ -707,9 +707,7 @@ sub getCommandLineOptions
   $OPT{verbose} = 0 if (not defined $OPT{verbose});
 
 # Create a temporary name for the batch script and command script directory.
-# Partitioning debug/devel runs from real runs makes it easier to clean up.
-  if ($OPT{debug} || $OPT{devel}) { (undef,$PAR->{tempname}) = tempfile('devXXXXXXXX',OPEN => 0); }
-  else { (undef,$PAR->{tempname}) = tempfile('tmpXXXXXXXX',OPEN => 0); }
+  (undef,$PAR->{tempname}) = tempfile('tmpXXXXXXXX',OPEN => 0);
   $PAR->{tempdir} = "$PAR->{basedir}/$PAR->{tempname}";
   $PAR->{batchfile} = $PAR->{tempdir}."/swarm.batch";
 
@@ -945,10 +943,6 @@ EOF
 sub dieWithError
 {
   my $message = shift;
-# Mark the tempdir as failed
-  if (-d $PAR->{tempdir}) {
-    symlink ("$PAR->{tempdir}","$PAR->{tempdir}_FAIL") unless ($OPT{debug} || $OPT{devel});
-  }
   die "ERROR: $message\n";
 }
 #==============================================================================
