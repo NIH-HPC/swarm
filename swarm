@@ -92,6 +92,12 @@ sub setDefaults
 # The logfile which will be updated
   $PAR->{logfile} = "/usr/local/logs/swarm.log";
 
+# Keep index of tempdirs
+  $PAR->{tempdir_index} = "/spin1/swarm/.tempdir.idx";
+
+# Keep index of swarms
+  $PAR->{swarm_index} = "/spin1/swarm/.swarm.idx";
+
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 # There is no need to keep track of MaxSubmit because swarm will now submit jobarrays.  Each swarm
 # is a single job, so it either submits, or doesn't submit.  The value of interest is MaxArraySize, 
@@ -281,6 +287,7 @@ sub insertLmodInit
 sub writeCommandFiles
 {
   mkdir $PAR->{tempdir};
+  append_to_tempdir_index(); # Record tempdir creation in the index
   my $len = length($#{$SWARM->{CMDLISTS}});
 # Walk through each subjob
   foreach my $sj (0 .. $#{$SWARM->{CMDLISTS}}) {
@@ -453,6 +460,7 @@ sub submitSlurm
     else {
       dieWithError("Something went wrong with sbatch!  I don't know the jobid!");
     }
+    append_to_swarm_index(); # Record jobid creation in the index
   }
 }
 #==============================================================================
@@ -707,7 +715,7 @@ sub getCommandLineOptions
   $OPT{verbose} = 0 if (not defined $OPT{verbose});
 
 # Create a temporary name for the batch script and command script directory.
-  (undef,$PAR->{tempname}) = tempfile('tmpXXXXXXXX',OPEN => 0);
+  (undef,$PAR->{tempname}) = tempfile('XXXXXXXXXX',OPEN => 0);
   $PAR->{tempdir} = "$PAR->{basedir}/$PAR->{tempname}";
   $PAR->{batchfile} = $PAR->{tempdir}."/swarm.batch";
 
@@ -722,8 +730,7 @@ sub getCommandLineOptions
 # set cpus-per-task or ntasks-per-node
   if ($OPT{t}) {
     if ($OPT{t} eq "auto") {
-      $SLURMOPT{binary}{"ntasks-per-node"} = 1;
-      $SLURMOPT{unary}{exclusive} = 1;
+      $SLURMOPT{binary}{"cpus-per-task"} = 32;
     }
     else {
 # Don't be stupid
@@ -1106,5 +1113,23 @@ sub catch_sig
   else {
     dieWithError("swarm ended before job was submitted");
   }
+}
+#==============================================================================
+sub append_to_tempdir_index
+{
+  return unless (-d $PAR->{tempdir});
+  my $fileContents = time().",$PAR->{user},$PAR->{tempname}\n";
+  appendToFile($PAR->{tempdir_index},$fileContents);
+  chmod 0666, $PAR->{tempdir_index};
+}
+#==============================================================================
+sub append_to_swarm_index
+{
+  return unless defined $PAR->{jobid};
+  my $p = 1;
+  $p = 2 if ($OPT{p} == 2);
+  my $fileContents = time().",$PAR->{tempname},$PAR->{jobid},$PAR->{subjobs},$p\n";
+  appendToFile($PAR->{swarm_index},$fileContents);
+  chmod 0666, $PAR->{swarm_index};
 }
 #==============================================================================
