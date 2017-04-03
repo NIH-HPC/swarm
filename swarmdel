@@ -1,9 +1,0 @@
-#!/bin/bash
-
-echo "
-swarmdel is no longer necessary, and is no longer supported, as swarm jobs
-can be deleted using the same methods as sbatch jobs.
-
-Please see http://hpc.nih.gov/docs/b2-userguide.html#delete for more
-information.
-"

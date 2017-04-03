@@ -43,4 +43,8 @@ subjobs within a swarm.
 
 swarm now writes two index files, .tempdir.idx and .swarm.idx, to simplify the process of clean up and lay the foundation for rerunning swarms.
 
-BLAH BLAH BLAH
+--------
+
+2017-04-03
+
+Removed swarmdel.
