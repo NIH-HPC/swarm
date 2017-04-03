@@ -36,3 +36,9 @@ Additionally, fixed a bug.  Swarms of a single job were being ignored by the par
 
 Added support for maximum simultaneously running subjobs (the module function for Slurm jobarrays).  --maxrunning will limit the number of running
 subjobs within a swarm.
+
+--------
+
+2017-03-23
+
+swarm now writes two index files, .tempdir.idx and .swarm.idx, to simplify the process of clean up and lay the foundation for rerunning swarms.
