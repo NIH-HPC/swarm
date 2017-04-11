@@ -1118,7 +1118,9 @@ sub catch_sig
 sub append_to_tempdir_index
 {
   return unless (-d $PAR->{tempdir});
-  my $fileContents = time().",$PAR->{user},$PAR->{tempname}\n";
+  my $p = 1;
+  $p = 2 if ($OPT{p} == 2);
+  my $fileContents = time().",$PAR->{user},$PAR->{tempname},$PAR->{subjobs},$p\n";
   appendToFile($PAR->{tempdir_index},$fileContents);
   chmod 0666, $PAR->{tempdir_index};
 }
@@ -1126,9 +1128,7 @@ sub append_to_tempdir_index
 sub append_to_swarm_index
 {
   return unless defined $PAR->{jobid};
-  my $p = 1;
-  $p = 2 if ($OPT{p} == 2);
-  my $fileContents = time().",$PAR->{tempname},$PAR->{jobid},$PAR->{subjobs},$p\n";
+  my $fileContents = time().",$PAR->{tempname},$PAR->{jobid}\n";
   appendToFile($PAR->{swarm_index},$fileContents);
   chmod 0666, $PAR->{swarm_index};
 }
