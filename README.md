@@ -20,8 +20,8 @@ swarm writes everything in /spin1/swarm, under a user-specific directory:
 
 ```
 /spin1/swarm/user/
-├── 4506756 -> /spin1/swarm/user/tmpYMaPNXtq
-└── tmpYMaPNXtq
+├── 4506756 -> /spin1/swarm/user/YMaPNXtqEF
+└── YMaPNXtqEF
     ├── cmd.0
     ├── cmd.1
     ├── cmd.2
@@ -29,7 +29,7 @@ swarm writes everything in /spin1/swarm, under a user-specific directory:
     └── swarm.batch
 ```
 
-swarm (running as the user) first creates a subdirectory within the user's directory with a completely random name beginning with 'tmp'.  The command scripts are named 'cmd.#', with # being the index of the job array.  The batch script is simply named 'swarm.batch'.  All of these are written into the temporary subdirectory.
+swarm (running as the user) first creates a subdirectory within the user's directory with a completely random name.  The command scripts are named 'cmd.#', with # being the index of the job array.  The batch script is simply named 'swarm.batch'.  All of these are written into the temporary subdirectory.
 
 ### Details about the batch script
 
@@ -41,41 +41,18 @@ The module function is initialized and modules are loaded in the batch script.  
 
 When a swarm job is successfully submitted to slurm, a jobid is obtained, and a symlink is created that points to the temporary directory.  This allows for simple identification of swarm array jobs running on the cluster.
 
-If a submission fails, then the symlink created will instead have the string '_FAIL' tagged onto the end:
+If a submission fails, then no symlink will be created.
 
-```
-/spin1/swarm/user/
-├── tmpyeTeQTAV
-│   ├── cmd.000
-│   ├── cmd.001
-│   ├── cmd.002
-│   ├── cmd.003
-│   └── swarm.batch
-└── tmpyeTeQTAV_FAIL -> /spin1/swarm/user/tmpyeTeQTAV
-```
-
-When a user runs swarm in development mode (--devel), a subdirectory is created and filled, but the job is not submitted.  These subdirectories are identified with the prefix 'dev':
-
-```
-/spin1/swarm/user
-└── dev3Pr6KE9F
-    ├── cmd.0
-    ├── cmd.1
-    ├── cmd.2
-    ├── cmd.3
-    └── swarm.batch
-```
+When a user runs swarm in development mode (--devel), no temporary directory or files are created. 
 
 ## Clean up
 
 Because the space in /spin1/swarm is limited, old directories need to be removed.  We want to keep the directories and files around for a while to use in investigations, but not forever.  The leftovers are cleaned up daily by /usr/local/sbin/swarm_cleanup.pl in a root cron job on biowulf.  At the moment, subdirectories and their accompanying symlinks are deleted under these circumstances:
 
-* Proper jobid symlink (tmpXXXXXXXX, meaning that the job was successfully submitted)
+* Proper jobid symlink (123456789 -> XXXXXXXXXX, meaning that the job was successfully submitted)
   * the directory and symlink are removed **five days after the entire swarm job array has ended**
   * they are also removed if the modification time of the directory exceeds the --orphan_min_age (default = 60 days) and the user is not currently running any jobs -- this is because sacct only contains job information for a restricted period of time
-* Job submission failed (tmpXXXXXXXX_FAIL)
-  * the subdirectory and symlink are removed when the **modification time of the directory exceeds one week**
-* Development mode (devXXXXXXXX)
+* Job submission failed
   * the subdirectory and symlink are removed when the **modification time of the directory exceeds one week**
 
 When run in --debug mode, swarm_cleanup.pl prints out a very nice description of what it might do:
@@ -92,14 +69,14 @@ chenp4            4073854           Q/R   14.9  ---  LNK : KEEP    states
 ebrittain         4400424           END   10.0  0.2  LNK : KEEP    FAILED
 sudregp           4467927           END    8.9  8.9  LNK : DELETE  COMPLETED,FAILED
   rm -f /spin1/swarm/sudregp/4467927
-  rm -rf /spin1/swarm/sudregp/tmpXhlnoNq0
+  rm -rf /spin1/swarm/sudregp/XhlnoNq0EF
 sudregp           4467928           SKP    6.9  ---  LNK : KEEP
 bartesaghia       4501010           END    9.2  9.2  LNK : DELETE  COMPLETED
   rm -f /spin1/swarm/bartesaghia/4501010
-  rm -rf /spin1/swarm/bartesaghia/tmpdR_NPaOk
+  rm -rf /spin1/swarm/bartesaghia/dR_NPaOkr3
 bartesaghia       4501011           END    9.1  9.1  LNK : DELETE  COMPLETED
   rm -f /spin1/swarm/bartesaghia/4501011
-  rm -rf /spin1/swarm/bartesaghia/tmpOePKGVUa
+  rm -rf /spin1/swarm/bartesaghia/OePKGVUa9x
 ```
 
 Each subdirectory is given as a single line.  The user and basename (jobid for successful submissions) start each line.  The other fields are:
@@ -122,11 +99,19 @@ Each subdirectory is given as a single line.  The user and basename (jobid for s
 
 **EXTRA:** extra information, such as the unique list of states of all the subjobs within the swarm
 
+## Indexes
+
+Two index files are created within the /swarm directory:
+
+* .tempdir.idx -- contains a timestamp, user, tempname, number of subjobs, and p value for the swarm
+* .swarm.idx -- contains a timestamp, tempname, and slurm jobid for the job array
+
+These index files will be used in the future for managing swarms.
+
 ## Logging
 
-swarm logs to /usr/local/logs/swarm.log
-
-swarm_cleanup.pl logs to /usr/local/logs/swarm_cleanup.log
+* swarm logs to /usr/local/logs/swarm.log
+* swarm_cleanup.pl logs to /usr/local/logs/swarm_cleanup.log
 
 ## Testing
 
