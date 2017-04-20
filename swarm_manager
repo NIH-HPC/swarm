@@ -259,7 +259,7 @@ sub parse_index_files
   LINE: while (<FILE1>) {
     chomp(my $line = $_);
     my ($time,$user,$t,$nsubjobs,$p) = split /,/,$line;
-    $PAR{data}{$t}{create} = $time;
+    $PAR{data}{$t}{create_time} = $time;
     $PAR{data}{$t}{user} = $user;
     $PAR{data}{$t}{tempname} = $t;
     $PAR{data}{$t}{nsubjobs} = $nsubjobs;
@@ -277,7 +277,7 @@ sub parse_index_files
   LINE2: while (<FILE2>) {
     chomp(my $line = $_);
     my ($time,$t,$jobid) = split /,/,$line;
-    $PAR{data}{$t}{submit} = $time;
+    $PAR{data}{$t}{submit_time} = $time;
     $PAR{data}{$t}{jobid} = $jobid;
     $PAR{jobid2tempname}{$PAR{data}{$t}{jobid}}=$t;
     $PAR{data}{$t}{state} = "SUBMITTED";
@@ -446,19 +446,21 @@ sub _simplify_states_and_end_times
         }
       }
     }
-    my %tmp; $tmp{C}=0; $tmp{S}=0; $tmp{P}=0; $tmp{R}=0; $tmp{F}=0; $tmp{E}=0; $tmp{U}=0;
+    my %tmp; $tmp{C}=0; $tmp{S}=0; $tmp{P}=0; $tmp{R}=0; $tmp{F}=0; $tmp{E}=0; $tmp{U}=0; $tmp{done}=0;
     if ($PAR{data}{$t}{states}) {
       foreach my $s (@{$PAR{data}{$t}{states}}) {
         if ($s eq 'CREATED') { $tmp{C}++; }
         elsif ($s eq 'SUBMITTED') { $tmp{S}++; }
         elsif ($s eq 'PENDING') { $tmp{P}++; }
         elsif ($s eq 'RUNNING') { $tmp{R}++; }
-        elsif ($s eq 'EXPIRED') { $tmp{E}++; }
-        elsif ($s eq 'UNKNOWN') { $tmp{U}++; }
-        else { $tmp{F}++; }
+        elsif ($s eq 'EXPIRED') { $tmp{E}++; $tmp{done}++; }
+        elsif ($s eq 'UNKNOWN') { $tmp{U}++; $tmp{done}++; }
+        else { $tmp{F}++; $tmp{done}++; }
       }
 
 # The state reported will either be C, S, P, R, F, or M
+
+# The state is uniform:
       if    ($PAR{data}{$t}{nsubjobs} == $tmp{C}) { _update_value($t,'state','CREATED'); }
       elsif ($PAR{data}{$t}{nsubjobs} == $tmp{S}) { _update_value($t,'state','SUBMITTED'); }
       elsif ($PAR{data}{$t}{nsubjobs} == $tmp{P}) { _update_value($t,'state','PENDING'); }
@@ -469,7 +471,25 @@ sub _simplify_states_and_end_times
         _update_value($t,'state','FINISHED');
         _update_value($t,'end_time',$PAR{data}{$t}{max_end_time});
       }
-      else { _update_value($t,'state','MIXED'); }
+# The state is mixed
+      else { 
+# The substates are uniformly done states 
+        if ($PAR{data}{$t}{nsubjobs} == $tmp{done}) {
+          _update_value($t,'state','FINISHED');
+# At least one of the subjobs has finished with an end_time
+          if ((defined $PAR{data}{$t}{max_end_time}) && ($PAR{data}{$t}{max_end_time} =~ /^\d+$/)) {
+            _update_value($t,'end_time',$PAR{data}{$t}{max_end_time});
+          }
+# The whole swarm is expired or unknown
+          else {
+            _update_value($t,'end_time',$PAR{data}{$t}{create_time});
+          }
+        } 
+# The substates are a mixture of done and undone states
+        else {
+          _update_value($t,'state','MIXED'); 
+        }
+      }
     }
   }
   printBlue(sprintf "simpify_states = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
@@ -528,10 +548,10 @@ sub _find_age
 
   if ($PAR{data}{$t}{max_end_time}) {
     $age = int(($PAR{NOW}-$PAR{data}{$t}{max_end_time})/$age_unit);
-  } elsif ($PAR{data}{$t}{submit}) {
-    $age = int(($PAR{NOW}-$PAR{data}{$t}{submit})/$age_unit);
-  } elsif ($PAR{data}{$t}{create}) {
-    $age = int(($PAR{NOW}-$PAR{data}{$t}{create})/$age_unit);
+  } elsif ($PAR{data}{$t}{submit_time}) {
+    $age = int(($PAR{NOW}-$PAR{data}{$t}{submit_time})/$age_unit);
+  } elsif ($PAR{data}{$t}{create_time}) {
+    $age = int(($PAR{NOW}-$PAR{data}{$t}{create_time})/$age_unit);
   } else {
     $age = -1;
   }
@@ -627,14 +647,14 @@ sub _deletable
   my $age;
   if ($PAR{data}{$t}{max_end_time}) {
     $age = int(($PAR{NOW}-$PAR{data}{$t}{max_end_time})/$PAR{age_unit});
-  } elsif ($PAR{data}{$t}{submit}) {
-    $age = int(($PAR{NOW}-$PAR{data}{$t}{submit})/$PAR{age_unit});
-  } elsif ($PAR{data}{$t}{create}) {
-    $age = int(($PAR{NOW}-$PAR{data}{$t}{create})/$PAR{age_unit});
+  } elsif ($PAR{data}{$t}{submit_time}) {
+    $age = int(($PAR{NOW}-$PAR{data}{$t}{submit_time})/$PAR{age_unit});
+  } elsif ($PAR{data}{$t}{create_time}) {
+    $age = int(($PAR{NOW}-$PAR{data}{$t}{create_time})/$PAR{age_unit});
   } else {
     $age = -1;
   }
-  if (($age > $PAR{delete_age}) && (((defined $PAR{data}{$t}{jobid}) && _finished($t)) || ($PAR{data}{$t}{state} eq 'UNKNOWN'))) {
+  if (($age > $PAR{delete_age}) && (((defined $PAR{data}{$t}{jobid}) && _finished($t)) || ($PAR{data}{$t}{state} eq 'CREATED') || ($PAR{data}{$t}{state} eq 'UNKNOWN'))) {
     return 1;
   }
 }
@@ -680,7 +700,7 @@ sub print_full_data
     }
 
 # If the swarm was never submitted, only list the global values
-    if (!$PAR{data}{$t}{submit}) {
+    if (!$PAR{data}{$t}{submit_time}) {
       _add_created_swarm(\@printArray,$t);
 # If the swarm was submitted, list values for each subjob
     } else {
@@ -707,12 +727,12 @@ sub _determine_subjob_age
 {
   my ($t,$i) = @_;
   my $s;
-  if ((${$PAR{data}{$t}{states}}[$i] eq 'SUBMITTED')
-   || (${$PAR{data}{$t}{states}}[$i] eq 'PENDING')
-   || (${$PAR{data}{$t}{states}}[$i] eq 'RUNNING')) {
-    $s = $PAR{NOW} - $PAR{data}{$t}{submit};
-  } else {
+  if ((${$PAR{data}{$t}{states}}[$i] eq 'SUBMITTED') || (${$PAR{data}{$t}{states}}[$i] eq 'PENDING') || (${$PAR{data}{$t}{states}}[$i] eq 'RUNNING')) {
+    $s = $PAR{NOW} - $PAR{data}{$t}{submit_time};
+  } elsif (defined ${$PAR{data}{$t}{end_times}}[$i]) {
     $s = $PAR{NOW} - ${$PAR{data}{$t}{end_times}}[$i];
+  } else {
+    $s = $PAR{NOW} - $PAR{data}{$t}{create_time};
   }
 
 # Recalculate age if needed
