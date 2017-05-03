@@ -97,9 +97,6 @@ sub setDefaults
 # Keep index of tempdirs
   $PAR->{tempdir_index} = "/spin1/swarm/.tempdir.idx";
 
-# Keep index of swarms
-  $PAR->{swarm_index} = "/spin1/swarm/.swarm.idx";
-
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 # There is no need to keep track of MaxSubmit because swarm will now submit jobarrays.  Each swarm
 # is a single job, so it either submits, or doesn't submit.  The value of interest is MaxArraySize, 
@@ -462,7 +459,6 @@ sub submitSlurm
     else {
       dieWithError("Something went wrong with sbatch!  I don't know the jobid!");
     }
-    append_to_swarm_index(); # Record jobid creation in the index
   }
 }
 #==============================================================================
@@ -1125,13 +1121,5 @@ sub append_to_tempdir_index
   my $fileContents = time().",$PAR->{user},$PAR->{tempname},$PAR->{subjobs},$p\n";
   appendToFile($PAR->{tempdir_index},$fileContents);
   chmod 0666, $PAR->{tempdir_index};
-}
-#==============================================================================
-sub append_to_swarm_index
-{
-  return unless defined $PAR->{jobid};
-  my $fileContents = time().",$PAR->{tempname},$PAR->{jobid}\n";
-  appendToFile($PAR->{swarm_index},$fileContents);
-  chmod 0666, $PAR->{swarm_index};
 }
 #==============================================================================
