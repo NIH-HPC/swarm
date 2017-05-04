@@ -40,6 +40,13 @@
 <input type="text" class="formfield" size="14" id="searchbox" name="query" alt="Search" />
 </form>
 
+<a href="https://github.com/NIH-HPC">
+    <img border="0"
+    align="right" style="position: absolute; top: 60px; right: 72px; "
+    src="/images/GitHub-Mark-20px.png" alt="GitHub"
+    title="Click here to visit our GitHub repositories" />
+</a>
+
 <a href="https://www.youtube.com/channel/UCx-kNd1kBskYr5KLT9-Erew">
     <img border="0"
     align="right" style="position: absolute; top: 60px; right: 48px; "
@@ -260,7 +267,7 @@ sbatch options:
   --job-name [str]       set the name of the job
   <a href="#dependency"><b>--dependency</b></a> [str]     set up dependency (i.e. run swarm before or after)
   <a href="#time"><b>--time</b></a> [str]           change the walltime for each subjob (default is
-                         04:00:00, or 4 hours).  If  a  swarm  is  bundled,
+                         02:00:00, or 2 hours).  If  a  swarm  is  bundled,
                          then the time is multiplied by the bundle factor.
   <a href="/docs/userguide.html#licenses"><b>--license</b></a> [str]        obtain software licenses (e.g. --license=matlab)
   <a href="/docs/userguide.html#partitions"><b>--partition</b></a> [str]      change the partition (default is norm)
@@ -700,7 +707,7 @@ swarm_221574_1_0.o  swarm_221574_2_1.o  swarm_221574_4_0.o  swarm_221574_5_1.o</
 <!-- ------------------------------------------------------------------------------------- -->
 
 <p><a name="time"></a><b>Setting walltime with --time</b></p>
-<P>By default all jobs and subjobs have a walltime of 4 hours.  If a swarm subjob exceeds 4 hours, <b>it will be killed!</b>.
+<P>By default all jobs and subjobs have a walltime of 2 hours.  If a swarm subjob exceeds its walltime, <b>it will be killed!</b>.
 On the other hand, if your swarm subjobs have a very short walltime, then their priority on the queue may be elevated.  Therefore,
 it is best practice to set a walltime using the <b>--time</b> option that reflects the estimated execution time of the subjobs.
 For example, if the command lines in a swarm are expected to require no more than half an hour to complete, the swarm command should be:</p>
