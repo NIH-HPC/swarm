@@ -26,6 +26,7 @@
 #
 # ===========================================================================
 use strict;
+use HPCNIH::Staff::MySQL::Catalog;
 use HPCNIH::Util::EmailTools;
 use HPCNIH::Util::TimeTools;
 use Storable;
@@ -41,18 +42,17 @@ use POSIX qw(setsid strftime);
 use DBI;
 use FileHandle;
 use File::Basename;
-use POSIX qw(setsid strftime);
 use FindBin qw($RealBin);
 use Cwd 'abs_path';
+use Sort::ArrayOfArrays;
 
 my %OPT;
 my %PAR;
 $PAR{tempdir_index} = "/spin1/swarm/.tempdir.idx";
-$PAR{swarm_index} = "/spin1/swarm/.swarm.idx";
 $PAR{store} = "/spin1/swarm/.swarm.store";
 $PAR{NOW} = time();
 $PAR{age_unit} = 86400;
-$PAR{delete_age} = 5; # remove files after 5 days
+$PAR{delete_age} = 7; # remove files when then they are 7 days old
 tie $PAR{stopwatch},'HPCNIH::Util::Stopwatch';
 
 getOptions();
@@ -73,29 +73,39 @@ eval {
 # open connection to mysql
   $PAR{dbh} = DBI->connect("DBI:mysql:;mysql_read_default_group=dashboard;mysql_read_default_file=/usr/local/etc/my.cnf;mysql_connect_timeout=10",undef,undef,{RaiseError=>0,PrintError=>0,AutoCommit=>0}) or try_connecting_again();
 
-#  get_old_data_from_store();
-  parse_index_files();
-  parse_jobs_table();
+# manipulate the store file
+  if ($OPT{purge}) {
+    purge_and_exit();
+  }
 
-# Print summary
   if ($OPT{dump}) {
     dump_and_exit();
   }
-  elsif ($OPT{verbose} > 2) {
-    print_full_data();
+
+# Find the current status of swarms
+  print_swarm_usage() if (($OPT{delete}) && ($OPT{verbose} > 0));
+  read_from_store();
+  parse_index_files();
+  parse_swarm_logs();
+  parse_jobs_table();
+
+# Print summary
+  if ($OPT{verbose} > 2) {
+    print_data_level_3();
   }
-  elsif ($OPT{verbose} > 1) {
-    print_data();
+  elsif ($OPT{verbose} == 2) {
+    print_data_level_2();
   }
-  else {
-    print_data_summary();
+  elsif ($OPT{verbose} == 1) {
+    print_data_level_1();
   }
 
 # Delete the directories and files
-#  delete_directories_and_files() if ($OPT{delete});
+  delete_directories_and_files() if ($OPT{delete});
 
 # Make the data permanent
-#  store_data() if ($OPT{update} && !$OPT{debug});
+  write_to_store() if ($OPT{update} && !$OPT{debug});
+  print_swarm_usage() if (($OPT{delete}) && ($OPT{verbose} > 0));
 
 # Send a report if you must
   if ($OPT{emailTo}) {
@@ -133,6 +143,7 @@ sub getOptions
     'dump' => \$OPT{dump},
     'delete' => \$OPT{delete},
     'report' => \$OPT{report},
+    'purge' => \$OPT{purge},
     'update' => \$OPT{update},
     'tab' => \$OPT{tab},
     'timing' => \$OPT{timing},
@@ -145,6 +156,7 @@ sub getOptions
     'user=s' => \$OPT{user}, 
     'u=s' => \$OPT{user}, 
     'jobid=i' => \$OPT{jobid}, 
+    'delete_age=i' => \$OPT{delete_age}, 
     'j=i' => \$OPT{jobid}, 
     'state=s' => \$OPT{state}, 
     's=s' => \$OPT{state}, 
@@ -152,24 +164,46 @@ sub getOptions
 
   printOptions() if $OPT{help};
 
+  if ($OPT{dump}) {
+    $OPT{report} = 1;
+    undef $OPT{update};
+    undef $OPT{delete};
+    $OPT{verbose} = 2 unless (defined $OPT{verbose});
+  }  
+
+  if ($OPT{purge}) {
+    $OPT{report} = 1;
+    undef $OPT{update};
+    undef $OPT{delete};
+  }
+
   unless ($OPT{update} || $OPT{report} || $OPT{delete}) {
-    dieWithError("You must choose --report, --update, or --delete");
+    dieWithError("You must choose --dump, --report, --update, --delete, or --purge");
   }
 
   print STDERR "Running in debug mode\n" if $OPT{debug};
   $OPT{verbose} = 2 if ((defined $OPT{debug}) && (not defined $OPT{verbose}));
   $OPT{verbose} = 2 if ((defined $OPT{dump}) && (not defined $OPT{verbose}));
+  $OPT{verbose} = 1 unless (defined $OPT{verbose});
+  $OPT{verbose} = 0 if ((defined $OPT{verbose}) && ($OPT{verbose} < 0));
 
   if ($OPT{state} && (
     ($OPT{state} ne 'CREATED') && ($OPT{state} ne 'PENDING') && ($OPT{state} ne 'RUNNING')
-    && ($OPT{state} ne 'FINISHED') && ($OPT{state} ne 'MIXED'))) {
-    dieWithError("--state must be CREATED, PENDING, RUNNING, FINISHED or MIXED");
+    && ($OPT{state} ne 'FINISHED') && ($OPT{state} ne 'UNKNOWN') && ($OPT{state} ne 'MIXED'))) {
+    dieWithError("--state must be CREATED, PENDING, RUNNING, FINISHED, UNKNOWN or MIXED");
   }
 
   $OPT{update} = 1 if $OPT{delete};
 
   if ($OPT{update} && $>) {
     dieWithError("you must be root!");
+  }
+
+  if ($OPT{delete_age}) {
+    if ($OPT{delete_age} > $PAR{delete_age}) {
+      $PAR{delete_age} = $OPT{delete_age};
+      print "Using delete_age = $PAR{delete_age}\n" if $OPT{verbose} > 1;
+    }
   }
 }
 #==================================================================================================
@@ -184,23 +218,34 @@ Usage: $0 [ options ]
 
 Description:
 
-  Evaluate the states of swarms as recorded in the index files and the
+  Evaluate the states of swarms as recorded in the index file and the
   dashboard jobs table.  The information is displayed in increasing detail,
-  depending on the value of --verbose and the presence of --dump.
+  depending on the value of --verbose.
 
-  If --update is given, then the index files will be rotated, and the
-  information will be stored in a store file.
+  If --dump is given, then the contents of the store file will be dumped out
+  in a structured format.
+
+  If --report is given, the contents of the store file will be merged with the
+  parsed contents of the index and log files, and the total sum will be 
+  reported.  The store file will not be modified.
+
+  If --update is given, the same procedure as --report will be run, but further
+  the index file will be rotated, and the updated contents will be stored in
+  the store file.
 
   If --delete is given, then the temporary directories and symlink 
   associated with the swarm will be deleted, if it exists, and if the
   swarm finished more than $PAR{delete_age} days ago.  --update is
-  also set, the index files are rotated, and the store file is
-  appended.
+  also set, the index file is rotated, and the store file is appended.
 
-  index files:
+  If --purge is given, then the store file is pruned of swarms that have been
+  deleted.  Unfortunately, if the index and log files are parsed too far in
+  the past, swarms that have been pruned will be redisplayed with --report
+  and reinserted into the store file with --update.
+
+  index file:
 
     $PAR{tempdir_index}
-    $PAR{swarm_index}
 
   store file:
 
@@ -208,21 +253,23 @@ Description:
 
 Options:
 
+  --dump               dump the data in a hierarchical fashion
+
   --report             print out current status, don't modify anything
 
-  --update             wipe out index files, print to store file.  Must be
+  --update             wipe out index file, print to store file.  Must be
                        root.
 
   --delete             actually attempt to delete the swarm tempdir and 
                        associated files.  --delete implies --update.  Must
                        be root.
 
-  -u/--user            show only those swarms owned by this user
-  -j/--jobid           show only the swarm with this jobid
-  -s/--state           show only swarms with this state (choose from CREATED,
-                       PENDING, RUNNING, FINISHED, MIXED)
+  --purge              remove PURGED swarms from the store file
 
-  --dump               dump the data in a hierarchical fashion
+  -u/--user            filter for those swarms owned by this user
+  -j/--jobid           filter for the swarm with this jobid
+  -s/--state           filter for swarms with this state (choose from CREATED,
+                       PENDING, RUNNING, FINISHED, MIXED, UNKNOWN)
 
   --hours              show age in hours, rather than days
   --minutes            show age in minutes, rather than days
@@ -238,7 +285,7 @@ Options:
   -d, --debug          run in debug mode 
   -v, --verbose        increase verbosity level (0,1,2,3)
 
-Last modification date: 30 Mar 2017 (David Hoover)
+Last modification date: 03 May 2017 (David Hoover)
 
 EOF
   
@@ -249,16 +296,25 @@ sub parse_index_files
 {
   $PAR{stopwatch} = 0; # reset the stopwatch
 # To keep things simple, the index files will be shifted
-  system("/bin/cat $PAR{tempdir_index} >> $PAR{tempdir_index}.work");
-  #system("/bin/cat /dev/null > $PAR{tempdir_index}") if ($OPT{update} && !$OPT{debug});
-  system("/bin/cat $PAR{swarm_index} >> $PAR{swarm_index}.work");
-  #system("/bin/cat /dev/null > $PAR{swarm_index}") if ($OPT{update} && !$OPT{debug});
+  return unless (-f $PAR{tempdir_index});
+
+#  if ($OPT{update} && !$OPT{debug}) {
+#    system("/bin/touch $PAR{tempdir_index}.tmp");
+#    system("/bin/chmod 666 $PAR{tempdir_index}.tmp");
+#    system("/bin/chown root.root $PAR{tempdir_index}.tmp");
+#    system("/bin/mv $PAR{tempdir_index} $PAR{tempdir_index}.work");
+#    system("/bin/mv $PAR{tempdir_index}.tmp $PAR{tempdir_index}");
+#  }
+#  else {
+    system("/bin/cp $PAR{tempdir_index} $PAR{tempdir_index}.work");
+#  }
 
 # Parse tempdir_index file
   open FILE1, "<$PAR{tempdir_index}.work";
   LINE: while (<FILE1>) {
     chomp(my $line = $_);
     my ($time,$user,$t,$nsubjobs,$p) = split /,/,$line;
+    next LINE if ($PAR{data}{$t}{state}); # don't bother if already known
     $PAR{data}{$t}{create_time} = $time;
     $PAR{data}{$t}{user} = $user;
     $PAR{data}{$t}{tempname} = $t;
@@ -266,34 +322,72 @@ sub parse_index_files
     $PAR{data}{$t}{p} = $p;
     $PAR{data}{$t}{state} = "CREATED";
     foreach my $i (0 .. $PAR{data}{$t}{nsubjobs}-1) {
-      #${$PAR{data}{$t}{states}}[$i] = 'CREATED' unless (defined ${$PAR{data}{$t}{states}}[$i]);
       ${$PAR{data}{$t}{states}}[$i] = 'CREATED'; 
     }
   }
   close FILE1;
-
-# Parse swarm_index file
-  open FILE2, "<$PAR{swarm_index}.work";
-  LINE2: while (<FILE2>) {
-    chomp(my $line = $_);
-    my ($time,$t,$jobid) = split /,/,$line;
-    $PAR{data}{$t}{submit_time} = $time;
-    $PAR{data}{$t}{jobid} = $jobid;
-    $PAR{jobid2tempname}{$PAR{data}{$t}{jobid}}=$t;
-    $PAR{data}{$t}{state} = "SUBMITTED";
-    foreach my $i (0 .. $PAR{data}{$t}{nsubjobs}-1) {
-      #${$PAR{data}{$t}{states}}[$i] = 'SUBMITTED' unless (defined ${$PAR{data}{$t}{states}}[$i]);
-      ${$PAR{data}{$t}{states}}[$i] = 'SUBMITTED';
-    }
-  }
-  close FILE2;
-
-# Now removing the working index files
-  unlink "$PAR{tempdir_index}.work","$PAR{swarm_index}.work";
+  unlink "$PAR{tempdir_index}.work";
   printBlue(sprintf "parse_index_files = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
 }
 #=================================================================================================#
-sub get_old_data_from_store
+#sub _most_recent_create_time
+#{
+#  my $oldest = 0;
+#  foreach my $t (keys %{$PAR{data}}) {
+#    if ((defined $PAR{data}{$t}{create_time}) && ($PAR{data}{$t}{create_time} > $oldest)) {
+#      $oldest = $PAR{data}{$t}{create_time}; 
+#    }
+#  }
+#  return $oldest; 
+#}
+#=================================================================================================#
+sub parse_swarm_logs
+{
+  $PAR{stopwatch} = 0; # reset the stopwatch
+# Barf barf barf -- this is insurance
+  my @files;
+  chomp(my $x = `/bin/find /usr/local/logs/swarm_log_archives -type f -mtime -10`);
+  @files = split /\n/,$x;
+  push @files,"/usr/local/logs/swarm.log";
+
+# Find the most recent create_time, if known, to avoid stupidity
+#  my $cutoff = strftime("%Y%m%d", (localtime(_most_recent_create_time()))[0 .. 5]); 
+
+  FILE: foreach my $f (@files) {
+#    if ($f=~/-(\d{8})$/) { next FILE if ($cutoff > $1); } # Skip logfiles already parsed
+    if (open FILE, "<$f") {
+      LINE: while (<FILE>) {
+        my $line = $_;
+        my $t = $1              if ($line=~/ tempname=([^;]+); /);
+        my $time = str2time($1) if ($line=~/^date=([^;]+); /);
+        my $user = $1           if ($line=~/ user=([^;]+); /);
+        my $jobid = $1          if ($line=~/ jobid=([^;]+); /);
+        my $nsubjobs = $1       if ($line=~/ njobs=([^;]+); /);
+        my $p = 1;
+        $p = 2 if ($line=~/; command=.+-p 2 /);
+        if ($t) {
+          next LINE if ($PAR{data}{$t}{jobid}); # don't bother if already known
+          $PAR{data}{$t}{create_time} = $time unless $PAR{data}{$t}{create_time};
+          $PAR{data}{$t}{user} = $user;
+          $PAR{data}{$t}{tempname} = $t;
+          $PAR{data}{$t}{nsubjobs} = $nsubjobs;
+          $PAR{data}{$t}{p} = $p if $p;
+          $PAR{data}{$t}{submit_time} = $time;
+          $PAR{data}{$t}{jobid} = $jobid;
+          $PAR{jobid2tempname}{$jobid}=$t;
+          $PAR{data}{$t}{state} = "SUBMITTED";
+          foreach my $i (0 .. $PAR{data}{$t}{nsubjobs}-1) {
+            ${$PAR{data}{$t}{states}}[$i] = 'SUBMITTED';
+          }
+        }
+      }
+      close FILE;
+    }
+  }
+  printBlue(sprintf "parse_swarm_logs = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
+}
+#=================================================================================================#
+sub read_from_store
 {
   open(FH, ">$PAR{store}.lck")        or dieWithError("can't create lock $PAR{store}.lck: $!");
   flock(FH, 2)                        or dieWithError( "can't flock $PAR{store}.lck: $!");
@@ -309,7 +403,7 @@ sub get_old_data_from_store
   }
 }
 #==================================================================================================
-sub store_data
+sub write_to_store
 {
   open(FH, ">$PAR{store}.lck")        or dieWithError("can't create lock $PAR{store}.lck: $!");
   flock(FH, 2)                        or dieWithError("can't flock $PAR{store}.lck: $!");
@@ -352,7 +446,7 @@ sub parse_jobs_table
     }
 
     next JOB unless $t; # Don't be stupid
-    next JOB if _finished($t); # Don't bother if the swarm is finished
+    next JOB if (_finished($t) || $PAR{data}{$t}{deleted});
 
 # Fill in the swarm arrays
     _fill_swarm_arrays($t,$a->{$jobid});
@@ -363,7 +457,7 @@ sub parse_jobs_table
 # What about unfinished swarms that were not found in the jobs database?
   $PAR{stopwatch} = 0; # reset the stopwatch
   SWARM2: foreach my $t (keys %{$PAR{data}}) {
-    next SWARM2 if _finished($t);
+    next SWARM2 if (_finished($t) || $PAR{data}{$t}{deleted});
     next SWARM2 unless (defined $PAR{data}{$t}{jobid});
     foreach my $i (0 .. $PAR{data}{$t}{nsubjobs}-1) {
 # The subjob was seen in the jobs table at somepoint in time
@@ -387,6 +481,7 @@ sub _fill_swarm_arrays
 # Add the jobid, state, and end_time for the subjobs represented by this line
 {
   my ($t,$x) = @_;
+
 # NOTE: This does not cover all possibilities for job arrays under Slurm.  However, swarm will
 # only give a single subjob, or a range of subjobs, starting from 0.  --maxrunning will add a
 # % sign followed by max simultaneous jobs.
@@ -432,7 +527,7 @@ sub _simplify_states_and_end_times
   SWARM: foreach my $t (keys %{$PAR{data}}) {
 
 # Don't bother if the swarm is finished
-    next SWARM if _finished($t); 
+    next SWARM if (_finished($t) || $PAR{data}{$t}{deleted}); 
 
 # Find max end_time, if possible
     if ($PAR{data}{$t}{end_times}) {
@@ -499,13 +594,18 @@ sub _update_value
 {
   my ($t,$key,$value) = @_;
   return unless ((defined $t) && (defined $key) && (defined $value));
-  #if ((not defined $PAR{data}{$t}{$key}) || ($PAR{data}{$t}{$key} ne $value)) {
-    #undef $PAR{UNCHANGED}{$t};
-    $PAR{data}{$t}{$key} = $value;
-  #}
+  $PAR{data}{$t}{$key} = $value;
 }
 #=================================================================================================
-sub print_data
+sub _find_action
+{
+  my $t = shift;
+  if (_deletable($t)) { return 'DELETE'; }
+  elsif ($PAR{data}{$t}{deleted}) { return 'IGNORE'; }
+  else { return 'KEEP'; }
+}
+#=================================================================================================
+sub print_data_level_2
 {
   $PAR{stopwatch} = 0; # reset the stopwatch
   my $x;
@@ -513,29 +613,41 @@ sub print_data
     next if ($OPT{user} && ($PAR{data}{$t}{user} ne $OPT{user}));
     next if ($OPT{jobid} && ($PAR{data}{$t}{jobid} ne $OPT{jobid}));
     next if ($OPT{state} && ($PAR{data}{$t}{state} ne $OPT{state}));
-    if (_deletable($t)) {
-        $PAR{data}{$t}{action} = 'DELETE';
-    }
-    else {
-      $PAR{data}{$t}{action} = 'KEEP';
-    }
-    $PAR{data}{$t}{age} = _find_age($t);
-    if ($OPT{delete}) {
-      push @{$x},$PAR{data}{$t} if ($PAR{data}{$t}{action} eq 'DELETE');
-    }
-    else {
-      push @{$x},$PAR{data}{$t}; 
-    }
+    next if ($PAR{data}{$t}{state} eq 'PURGED');
+    next if ($OPT{delete} && (!_deletable($t)));
+
+# Push into array of hashrefs if needed
+    push @{$x}, {
+      tempname => $PAR{data}{$t}{tempname},
+      user => $PAR{data}{$t}{user},
+      state => $PAR{data}{$t}{state},
+      age => _find_age($t),
+      action => _find_action($t),
+      jobid => $PAR{data}{$t}{jobid},
+      nsubjobs => $PAR{data}{$t}{nsubjobs},
+      p => $PAR{data}{$t}{p},
+    };
   }
 
-  my $m1 =  createMatrix(array=>$x,horizontal=>1,fields=>['tempname','user','state','age','action','jobid','nsubjobs','p']);
-  if ($OPT{tab}) {
-    print printMatrix($m1) . "\n";
+  if ($x) {
+    my $m1 =  createMatrix(array=>$x,horizontal=>1,fields=>['tempname','user','state','age','action','jobid','nsubjobs','p']);
+# Sort the data
+    my $sort = Sort::ArrayOfArrays->new({
+      results => $m1,
+      header_row => 1, # first array is the header row
+      sort_column => '1,5,3,0', # sort user, then jobid, then age, then tempname
+      sort_code => ['aa','aa','aa','nd','aa','na','na','na'], 
+    });
+    my $results = $sort->sort_it;
+  
+    if ($OPT{tab}) {
+      print printMatrix($results) . "\n";
+    }
+    else {
+      print printMatrixNeatly(matrix=>$results,horizontal_separator=>1,horizontal_character=>'=') . "\n";
+    }
   }
-  else {
-    print printMatrixNeatly(matrix=>$m1,horizontal_separator=>1,horizontal_character=>'=') . "\n";
-  }
-  printBlue(sprintf "print_data = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
+  printBlue(sprintf "print_data_level_2 = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
 }
 #=================================================================================================
 sub _find_age
@@ -558,7 +670,7 @@ sub _find_age
   return $age;
 }
 #=================================================================================================
-sub print_data_summary
+sub print_data_level_1
 {
   $PAR{stopwatch} = 0; # reset the stopwatch
   my $x;
@@ -576,14 +688,7 @@ sub print_data_summary
     $x->{unknown}++ if ($PAR{data}{$t}{state} eq 'UNKNOWN');
     $x->{files} += 2 + ($PAR{data}{$t}{nsubjobs}*$PAR{data}{$t}{p});
     if (_deletable($t)) {
-      if (defined $PAR{data}{$t}{jobid}) {
-        if (_finished($t)) {
-          $x->{delete}++;
-        }
-        else { # still pending or running
-          $x->{keep}++;
-        }
-      }
+      $x->{delete}++;
     }
     else {
       $x->{keep}++;
@@ -594,56 +699,56 @@ sub print_data_summary
     $x->{pending}, $x->{running}, $x->{finished}, $x->{mixed}, $x->{expired}, $x->{unknown},
     $x->{delete}, $x->{keep},
   );
-  printBlue(sprintf "print_data_summary = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
+  printBlue(sprintf "print_data_level_1 = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
 }
 #=================================================================================================
 sub delete_directories_and_files
 {
-  my $list;
-  my %new;
-  my $i = 0;
+  $PAR{stopwatch} = 0; # reset the stopwatch
+# Choose our victims
+  my @victims;
   foreach my $t (keys %{$PAR{data}}) {
-    if ($OPT{user}) {
-      if ((not defined $PAR{data}{$t}{user}) || ($PAR{data}{$t}{user} ne $OPT{user})) {
-        $new{$t} = $PAR{data}{$t}; # keep the data
-        next;
-      }
+    next if ($OPT{user} && ((not defined $PAR{data}{$t}{user}) || ($PAR{data}{$t}{user} ne $OPT{user})));
+    next if ($OPT{jobid} && ((not defined $PAR{data}{$t}{jobid}) || ($PAR{data}{$t}{jobid} ne $OPT{jobid})));
+    next if ($OPT{state} && ((not defined $PAR{data}{$t}{state}) || ($PAR{data}{$t}{state} ne $OPT{state})));
+    push @victims, $t if (_deletable($t));
+  }
+  printBlue(sprintf "choosing victims = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
+
+  $PAR{stopwatch} = 0; # reset the stopwatch
+# Delete the victims in clumps of 20
+  my $list;
+  foreach my $i (0..$#victims) {
+    my $t = $victims[$i];
+    $list .= " /spin1/swarm/".$PAR{data}{$t}{user}."/".$t if ($t);
+    my $print_list = "rm -rf /spin1/swarm/".$PAR{data}{$t}{user}."/".$t;
+    $list .= " /spin1/swarm/".$PAR{data}{$t}{user}."/".$PAR{data}{$t}{jobid} if ($PAR{data}{$t}{jobid});
+    $print_list .= " /spin1/swarm/".$PAR{data}{$t}{user}."/".$PAR{data}{$t}{jobid}."\n" if ($PAR{data}{$t}{jobid});
+    print $print_list if (defined $OPT{verbose} && $OPT{verbose} > 1);
+    if (!$OPT{debug}) {
+      $PAR{data}{$t}{deleted} = 1;
+      $PAR{data}{$t}{state} = "PURGED";
     }
-    if ($OPT{jobid}) {
-      if ((not defined $PAR{data}{$t}{jobid}) || ($PAR{data}{$t}{jobid} ne $OPT{jobid})) {
-        $new{$t} = $PAR{data}{$t}; # keep the data
-        next;
+    if ((!($i%20)) || ($i == $#victims)) {
+      my $cmd = "rm -rf $list";
+      undef $list;
+      if (!$OPT{debug}) {
+        system($cmd);
       }
-    }
-    if (_deletable($t)) {
-      $i++;
-      $list .= " /spin1/swarm/".$PAR{data}{$t}{user}."/".$t if ($t);
-      my $print_list = "rm -rf /spin1/swarm/".$PAR{data}{$t}{user}."/".$t;
-      $list .= " /spin1/swarm/".$PAR{data}{$t}{user}."/".$PAR{data}{$t}{jobid} if ($PAR{data}{$t}{jobid});
-      $print_list .= " /spin1/swarm/".$PAR{data}{$t}{user}."/".$PAR{data}{$t}{jobid}."\n" if ($PAR{data}{$t}{jobid});
-      print $print_list if (defined $OPT{verbose} && $OPT{verbose} > 2);
-# Remove the tempdir and the link, if possible
-      if (!($i%20)) {
-        my $cmd = "rm -rf $list";
-        undef $list;
-        system($cmd) unless $OPT{debug};
-      }
-    }
-    else {
-      $new{$t} = $PAR{data}{$t};
     }
   }
-  if ($list) {
-    my $cmd = "rm -rf $list";
-    undef $list;
-    system($cmd) unless $OPT{debug};
+  if ($OPT{verbose} > 1) {
+    if (!@victims) {
+      print "Nothing to delete\n";
+    }
   }
-  %{$PAR{data}} = %new;
+  printBlue(sprintf "delete_directories_and_files = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
 }
 #=================================================================================================
 sub _deletable
 {
   my $t = shift;
+  return if $PAR{data}{$t}{deleted};
   my $age;
   if ($PAR{data}{$t}{max_end_time}) {
     $age = int(($PAR{NOW}-$PAR{data}{$t}{max_end_time})/$PAR{age_unit});
@@ -654,7 +759,7 @@ sub _deletable
   } else {
     $age = -1;
   }
-  if (($age > $PAR{delete_age}) && (((defined $PAR{data}{$t}{jobid}) && _finished($t)) || ($PAR{data}{$t}{state} eq 'CREATED') || ($PAR{data}{$t}{state} eq 'UNKNOWN'))) {
+  if (($age >= $PAR{delete_age}) && (((defined $PAR{data}{$t}{jobid}) && _finished($t)) || ($PAR{data}{$t}{state} eq 'CREATED') || ($PAR{data}{$t}{state} eq 'UNKNOWN'))) {
     return 1;
   }
 }
@@ -667,24 +772,22 @@ sub _finished
 #=================================================================================================
 sub dump_and_exit
 {
+  read_from_store();
   my $x;
-  if ($OPT{user} || $OPT{jobid}) {
-    foreach my $t (keys %{$PAR{data}}) {
-      next if ($OPT{user} && ($PAR{data}{$t}{user} ne $OPT{user}));
-      next if ($OPT{jobid} && ($PAR{data}{$t}{jobid} ne $OPT{jobid}));
-      next if ($OPT{state} && ($PAR{data}{$t}{state} ne $OPT{state}));
-      $x->{$t} = $PAR{data}{$t};
-    }
-  }
-  else {
-    $x = $PAR{data};
+  foreach my $t (keys %{$PAR{data}}) {
+    next if ($OPT{user} && ($PAR{data}{$t}{user} ne $OPT{user}));
+    next if ($OPT{jobid} && ($PAR{data}{$t}{jobid} ne $OPT{jobid}));
+    next if ($OPT{state} && ($PAR{data}{$t}{state} ne $OPT{state}));
+    $PAR{data}{$t}{age} = _find_age($t);
+    $PAR{data}{$t}{action} = _find_action($t);
+    $x->{$t} = $PAR{data}{$t};
   }
   $Data::Dumper::Maxdepth=$OPT{verbose};
   print Dumper($x);
   exit;
 }
 #=================================================================================================
-sub print_full_data
+sub print_data_level_3
 {
   $PAR{stopwatch} = 0; # reset the stopwatch
   my @printArray;
@@ -692,12 +795,8 @@ sub print_full_data
     next if ($OPT{user} && ($PAR{data}{$t}{user} ne $OPT{user}));
     next if ($OPT{jobid} && ($PAR{data}{$t}{jobid} ne $OPT{jobid}));
     next if ($OPT{state} && ($PAR{data}{$t}{state} ne $OPT{state}));
-    if (_deletable($t)) {
-      $PAR{data}{$t}{action} = 'DELETE';
-    }
-    else {
-      $PAR{data}{$t}{action} = 'KEEP';
-    }
+    next if ($PAR{data}{$t}{state} eq 'PURGED');
+    next if ($OPT{delete} && (!_deletable($t)));
 
 # If the swarm was never submitted, only list the global values
     if (!$PAR{data}{$t}{submit_time}) {
@@ -720,7 +819,7 @@ sub print_full_data
   else {
     print printMatrixNeatly(matrix=>$m1,horizontal_separator=>1,horizontal_character=>'=') . "\n";
   }
-  printBlue(sprintf "print_full_data = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
+  printBlue(sprintf "print_data_level_3 = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
 }
 #=================================================================================================
 sub _determine_subjob_age
@@ -755,14 +854,13 @@ sub dieWithError
 sub _add_first_subjob
 {
   my ($y,$t,$i,$sage) = @_;
-  return if ($OPT{delete} && ($PAR{data}{$t}{action} ne 'DELETE'));
   push @{$y}, {
     tempname => $PAR{data}{$t}{tempname},
     user => $PAR{data}{$t}{user},
     jobid => $PAR{data}{$t}{jobid},
     state => $PAR{data}{$t}{state},
     age => _find_age($t),
-    action => $PAR{data}{$t}{action},
+    action => _find_action($t),
     nsj => $PAR{data}{$t}{nsubjobs},
     p => $PAR{data}{$t}{p},
     cmd => $i,
@@ -775,7 +873,6 @@ sub _add_first_subjob
 sub _add_subjob
 {
   my ($y,$t,$i,$sage) = @_;
-  return if ($OPT{delete} && ($PAR{data}{$t}{action} ne 'DELETE'));
   push @{$y}, {
     tempname => "-",
     user => "-",
@@ -795,16 +892,44 @@ sub _add_subjob
 sub _add_created_swarm
 {
   my ($y,$t) = @_;
-  return if ($OPT{delete} && ($PAR{data}{$t}{action} ne 'DELETE'));
   push @{$y}, {
     tempname => $PAR{data}{$t}{tempname},
     user => $PAR{data}{$t}{user},
     jobid => $PAR{data}{$t}{jobid},
     state => $PAR{data}{$t}{state},
     age => _find_age($t),
-    action => $PAR{data}{$t}{action},
+    action => _find_action($t),
     nsj => $PAR{data}{$t}{nsubjobs},
     p => $PAR{data}{$t}{p},
   };
+}
+#=================================================================================================
+sub print_swarm_usage
+{
+  my $cat = HPCNIH::Staff::MySQL::Catalog->new(catalog=>"quota_spin1");
+  my $x = $cat->get_current(entity=>"/spin1/swarm");
+  my $y = $x->{'/spin1/swarm'};
+  my $string = sprintf("/swarm usage: %6.2f GB (%4.1f%%), %7d files (%4.1f%%)\n",
+      ( $y->{dusage}/1024/1024 ),
+      ( ($y->{dusage}/$y->{dquota})*100 ),
+      ( $y->{fusage} ),
+      ( ($y->{fusage}/$y->{fquota})*100 ),
+  );
+  print $string;
+}
+#=================================================================================================
+sub purge_and_exit
+{
+# Removed the PURGED jobs from the store file
+  read_from_store();
+  my %new;
+  foreach my $t (keys %{$PAR{data}}) {
+    if (!$PAR{data}{$t}{state} eq 'PURGED') {
+      $new{$t} = $PAR{data}{$t};
+    }
+  }
+  $PAR{data} = \%new;
+  write_to_store() unless $OPT{debug};
+  exit;
 }
 #=================================================================================================
