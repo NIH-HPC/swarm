@@ -95,7 +95,7 @@ sub setDefaults
   $PAR->{logfile} = "/usr/local/logs/swarm.log";
 
 # Keep index of tempdirs
-  $PAR->{tempdir_index} = "/spin1/swarm/.tempdir.idx";
+  $PAR->{tempdir_index} = '/usr/local/logs/swarm_tempdir.idx';
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 # There is no need to keep track of MaxSubmit because swarm will now submit jobarrays.  Each swarm

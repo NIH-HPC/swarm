@@ -48,8 +48,9 @@ use Sort::ArrayOfArrays;
 
 my %OPT;
 my %PAR;
-$PAR{tempdir_index} = "/spin1/swarm/.tempdir.idx";
-$PAR{store} = "/spin1/swarm/.swarm.store";
+$PAR{tempdir_index} = "/usr/local/logs/swarm_tempdir.idx";
+$PAR{store} = "/usr/local/logs/swarm_manager.store";
+$PAR{logfile_age} = 20; # read 20 days back in swarm logs
 $PAR{NOW} = time();
 $PAR{age_unit} = 86400;
 $PAR{delete_age} = 7; # remove files when then they are 7 days old
@@ -85,7 +86,7 @@ eval {
 # Find the current status of swarms
   print_swarm_usage() if (($OPT{delete}) && ($OPT{verbose} > 0));
   read_from_store();
-  parse_index_files();
+  parse_index_file();
   parse_swarm_logs();
   parse_jobs_table();
 
@@ -145,6 +146,7 @@ sub getOptions
     'report' => \$OPT{report},
     'purge' => \$OPT{purge},
     'update' => \$OPT{update},
+    'delete_age=i' => \$OPT{delete_age}, 
     'tab' => \$OPT{tab},
     'timing' => \$OPT{timing},
     'v=i' => \$OPT{verbose},
@@ -153,13 +155,14 @@ sub getOptions
     'bcc=s' => \$OPT{Bcc}, 
     'hours' => \$OPT{hours}, 
     'minutes' => \$OPT{minutes}, 
-    'user=s' => \$OPT{user}, 
     'u=s' => \$OPT{user}, 
-    'jobid=i' => \$OPT{jobid}, 
-    'delete_age=i' => \$OPT{delete_age}, 
+    'user=s' => \$OPT{user}, 
     'j=i' => \$OPT{jobid}, 
-    'state=s' => \$OPT{state}, 
+    'jobid=i' => \$OPT{jobid}, 
     's=s' => \$OPT{state}, 
+    'state=s' => \$OPT{state}, 
+    't=s' => \$OPT{tempdir}, 
+    'tempdir=s' => \$OPT{tempdir}, 
   ) || printOptions();
 
   printOptions() if $OPT{help};
@@ -292,42 +295,34 @@ EOF
   exit;
 }
 #=================================================================================================
-sub parse_index_files
+sub parse_index_file
 {
   $PAR{stopwatch} = 0; # reset the stopwatch
 # To keep things simple, the index files will be shifted
   return unless (-f $PAR{tempdir_index});
-
-#  if ($OPT{update} && !$OPT{debug}) {
-#    system("/bin/touch $PAR{tempdir_index}.tmp");
-#    system("/bin/chmod 666 $PAR{tempdir_index}.tmp");
-#    system("/bin/chown root.root $PAR{tempdir_index}.tmp");
-#    system("/bin/mv $PAR{tempdir_index} $PAR{tempdir_index}.work");
-#    system("/bin/mv $PAR{tempdir_index}.tmp $PAR{tempdir_index}");
-#  }
-#  else {
-    system("/bin/cp $PAR{tempdir_index} $PAR{tempdir_index}.work");
-#  }
+#  system("/bin/cp $PAR{tempdir_index} $PAR{tempdir_index}.work");
 
 # Parse tempdir_index file
   open FILE1, "<$PAR{tempdir_index}.work";
   LINE: while (<FILE1>) {
     chomp(my $line = $_);
-    my ($time,$user,$t,$nsubjobs,$p) = split /,/,$line;
-    next LINE if ($PAR{data}{$t}{state}); # don't bother if already known
-    $PAR{data}{$t}{create_time} = $time;
-    $PAR{data}{$t}{user} = $user;
-    $PAR{data}{$t}{tempname} = $t;
-    $PAR{data}{$t}{nsubjobs} = $nsubjobs;
-    $PAR{data}{$t}{p} = $p;
-    $PAR{data}{$t}{state} = "CREATED";
-    foreach my $i (0 .. $PAR{data}{$t}{nsubjobs}-1) {
-      ${$PAR{data}{$t}{states}}[$i] = 'CREATED'; 
+    while ($line=~/(\d{10}),([^,]+),(\w{10}),(\d+),([12])/g) { # Hiccups in the write performance of /spin1
+      my ($time,$user,$t,$nsubjobs,$p) = ($1,$2,$3,$4,$5);
+      next LINE if ($PAR{data}{$t}{state}); # don't bother if already known
+      $PAR{data}{$t}{create_time} = $time;
+      $PAR{data}{$t}{user} = $user;
+      $PAR{data}{$t}{tempname} = $t;
+      $PAR{data}{$t}{nsubjobs} = $nsubjobs;
+      $PAR{data}{$t}{p} = $p;
+      $PAR{data}{$t}{state} = "CREATED";
+      foreach my $i (0 .. $PAR{data}{$t}{nsubjobs}-1) {
+        ${$PAR{data}{$t}{states}}[$i] = 'CREATED'; 
+      }
     }
   }
   close FILE1;
-  unlink "$PAR{tempdir_index}.work";
-  printBlue(sprintf "parse_index_files = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
+#  unlink "$PAR{tempdir_index}.work";
+  printBlue(sprintf "parse_index_file = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
 }
 #=================================================================================================#
 #sub _most_recent_create_time
@@ -346,7 +341,7 @@ sub parse_swarm_logs
   $PAR{stopwatch} = 0; # reset the stopwatch
 # Barf barf barf -- this is insurance
   my @files;
-  chomp(my $x = `/bin/find /usr/local/logs/swarm_log_archives -type f -mtime -10`);
+  chomp(my $x = `/bin/find /usr/local/logs/swarm_log_archives -type f -mtime -$PAR{logfile_age}`);
   @files = split /\n/,$x;
   push @files,"/usr/local/logs/swarm.log";
 
@@ -416,6 +411,8 @@ sub write_to_store
 #==================================================================================================
 sub parse_jobs_table
 {
+# Don't be stupid
+  return if ($OPT{tempdir} && (_finished($OPT{tempdir})));
 
 # Do some filtering if needed
   my @f;
@@ -613,6 +610,7 @@ sub print_data_level_2
     next if ($OPT{user} && ($PAR{data}{$t}{user} ne $OPT{user}));
     next if ($OPT{jobid} && ($PAR{data}{$t}{jobid} ne $OPT{jobid}));
     next if ($OPT{state} && ($PAR{data}{$t}{state} ne $OPT{state}));
+    next if ($OPT{tempdir} && ($t ne $OPT{tempdir}));
     next if ($PAR{data}{$t}{state} eq 'PURGED');
     next if ($OPT{delete} && (!_deletable($t)));
 
@@ -678,6 +676,8 @@ sub print_data_level_1
     next if ($OPT{user} && ($PAR{data}{$t}{user} ne $OPT{user}));
     next if ($OPT{jobid} && ($PAR{data}{$t}{jobid} ne $OPT{jobid}));
     next if ($OPT{state} && ($PAR{data}{$t}{state} ne $OPT{state}));
+    next if ($OPT{tempdir} && ($t ne $OPT{tempdir}));
+    next if ($PAR{data}{$t}{state} eq 'PURGED');
     $x->{finished}++ if _finished($t);
     $x->{created}++ if ($PAR{data}{$t}{state} eq 'CREATED');
     $x->{submitted}++ if ($PAR{data}{$t}{state} eq 'SUBMITTED');
@@ -711,6 +711,7 @@ sub delete_directories_and_files
     next if ($OPT{user} && ((not defined $PAR{data}{$t}{user}) || ($PAR{data}{$t}{user} ne $OPT{user})));
     next if ($OPT{jobid} && ((not defined $PAR{data}{$t}{jobid}) || ($PAR{data}{$t}{jobid} ne $OPT{jobid})));
     next if ($OPT{state} && ((not defined $PAR{data}{$t}{state}) || ($PAR{data}{$t}{state} ne $OPT{state})));
+    next if ($OPT{tempdir} && ($t ne $OPT{tempdir}));
     push @victims, $t if (_deletable($t));
   }
   printBlue(sprintf "choosing victims = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
@@ -778,6 +779,7 @@ sub dump_and_exit
     next if ($OPT{user} && ($PAR{data}{$t}{user} ne $OPT{user}));
     next if ($OPT{jobid} && ($PAR{data}{$t}{jobid} ne $OPT{jobid}));
     next if ($OPT{state} && ($PAR{data}{$t}{state} ne $OPT{state}));
+    next if ($OPT{tempdir} && ($t ne $OPT{tempdir}));
     $PAR{data}{$t}{age} = _find_age($t);
     $PAR{data}{$t}{action} = _find_action($t);
     $x->{$t} = $PAR{data}{$t};
@@ -795,6 +797,7 @@ sub print_data_level_3
     next if ($OPT{user} && ($PAR{data}{$t}{user} ne $OPT{user}));
     next if ($OPT{jobid} && ($PAR{data}{$t}{jobid} ne $OPT{jobid}));
     next if ($OPT{state} && ($PAR{data}{$t}{state} ne $OPT{state}));
+    next if ($OPT{tempdir} && ($t ne $OPT{tempdir}));
     next if ($PAR{data}{$t}{state} eq 'PURGED');
     next if ($OPT{delete} && (!_deletable($t)));
 
