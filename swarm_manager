@@ -53,7 +53,7 @@ $PAR{store} = "/usr/local/logs/swarm_manager.store";
 $PAR{logfile_age} = 20; # read 20 days back in swarm logs
 $PAR{NOW} = time();
 $PAR{age_unit} = 86400;
-$PAR{delete_age} = 7; # remove files when then they are 7 days old
+$PAR{delete_age} = 6; # remove files when then they are 6 days old
 tie $PAR{stopwatch},'HPCNIH::Util::Stopwatch';
 
 getOptions();
