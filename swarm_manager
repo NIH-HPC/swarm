@@ -55,6 +55,7 @@ $PAR{NOW} = time();
 $PAR{age_unit} = 86400;
 $PAR{delete_age} = 6; # remove files when then they are 6 days old
 tie $PAR{stopwatch},'HPCNIH::Util::Stopwatch';
+$PAR{stopwatch} = 0; # reset the stopwatch
 
 getOptions();
 
@@ -75,6 +76,7 @@ eval {
   $PAR{dbh} = DBI->connect("DBI:mysql:;mysql_read_default_group=dashboard;mysql_read_default_file=/usr/local/etc/my.cnf;mysql_connect_timeout=10",undef,undef,{RaiseError=>0,PrintError=>0,AutoCommit=>0}) or try_connecting_again();
 
 # manipulate the store file
+  add_to_message((sprintf "startup = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
   if ($OPT{purge}) {
     purge_and_exit();
   }
@@ -82,35 +84,39 @@ eval {
   if ($OPT{dump}) {
     dump_and_exit();
   }
-
 # Find the current status of swarms
-  print_swarm_usage() if (($OPT{delete}) && ($OPT{verbose} > 0));
-  read_from_store();
-  parse_index_file();
-  parse_swarm_logs();
-  parse_jobs_table();
+  else {
+    print_swarm_usage() if (($OPT{delete}) && ($OPT{verbose} > 0));
+    read_from_store();
+    parse_index_file();
+    parse_swarm_logs();
+    parse_jobs_table();
 
 # Print summary
-  if ($OPT{verbose} > 2) {
-    print_data_level_3();
-  }
-  elsif ($OPT{verbose} == 2) {
-    print_data_level_2();
-  }
-  elsif ($OPT{verbose} == 1) {
-    print_data_level_1();
-  }
+    if ($OPT{verbose} > 2) {
+      print_data_level_3();
+    }
+    elsif ($OPT{verbose} == 2) {
+      print_data_level_2();
+    }
+    elsif ($OPT{verbose} == 1) {
+      print_data_level_1();
+    }
 
 # Delete the directories and files
-  delete_directories_and_files() if ($OPT{delete});
+    delete_directories_and_files() if ($OPT{delete});
 
 # Make the data permanent
-  write_to_store() if ($OPT{update} && !$OPT{debug});
-  print_swarm_usage() if (($OPT{delete}) && ($OPT{verbose} > 0));
+    write_to_store() if ($OPT{update} && !$OPT{debug});
+    print_swarm_usage() if (($OPT{delete}) && ($OPT{verbose} > 0));
+  }
 
 # Send a report if you must
   if ($OPT{emailTo}) {
-    sendEmail(subject=>$0,message=>"test",emailTo=>$OPT{emailTo},Bcc=>$OPT{Bcc},debug=>$OPT{debug},provenance=>1);
+    sendEmail(subject=>$0,message=>$PAR{message},emailTo=>$OPT{emailTo},Bcc=>$OPT{Bcc},debug=>$OPT{debug},provenance=>1);
+  }
+  else {
+    print $PAR{message};
   }
 
 #--------------------------------------------------------------------------------------------------
@@ -184,7 +190,7 @@ sub getOptions
     dieWithError("You must choose --dump, --report, --update, --delete, or --purge");
   }
 
-  print STDERR "Running in debug mode\n" if $OPT{debug};
+  add_to_message("Running in debug mode") if $OPT{debug};
   $OPT{verbose} = 2 if ((defined $OPT{debug}) && (not defined $OPT{verbose}));
   $OPT{verbose} = 2 if ((defined $OPT{dump}) && (not defined $OPT{verbose}));
   $OPT{verbose} = 1 unless (defined $OPT{verbose});
@@ -205,7 +211,7 @@ sub getOptions
   if ($OPT{delete_age}) {
     if ($OPT{delete_age} > $PAR{delete_age}) {
       $PAR{delete_age} = $OPT{delete_age};
-      print "Using delete_age = $PAR{delete_age}\n" if $OPT{verbose} > 1;
+      add_to_message("Using delete_age = $PAR{delete_age}") if $OPT{verbose} > 1;
     }
   }
 }
@@ -267,7 +273,7 @@ Options:
                        associated files.  --delete implies --update.  Must
                        be root.
 
-  --purge              remove PURGED swarms from the store file
+  --purge              remove DELETED swarms from the store file
 
   -u/--user            filter for those swarms owned by this user
   -j/--jobid           filter for the swarm with this jobid
@@ -287,8 +293,9 @@ Options:
   -h, --help           print options list
   -d, --debug          run in debug mode 
   -v, --verbose        increase verbosity level (0,1,2,3)
+  --timing             print timing information
 
-Last modification date: 03 May 2017 (David Hoover)
+Last modification date: 07 Jun 2017 (David Hoover)
 
 EOF
   
@@ -321,8 +328,7 @@ sub parse_index_file
     }
   }
   close FILE1;
-#  unlink "$PAR{tempdir_index}.work";
-  printBlue(sprintf "parse_index_file = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
+  add_to_message((sprintf "parse_index_file = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 }
 #=================================================================================================#
 #sub _most_recent_create_time
@@ -379,7 +385,7 @@ sub parse_swarm_logs
       close FILE;
     }
   }
-  printBlue(sprintf "parse_swarm_logs = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
+  add_to_message((sprintf "parse_swarm_logs = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 }
 #=================================================================================================#
 sub read_from_store
@@ -449,7 +455,7 @@ sub parse_jobs_table
     _fill_swarm_arrays($t,$a->{$jobid});
 
   } # end jobs table
-  printBlue(sprintf "walk_jobs_table = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
+  add_to_message((sprintf "walk_jobs_table = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 
 # What about unfinished swarms that were not found in the jobs database?
   $PAR{stopwatch} = 0; # reset the stopwatch
@@ -469,7 +475,7 @@ sub parse_jobs_table
       }
     }
   }
-  printBlue(sprintf "rewalk_jobs_data = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
+  add_to_message((sprintf "rewalk_jobs_data = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 
   _simplify_states_and_end_times();
 }
@@ -584,7 +590,7 @@ sub _simplify_states_and_end_times
       }
     }
   }
-  printBlue(sprintf "simpify_states = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
+  add_to_message((sprintf "simpify_states = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 }
 #=================================================================================================
 sub _update_value
@@ -611,7 +617,7 @@ sub print_data_level_2
     next if ($OPT{jobid} && ($PAR{data}{$t}{jobid} ne $OPT{jobid}));
     next if ($OPT{state} && ($PAR{data}{$t}{state} ne $OPT{state}));
     next if ($OPT{tempdir} && ($t ne $OPT{tempdir}));
-    next if ($PAR{data}{$t}{state} eq 'PURGED');
+    #next if ($PAR{data}{$t}{state} eq 'DELETED');
     next if ($OPT{delete} && (!_deletable($t)));
 
 # Push into array of hashrefs if needed
@@ -639,13 +645,13 @@ sub print_data_level_2
     my $results = $sort->sort_it;
   
     if ($OPT{tab}) {
-      print printMatrix($results) . "\n";
+      add_to_message(printMatrix($results));
     }
     else {
-      print printMatrixNeatly(matrix=>$results,horizontal_separator=>1,horizontal_character=>'=') . "\n";
+      add_to_message(printMatrixNeatly(matrix=>$results,horizontal_separator=>1,horizontal_character=>'='));
     }
   }
-  printBlue(sprintf "print_data_level_2 = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
+  add_to_message((sprintf "print_data_level_2 = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 }
 #=================================================================================================
 sub _find_age
@@ -672,12 +678,13 @@ sub print_data_level_1
 {
   $PAR{stopwatch} = 0; # reset the stopwatch
   my $x;
+  my $u;
   foreach my $t (keys %{$PAR{data}}) {
     next if ($OPT{user} && ($PAR{data}{$t}{user} ne $OPT{user}));
     next if ($OPT{jobid} && ($PAR{data}{$t}{jobid} ne $OPT{jobid}));
     next if ($OPT{state} && ($PAR{data}{$t}{state} ne $OPT{state}));
     next if ($OPT{tempdir} && ($t ne $OPT{tempdir}));
-    next if ($PAR{data}{$t}{state} eq 'PURGED');
+    next if ($PAR{data}{$t}{state} eq 'DELETED');
     $x->{finished}++ if _finished($t);
     $x->{created}++ if ($PAR{data}{$t}{state} eq 'CREATED');
     $x->{submitted}++ if ($PAR{data}{$t}{state} eq 'SUBMITTED');
@@ -685,21 +692,31 @@ sub print_data_level_1
     $x->{pending}++ if ($PAR{data}{$t}{state} eq 'PENDING');
     $x->{running}++ if ($PAR{data}{$t}{state} eq 'RUNNING');
     $x->{mixed}++ if ($PAR{data}{$t}{state} eq 'MIXED');
-    $x->{unknown}++ if ($PAR{data}{$t}{state} eq 'UNKNOWN');
-    $x->{files} += 2 + ($PAR{data}{$t}{nsubjobs}*$PAR{data}{$t}{p});
+    $x->{files} += ($PAR{data}{$t}{nsubjobs}*$PAR{data}{$t}{p}); # the cmd scripts
+    if ($PAR{data}{$t}{state} eq 'UNKNOWN') {
+      $x->{files} += 2; # batch script and directory
+      $x->{unknown}++;
+    }
+    else {
+      $x->{files} += 3; # batch script, directory, and symlink
+    }
+    if (!$u->{$PAR{data}{$t}{user}}) {
+      $x->{files} += 1; # parent directory
+    }
     if (_deletable($t)) {
       $x->{delete}++;
     }
     else {
       $x->{keep}++;
     }
+    $u->{$PAR{data}{$t}{user}}++;
   }
-  printf ("files=%d\ncreated=%d,submitted=%d,pending=%d,running=%d,finished=%d,mixed=%d,expired=%d,unknown=%d\ndelete=%d,keep=%d\n",
+  add_to_message(sprintf ("files=%d\ncreated=%d,submitted=%d,pending=%d,running=%d,finished=%d,mixed=%d,expired=%d,unknown=%d\ndelete=%d,keep=%d\n",
     $x->{files}, $x->{created}, $x->{submitted}, 
     $x->{pending}, $x->{running}, $x->{finished}, $x->{mixed}, $x->{expired}, $x->{unknown},
     $x->{delete}, $x->{keep},
-  );
-  printBlue(sprintf "print_data_level_1 = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
+  ));
+  add_to_message((sprintf "print_data_level_1 = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 }
 #=================================================================================================
 sub delete_directories_and_files
@@ -714,7 +731,7 @@ sub delete_directories_and_files
     next if ($OPT{tempdir} && ($t ne $OPT{tempdir}));
     push @victims, $t if (_deletable($t));
   }
-  printBlue(sprintf "choosing victims = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
+  add_to_message((sprintf "choosing victims = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 
   $PAR{stopwatch} = 0; # reset the stopwatch
 # Delete the victims in clumps of 20
@@ -724,11 +741,11 @@ sub delete_directories_and_files
     $list .= " /spin1/swarm/".$PAR{data}{$t}{user}."/".$t if ($t);
     my $print_list = "rm -rf /spin1/swarm/".$PAR{data}{$t}{user}."/".$t;
     $list .= " /spin1/swarm/".$PAR{data}{$t}{user}."/".$PAR{data}{$t}{jobid} if ($PAR{data}{$t}{jobid});
-    $print_list .= " /spin1/swarm/".$PAR{data}{$t}{user}."/".$PAR{data}{$t}{jobid}."\n" if ($PAR{data}{$t}{jobid});
-    print $print_list if (defined $OPT{verbose} && $OPT{verbose} > 1);
+    $print_list .= " /spin1/swarm/".$PAR{data}{$t}{user}."/".$PAR{data}{$t}{jobid} if ($PAR{data}{$t}{jobid});
+    add_to_message($print_list) if (defined $OPT{verbose} && $OPT{verbose} > 1);
     if (!$OPT{debug}) {
       $PAR{data}{$t}{deleted} = 1;
-      $PAR{data}{$t}{state} = "PURGED";
+      $PAR{data}{$t}{state} = "DELETED";
     }
     if ((!($i%20)) || ($i == $#victims)) {
       my $cmd = "rm -rf $list";
@@ -740,10 +757,10 @@ sub delete_directories_and_files
   }
   if ($OPT{verbose} > 1) {
     if (!@victims) {
-      print "Nothing to delete\n";
+      add_to_message("Nothing to delete");
     }
   }
-  printBlue(sprintf "delete_directories_and_files = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
+  add_to_message((sprintf "delete_directories_and_files = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 }
 #=================================================================================================
 sub _deletable
@@ -784,9 +801,9 @@ sub dump_and_exit
     $PAR{data}{$t}{action} = _find_action($t);
     $x->{$t} = $PAR{data}{$t};
   }
+  $OPT{verbose} = 1 if ($OPT{verbose} == 0);
   $Data::Dumper::Maxdepth=$OPT{verbose};
-  print Dumper($x);
-  exit;
+  add_to_message(Dumper($x));
 }
 #=================================================================================================
 sub print_data_level_3
@@ -798,7 +815,6 @@ sub print_data_level_3
     next if ($OPT{jobid} && ($PAR{data}{$t}{jobid} ne $OPT{jobid}));
     next if ($OPT{state} && ($PAR{data}{$t}{state} ne $OPT{state}));
     next if ($OPT{tempdir} && ($t ne $OPT{tempdir}));
-    next if ($PAR{data}{$t}{state} eq 'PURGED');
     next if ($OPT{delete} && (!_deletable($t)));
 
 # If the swarm was never submitted, only list the global values
@@ -817,12 +833,12 @@ sub print_data_level_3
   }
   my $m1 =  createMatrix(array=>\@printArray,horizontal=>1,fields=>['tempname','user','state','age','action','jobid','nsj','p','cmd','sjobid','sstate','sage']);
   if ($OPT{tab}) {
-    print printMatrix($m1) . "\n";
+    add_to_message(printMatrix($m1));
   }
   else {
-    print printMatrixNeatly(matrix=>$m1,horizontal_separator=>1,horizontal_character=>'=') . "\n";
+    add_to_message(printMatrixNeatly(matrix=>$m1,horizontal_separator=>1,horizontal_character=>'='));
   }
-  printBlue(sprintf "print_data_level_3 = %.2f\n",$PAR{stopwatch}) if $OPT{timing};
+  add_to_message((sprintf "print_data_level_3 = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 }
 #=================================================================================================
 sub _determine_subjob_age
@@ -912,27 +928,39 @@ sub print_swarm_usage
   my $cat = HPCNIH::Staff::MySQL::Catalog->new(catalog=>"quota_spin1");
   my $x = $cat->get_current(entity=>"/spin1/swarm");
   my $y = $x->{'/spin1/swarm'};
-  my $string = sprintf("/swarm usage: %6.2f GB (%4.1f%%), %7d files (%4.1f%%)\n",
+  my $string = sprintf("/swarm usage: %6.2f GB (%4.1f%%), %7d files (%4.1f%%)",
       ( $y->{dusage}/1024/1024 ),
       ( ($y->{dusage}/$y->{dquota})*100 ),
       ( $y->{fusage} ),
       ( ($y->{fusage}/$y->{fquota})*100 ),
   );
-  print $string;
+  add_to_message($string);
 }
 #=================================================================================================
 sub purge_and_exit
 {
-# Removed the PURGED jobs from the store file
+# Removed the DELETED jobs from the store file
   read_from_store();
   my %new;
   foreach my $t (keys %{$PAR{data}}) {
-    if (!$PAR{data}{$t}{state} eq 'PURGED') {
+    if (!$PAR{data}{$t}{state} eq 'DELETED') {
       $new{$t} = $PAR{data}{$t};
     }
   }
   $PAR{data} = \%new;
   write_to_store() unless $OPT{debug};
   exit;
+}
+#=================================================================================================
+sub add_to_message
+{
+  my $msg = shift;
+  my $immediate = shift;
+  if ($immediate) {
+    print $msg."\n";
+  }
+  else {
+    $PAR{message} .= $msg."\n";
+  }
 }
 #=================================================================================================
