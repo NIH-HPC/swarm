@@ -45,17 +45,26 @@ use File::Basename;
 use FindBin qw($RealBin);
 use Cwd 'abs_path';
 use Sort::ArrayOfArrays;
+$|=1;
 
 my %OPT;
 my %PAR;
 $PAR{tempdir_index} = "/usr/local/logs/swarm_tempdir.idx";
 $PAR{store} = "/usr/local/logs/swarm_manager.store";
-$PAR{logfile_age} = 20; # read 20 days back in swarm logs
+$PAR{'logfile-age'} = 20; # read 20 days back in swarm logs
 $PAR{NOW} = time();
 $PAR{age_unit} = 86400;
-$PAR{delete_age} = 6; # remove files when then they are 6 days old
+$PAR{"delete-age"} = 6; # remove files when then they are 6 days old
 tie $PAR{stopwatch},'HPCNIH::Util::Stopwatch';
+tie $PAR{stopwatch_full},'HPCNIH::Util::Stopwatch';
 $PAR{stopwatch} = 0; # reset the stopwatch
+$PAR{stopwatch_full} = 0; # reset the stopwatch_full
+$PAR{jobs_table} = "jobs";
+$PAR{swarms_table} = "swarms";
+$PAR{swarm_subjobs_table} = "swarm_subjobs";
+@{$PAR{possible_states}} = qw/CREATED SUBMITTED PENDING RUNNING MIXED FINISHED EXPIRED DELETED UNKNOWN/;
+my $OLDDATA;
+my $NEWDATA;
 
 getOptions();
 
@@ -75,22 +84,25 @@ eval {
 # open connection to mysql
   $PAR{dbh} = DBI->connect("DBI:mysql:;mysql_read_default_group=dashboard;mysql_read_default_file=/usr/local/etc/my.cnf;mysql_connect_timeout=10",undef,undef,{RaiseError=>0,PrintError=>0,AutoCommit=>0}) or try_connecting_again();
 
-# manipulate the store file
-  add_to_message((sprintf "startup = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
-  if ($OPT{purge}) {
-    purge_and_exit();
-  }
+  #create_tables();
 
+## manipulate the store file
+  add_to_message((sprintf "startup = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
+#  if ($OPT{purge}) {
+#    purge_and_exit();
+##  }
+#
   if ($OPT{dump}) {
+    read_from_tables();
     dump_and_exit();
   }
 # Find the current status of swarms
   else {
-    print_swarm_usage() if (($OPT{delete}) && ($OPT{verbose} > 0));
-    read_from_store();
+    read_from_tables();
     parse_index_file();
     parse_swarm_logs();
     parse_jobs_table();
+    simplify_states_and_times();
 
 # Print summary
     if ($OPT{verbose} > 2) {
@@ -106,9 +118,10 @@ eval {
 # Delete the directories and files
     delete_directories_and_files() if ($OPT{delete});
 
-# Make the data permanent
-    write_to_store() if ($OPT{update} && !$OPT{debug});
-    print_swarm_usage() if (($OPT{delete}) && ($OPT{verbose} > 0));
+    #print_swarm_usage() if (($OPT{delete}) && ($OPT{verbose} > 0));
+#  }
+
+    update_tables() if $OPT{update};
   }
 
 # Send a report if you must
@@ -119,6 +132,7 @@ eval {
     print $PAR{message};
   }
 
+  add_to_message((sprintf "TOTAL TIME TAKEN = %.2f",$PAR{stopwatch_full}),1) if $OPT{timing};
 #--------------------------------------------------------------------------------------------------
 # Done
 #--------------------------------------------------------------------------------------------------
@@ -152,7 +166,8 @@ sub getOptions
     'report' => \$OPT{report},
     'purge' => \$OPT{purge},
     'update' => \$OPT{update},
-    'delete_age=i' => \$OPT{delete_age}, 
+    'delete-age=i' => \$OPT{"delete-age"}, 
+    'logfile-age=i' => \$OPT{"logfile-age"}, 
     'tab' => \$OPT{tab},
     'timing' => \$OPT{timing},
     'v=i' => \$OPT{verbose},
@@ -169,9 +184,15 @@ sub getOptions
     'state=s' => \$OPT{state}, 
     't=s' => \$OPT{tempdir}, 
     'tempdir=s' => \$OPT{tempdir}, 
+    'show-sql' => \$OPT{"show-sql"}, 
   ) || printOptions();
 
   printOptions() if $OPT{help};
+
+
+  unless ($OPT{update} || $OPT{report} || $OPT{delete} || $OPT{purge}) {
+    $OPT{report} = 1;
+  }
 
   if ($OPT{dump}) {
     $OPT{report} = 1;
@@ -186,20 +207,16 @@ sub getOptions
     undef $OPT{delete};
   }
 
-  unless ($OPT{update} || $OPT{report} || $OPT{delete}) {
-    dieWithError("You must choose --dump, --report, --update, --delete, or --purge");
-  }
-
-  add_to_message("Running in debug mode") if $OPT{debug};
+  add_to_message("Running in debug mode",1) if $OPT{debug};
   $OPT{verbose} = 2 if ((defined $OPT{debug}) && (not defined $OPT{verbose}));
   $OPT{verbose} = 2 if ((defined $OPT{dump}) && (not defined $OPT{verbose}));
   $OPT{verbose} = 1 unless (defined $OPT{verbose});
   $OPT{verbose} = 0 if ((defined $OPT{verbose}) && ($OPT{verbose} < 0));
 
-  if ($OPT{state} && (
-    ($OPT{state} ne 'CREATED') && ($OPT{state} ne 'PENDING') && ($OPT{state} ne 'RUNNING')
-    && ($OPT{state} ne 'FINISHED') && ($OPT{state} ne 'UNKNOWN') && ($OPT{state} ne 'MIXED'))) {
-    dieWithError("--state must be CREATED, PENDING, RUNNING, FINISHED, UNKNOWN or MIXED");
+  if ($OPT{state}) {
+    my $ok;
+    foreach my $s (@{$PAR{possible_states}}) { $ok = 1 if ($s eq $OPT{state}); }
+    dieWithError("--state must be @{$PAR{possible_states}}") unless $ok;
   }
 
   $OPT{update} = 1 if $OPT{delete};
@@ -208,11 +225,16 @@ sub getOptions
     dieWithError("you must be root!");
   }
 
-  if ($OPT{delete_age}) {
-    if ($OPT{delete_age} > $PAR{delete_age}) {
-      $PAR{delete_age} = $OPT{delete_age};
-      add_to_message("Using delete_age = $PAR{delete_age}") if $OPT{verbose} > 1;
-    }
+  if ($OPT{"delete-age"}) {
+    $PAR{"delete-age"} = $OPT{"delete-age"};
+    $PAR{'delete-age'} = 1 if ($PAR{'delete-age'} < 1);
+    add_to_message("Using delete-age = $PAR{'delete-age'}",1) if $OPT{verbose} > 1;
+  }
+
+  if ($OPT{'logfile-age'}) {
+    $PAR{'logfile-age'} = $OPT{'logfile-age'};
+    $PAR{'logfile-age'} = 1 if ($PAR{'logfile-age'} < 1);
+    add_to_message("Using logfile-age = $PAR{'logfile-age'}",1) if $OPT{verbose} > 1;
   }
 }
 #==================================================================================================
@@ -244,7 +266,7 @@ Description:
 
   If --delete is given, then the temporary directories and symlink 
   associated with the swarm will be deleted, if it exists, and if the
-  swarm finished more than $PAR{delete_age} days ago.  --update is
+  swarm finished more than $PAR{"delete-age"} days ago.  --update is
   also set, the index file is rotated, and the store file is appended.
 
   If --purge is given, then the store file is pruned of swarms that have been
@@ -275,6 +297,8 @@ Options:
 
   --purge              remove DELETED swarms from the store file
 
+  --show-sql           show sql statements
+
   -u/--user            filter for those swarms owned by this user
   -j/--jobid           filter for the swarm with this jobid
   -s/--state           filter for swarms with this state (choose from CREATED,
@@ -300,30 +324,57 @@ Last modification date: 07 Jun 2017 (David Hoover)
 EOF
   
   exit;
+
+# A swarm subjob can be in one of these states:
+# CREATED - parent found in tempdir index 
+# SUBMITTED - parent found in swarm logs, jobid defined
+# PENDING - found in jobs table, subjob_jobid defined, subjob_state PENDING
+# RUNNING - found in jobs table, subjob_jobid defined, subjob_state RUNNING
+# FINISHED - found in jobs table, subjob_jobid defined, subjob_state not PENDING or RUNNING
+# EXPIRED - subjob_jobid previously defined, previous state PENDING or RUNNING, not found in jobs table
+# UNKNOWN - subjob_jobid not defined, previous state CREATED or SUBMITTED, not found in jobs table
+
+# A swarm can be in one of these states:
+
+# CREATED - all subjobs CREATED
+# SUBMITTED - all subjobs SUBMITTED
+# PENDING - all subjobs PENDING
+# RUNNING - all subjobs RUNNING
+# FINISHED - all subjobs completed (not PENDING or RUNNING)
+# MIXED - subjobs mix of states
+# DELETED - swarm deleted from /swarm
+
+# A subjob can receive an end_time when
+# * end_time is defined in jobs table
+# * subjob is EXPIRED
+
 }
 #=================================================================================================
 sub parse_index_file
 {
   $PAR{stopwatch} = 0; # reset the stopwatch
-# To keep things simple, the index files will be shifted
   return unless (-f $PAR{tempdir_index});
-#  system("/bin/cp $PAR{tempdir_index} $PAR{tempdir_index}.work");
-
-# Parse tempdir_index file
-  open FILE1, "<$PAR{tempdir_index}.work";
+  my $min_time = time() - ($PAR{'logfile-age'}*86400);
+  open FILE1, "<$PAR{tempdir_index}";
   LINE: while (<FILE1>) {
     chomp(my $line = $_);
-    while ($line=~/(\d{10}),([^,]+),(\w{10}),(\d+),([12])/g) { # Hiccups in the write performance of /spin1
-      my ($time,$user,$t,$nsubjobs,$p) = ($1,$2,$3,$4,$5);
-      next LINE if ($PAR{data}{$t}{state}); # don't bother if already known
-      $PAR{data}{$t}{create_time} = $time;
-      $PAR{data}{$t}{user} = $user;
-      $PAR{data}{$t}{tempname} = $t;
-      $PAR{data}{$t}{nsubjobs} = $nsubjobs;
-      $PAR{data}{$t}{p} = $p;
-      $PAR{data}{$t}{state} = "CREATED";
-      foreach my $i (0 .. $PAR{data}{$t}{nsubjobs}-1) {
-        ${$PAR{data}{$t}{states}}[$i] = 'CREATED'; 
+    T: while ($line=~/(\d{10}),([^,]+),(\w{10}),(\d+),([12])/g) { # Hiccups in the write performance of /spin1
+      my ($time,$user,$t,$n,$p) = ($1,$2,$3,$4,$5);
+      next T if (defined $NEWDATA->{$t}); # don't bother if already known #???
+      next T if ($time < $min_time); #???
+      next T if ((defined $OPT{user}) && ($OPT{user} ne $user));
+      $NEWDATA->{$t}{tempname} = $t;
+      _update_value($NEWDATA->{$t},"create_time",$time);
+      _update_value($NEWDATA->{$t},"user",$user);
+      _update_value($NEWDATA->{$t},"num_subjobs",$n);
+      _update_value($NEWDATA->{$t},"p",$p);
+      _update_value($NEWDATA->{$t},"deletable",0);
+      _update_value($NEWDATA->{$t},"state","CREATED");
+      foreach my $i (0 .. $n-1) {
+        _update_value($NEWDATA->{$t},"subjob_tempname",$t,$i);
+        _update_value($NEWDATA->{$t},"subjob_cmd",$i,$i);
+        _update_value($NEWDATA->{$t},"subjob_create_time",$time,$i);
+        _update_value($NEWDATA->{$t},"subjob_state","CREATED",$i);
       }
     }
   }
@@ -331,29 +382,19 @@ sub parse_index_file
   add_to_message((sprintf "parse_index_file = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 }
 #=================================================================================================#
-#sub _most_recent_create_time
-#{
-#  my $oldest = 0;
-#  foreach my $t (keys %{$PAR{data}}) {
-#    if ((defined $PAR{data}{$t}{create_time}) && ($PAR{data}{$t}{create_time} > $oldest)) {
-#      $oldest = $PAR{data}{$t}{create_time}; 
-#    }
-#  }
-#  return $oldest; 
-#}
-#=================================================================================================#
 sub parse_swarm_logs
 {
   $PAR{stopwatch} = 0; # reset the stopwatch
 # Barf barf barf -- this is insurance
   my @files;
-  chomp(my $x = `/bin/find /usr/local/logs/swarm_log_archives -type f -mtime -$PAR{logfile_age}`);
+  chomp(my $x = `/bin/find /usr/local/logs/swarm_log_archives -type f -mtime -$PAR{'logfile-age'}`);
   @files = split /\n/,$x;
   push @files,"/usr/local/logs/swarm.log";
 
 # Find the most recent create_time, if known, to avoid stupidity
 #  my $cutoff = strftime("%Y%m%d", (localtime(_most_recent_create_time()))[0 .. 5]); 
 
+  my $min_time = time() - ($PAR{'logfile-age'}*86400);
   FILE: foreach my $f (@files) {
 #    if ($f=~/-(\d{8})$/) { next FILE if ($cutoff > $1); } # Skip logfiles already parsed
     if (open FILE, "<$f") {
@@ -367,19 +408,26 @@ sub parse_swarm_logs
         my $p = 1;
         $p = 2 if ($line=~/; command=.+-p 2 /);
         if ($t) {
-          next LINE if ($PAR{data}{$t}{jobid}); # don't bother if already known
-          $PAR{data}{$t}{create_time} = $time unless $PAR{data}{$t}{create_time};
-          $PAR{data}{$t}{user} = $user;
-          $PAR{data}{$t}{tempname} = $t;
-          $PAR{data}{$t}{nsubjobs} = $nsubjobs;
-          $PAR{data}{$t}{p} = $p if $p;
-          $PAR{data}{$t}{submit_time} = $time;
-          $PAR{data}{$t}{jobid} = $jobid;
-          $PAR{jobid2tempname}{$jobid}=$t;
-          $PAR{data}{$t}{state} = "SUBMITTED";
-          foreach my $i (0 .. $PAR{data}{$t}{nsubjobs}-1) {
-            ${$PAR{data}{$t}{states}}[$i] = 'SUBMITTED';
+          next LINE if ($time < $min_time);
+          next LINE if ($OPT{user} && $OPT{user} ne $user);
+          next LINE if ($OPT{jobid} && $OPT{jobid} ne $jobid);
+          next LINE if ((defined $NEWDATA->{$t}) && (defined $NEWDATA->{$t}{jobid})); # don't bother if already known
+          $NEWDATA->{$t}{tempname} = $t;
+          _update_value($NEWDATA->{$t},"user",$user);
+          _update_value($NEWDATA->{$t},"num_subjobs",$nsubjobs);
+          _update_value($NEWDATA->{$t},"p",$p);
+          _update_value($NEWDATA->{$t},"submit_time",$time);
+          _update_value($NEWDATA->{$t},"create_time",$time) unless (defined $NEWDATA->{$t}{create_time});
+          _update_value($NEWDATA->{$t},"jobid",$jobid);
+          _update_value($NEWDATA->{$t},"state","SUBMITTED");
+          foreach my $i (0 .. $nsubjobs-1) {
+            _update_value($NEWDATA->{$t},"subjob_tempname",$t,$i);
+            _update_value($NEWDATA->{$t},"subjob_cmd",$i,$i);
+            _update_value($NEWDATA->{$t},"subjob_create_time",$time,$i) unless (defined ${$NEWDATA->{$t}{subjob_create_time}}[$i]);
+            _update_value($NEWDATA->{$t},"subjob_submit_time",$time,$i);
+            _update_value($NEWDATA->{$t},"subjob_state","SUBMITTED",$i);
           }
+          $PAR{jobid2tempname}{$jobid}=$t;
         }
       }
       close FILE;
@@ -388,31 +436,45 @@ sub parse_swarm_logs
   add_to_message((sprintf "parse_swarm_logs = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 }
 #=================================================================================================#
-sub read_from_store
+sub read_from_tables
 {
-  open(FH, ">$PAR{store}.lck")        or dieWithError("can't create lock $PAR{store}.lck: $!");
-  flock(FH, 2)                        or dieWithError( "can't flock $PAR{store}.lck: $!");
-  my $hr = retrieve($PAR{store})      if (-f $PAR{store});
-  close(FH)                           or dieWithError("can't remove lock $PAR{store}.lck: $!");
-  unlink "$PAR{store}.lck";
-  if (defined $hr) {
-    ROW: foreach my $t (sort keys %{$hr}) { 
-      next unless $t;
-      $PAR{data}{$t} = $hr->{$t};
-      $PAR{jobid2tempname}{$PAR{data}{$t}{jobid}}=$t if (defined $PAR{data}{$t}{jobid});
-    }
+  $PAR{stopwatch} = 0; # reset the stopwatch
+
+# Do some filtering if needed
+  my @f;
+  push @f,"`user`='$OPT{user}'" if $OPT{user};
+  push @f,"`jobid`='$OPT{jobid}'" if $OPT{jobid};
+  push @f,"`state`='$OPT{state}'" if $OPT{state};
+  my $filter;
+  if (@f) {
+    $filter = join " AND ",@f;
+    $filter = "WHERE ".$filter;
   }
-}
-#==================================================================================================
-sub write_to_store
-{
-  open(FH, ">$PAR{store}.lck")        or dieWithError("can't create lock $PAR{store}.lck: $!");
-  flock(FH, 2)                        or dieWithError("can't flock $PAR{store}.lck: $!");
-  unlink $PAR{store} if (-f $PAR{store});
-  store($PAR{data},$PAR{store});
-  close(FH)                           or dieWithError("can't remove lock $PAR{store}.lck: $!");
-  unlink "$PAR{store}.lck";
-  chmod 0644,$PAR{store};
+
+# Pull out everything from jobs table, and determine the tempdir name
+  $PAR{stopwatch} = 0; # reset the stopwatch
+  my $sql = "SELECT * FROM dashboard.$PAR{swarms_table} JOIN dashboard.$PAR{swarm_subjobs_table} ON (`tempname`=`subjob_tempname`) $filter";
+  my $a = $PAR{dbh}->selectall_hashref($sql,["subjob_id"]);
+  foreach my $id (keys %{$a}) {
+    my $t = $a->{$id}->{tempname};
+    foreach my $k ('tempname','user','state','p','num_subjobs','create_time','deletable','jobid','submit_time','start_time','end_time','delete_time') {
+#if ($k eq 'delete_time') {
+  #print "delete_time = '$a->{$id}->{$k}'";
+  #print " (undefined)" if (not defined $a->{$id}->{$k});
+  #print " (defined)" if (defined $a->{$id}->{$k});
+  #print "\n";
+#}
+      $OLDDATA->{$a->{$id}->{tempname}}{$k} = $a->{$id}->{$k} if (defined $a->{$id}->{$k});
+      $NEWDATA->{$a->{$id}->{tempname}}{$k} = $a->{$id}->{$k} if (defined $a->{$id}->{$k});
+    }
+    foreach my $k ('subjob_tempname','subjob_cmd','subjob_state','subjob_jobid','subjob_create_time','subjob_submit_time','subjob_start_time','subjob_end_time') {
+      ${$OLDDATA->{$a->{$id}->{tempname}}{$k}}[$a->{$id}->{subjob_cmd}] = $a->{$id}->{$k} if (defined $a->{$id}->{$k});
+      ${$NEWDATA->{$a->{$id}->{tempname}}{$k}}[$a->{$id}->{subjob_cmd}] = $a->{$id}->{$k} if (defined $a->{$id}->{$k});
+    }
+    $PAR{jobid2tempname}{$a->{$id}->{jobid}}=$t if defined $a->{$id}->{jobid};
+  }
+
+  add_to_message((sprintf "read_from_tables = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 }
 #==================================================================================================
 sub parse_jobs_table
@@ -432,58 +494,57 @@ sub parse_jobs_table
 
 # Pull out everything from jobs table, and determine the tempdir name
   $PAR{stopwatch} = 0; # reset the stopwatch
-  my $sql = "SELECT * FROM dashboard.jobs $filter";
-  my $a = $PAR{dbh}->selectall_hashref($sql,["jobid"]);
-  JOB: foreach my $jobid (sort keys %{$a}) { # sorting essential to populate states correctly
+  my $sql = "SELECT jobid,jobidarray,state,submit_time,start_time,end_time FROM dashboard.$PAR{jobs_table} $filter";
+#  my $a = $PAR{dbh}->selectall_hashref($sql,["jobid"]);
+#  JOB: foreach my $jobid (sort keys %{$a}) { # sorting essential to populate states correctly
+  my $sth = $PAR{dbh}->prepare($sql);
+  $sth->execute; # this takes 15-20 seconds!
+  my %all_known_jobids;
+  JOB: while (my $d = $sth->fetchrow_hashref()) {
+    $all_known_jobids{$d->{jobid}}=1;
     my $t;
 # Typically a swarm has a value in the jobidarray field
-    if (defined $a->{$jobid}->{jobidarray}) {
-      my $j = $1 if ($a->{$jobid}->{jobidarray}=~/^(\d+)_/);
+    if (defined $d->{jobidarray}) {
+      my $j = $1 if ($d->{jobidarray}=~/^(\d+)_/);
       if ((defined $j) && (defined $PAR{jobid2tempname}{$j})) {
         $t = $PAR{jobid2tempname}{$j};
       }
     }
 # The jobidarray value is not set if the swarm is cancelled before starting, I think
-    elsif (defined $PAR{jobid2tempname}{$jobid}) {
-      $t = $PAR{jobid2tempname}{$jobid};
-    }
-
+    elsif (defined $PAR{jobid2tempname}{$d->{jobid}}) { $t = $PAR{jobid2tempname}{$d->{jobid}}; }
     next JOB unless $t; # Don't be stupid
-    next JOB if (_finished($t) || $PAR{data}{$t}{deleted});
-
-# Fill in the swarm arrays
-    _fill_swarm_arrays($t,$a->{$jobid});
-
+    next JOB if (_finished($t));
+    _fill_swarm_arrays($t,$d);
   } # end jobs table
   add_to_message((sprintf "walk_jobs_table = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 
 # What about unfinished swarms that were not found in the jobs database?
   $PAR{stopwatch} = 0; # reset the stopwatch
-  SWARM2: foreach my $t (keys %{$PAR{data}}) {
-    next SWARM2 if (_finished($t) || $PAR{data}{$t}{deleted});
-    next SWARM2 unless (defined $PAR{data}{$t}{jobid});
-    foreach my $i (0 .. $PAR{data}{$t}{nsubjobs}-1) {
+  SWARM2: foreach my $t (keys %{$NEWDATA}) {
+    next SWARM2 if (_finished($t));
+    next SWARM2 unless (defined $NEWDATA->{$t}{jobid});
+    foreach my $i (0 .. $NEWDATA->{$t}{num_subjobs}-1) {
 # The subjob was seen in the jobs table at somepoint in time
-      if (defined ${$PAR{data}{$t}{subjobid}}[$i]) {
-        if (not defined $a->{${$PAR{data}{$t}{subjobid}}[$i]}->{jobid}) {
-          ${$PAR{data}{$t}{states}}[$i] = 'EXPIRED';
+      if (defined ${$NEWDATA->{$t}{subjob_jobid}}[$i]) { # the subjob_jobid is ONLY defined if slurm schedules it
+        if (not defined $all_known_jobids{${$NEWDATA->{$t}{subjob_jobid}}[$i]}) {
+          _update_value ($NEWDATA->{$t},"subjob_state","EXPIRED",$i);
         }
       }
 # The subjob was never seen in the jobs table
       else {
-        ${$PAR{data}{$t}{states}}[$i] = 'UNKNOWN';
+        _update_value ($NEWDATA->{$t},"subjob_state","UNKNOWN",$i);
       }
     }
   }
+  $sth->finish;
   add_to_message((sprintf "rewalk_jobs_data = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
-
-  _simplify_states_and_end_times();
 }
 #=================================================================================================
 sub _fill_swarm_arrays
 # Add the jobid, state, and end_time for the subjobs represented by this line
 {
   my ($t,$x) = @_;
+  return unless $NEWDATA->{$t};
 
 # NOTE: This does not cover all possibilities for job arrays under Slurm.  However, swarm will
 # only give a single subjob, or a range of subjobs, starting from 0.  --maxrunning will add a
@@ -502,8 +563,8 @@ sub _fill_swarm_arrays
     }
   }
 # Likely the swarm was cancelled before it got out of pending
-  elsif ((not defined $x->{jobidarray}) && (defined $PAR{data}{$t}{jobid}) && ($x->{jobid} == $PAR{data}{$t}{jobid})) {
-    foreach my $i (0 .. $PAR{data}{$t}{nsubjobs}-1) {
+  elsif ((not defined $x->{jobidarray}) && (defined $NEWDATA->{$t}{jobid}) && ($x->{jobid} == $NEWDATA->{$t}{jobid})) {
+    foreach my $i (0 .. $NEWDATA->{$t}{num_subjobs}-1) {
       _update_swarm_array($t,$x,$i);
     }
   }
@@ -512,82 +573,82 @@ sub _fill_swarm_arrays
 sub _update_swarm_array
 {
   my ($t,$x,$i) = @_;
-  ${$PAR{data}{$t}{subjobid}}[$i] = $x->{jobid};
-  if (defined $x->{state}) {
-    ${$PAR{data}{$t}{states}}[$i] = $x->{state};
-    if (defined $x->{end_time}) {
-      ${$PAR{data}{$t}{end_times}}[$i] = $x->{end_time};
-    } else {
-      ${$PAR{data}{$t}{end_times}}[$i] = 0;
-    }
-  }
+  _update_value ($NEWDATA->{$t},"subjob_jobid",$x->{jobid},$i) if (defined $x->{jobid});
+  _update_value ($NEWDATA->{$t},"subjob_state",$x->{state},$i) if (defined $x->{state});
+  _update_value ($NEWDATA->{$t},"subjob_submit_time",$x->{submit_time},$i) if (defined $x->{submit_time});
+  _update_value ($NEWDATA->{$t},"subjob_start_time",$x->{start_time},$i) if (defined $x->{start_time});
+  _update_value ($NEWDATA->{$t},"subjob_end_time",$x->{end_time},$i) if (defined $x->{end_time});
 }
 #=================================================================================================
-sub _simplify_states_and_end_times
+sub _find_min_start_time
+{
+  my $t = shift;
+  my $h = $NEWDATA->{$t}{start_time};
+  foreach my $i (0 .. $NEWDATA->{$t}{num_subjobs}-1) {
+    next unless defined ${$NEWDATA->{$t}{subjob_start_time}}[$i];
+    if ((not defined $h) || ($h > ${$NEWDATA->{$t}{subjob_start_time}}[$i])) {
+      $h = ${$NEWDATA->{$t}{subjob_start_time}}[$i];
+    }
+  }
+  return $h;
+}
+#=================================================================================================
+sub _find_max_end_time
+{
+  my $t = shift;
+  my $h = $NEWDATA->{$t}{end_time};
+  foreach my $i (0 .. $NEWDATA->{$t}{num_subjobs}-1) {
+    next unless defined ${$NEWDATA->{$t}{subjob_end_time}}[$i];
+    if ((not defined $h) || ($h < ${$NEWDATA->{$t}{subjob_end_time}}[$i])) {
+      $h = ${$NEWDATA->{$t}{subjob_end_time}}[$i];
+    }
+  }
+  return $h;
+}
+#=================================================================================================
+sub _tally_subjob_states
+{
+# The state reported will either be C, S, P, R, F, M
+  my $t = shift;
+  my %tmp;
+  $tmp{C}=0; $tmp{S}=0; $tmp{P}=0; $tmp{R}=0; $tmp{F}=0; $tmp{E}=0; $tmp{U}=0; $tmp{done}=0;
+  foreach my $i (0 .. $NEWDATA->{$t}{num_subjobs}-1) {
+    my $s = ${$NEWDATA->{$t}{subjob_state}}[$i];
+    if ($s eq 'CREATED') { $tmp{C}++; }
+    elsif ($s eq 'SUBMITTED') { $tmp{S}++; }
+    elsif ($s eq 'PENDING') { $tmp{P}++; }
+    elsif ($s eq 'RUNNING') { $tmp{R}++; }
+    elsif ($s eq 'EXPIRED') { $tmp{E}++; $tmp{done}++; }
+    elsif ($s eq 'UNKNOWN') { $tmp{U}++; $tmp{done}++; }
+    else { $tmp{F}++; $tmp{done}++; }
+  }
+  return %tmp;
+}
+#=================================================================================================
+sub simplify_states_and_times
 {
   $PAR{stopwatch} = 0; # reset the stopwatch
-# Simplify the states into a single state
-  SWARM: foreach my $t (keys %{$PAR{data}}) {
+  SWARM: foreach my $t (keys %{$NEWDATA}) {
 
-# Don't bother if the swarm is finished
-    next SWARM if (_finished($t) || $PAR{data}{$t}{deleted}); 
+# Try to mark the swarm as deletable
+    _mark_for_deletion($t);
 
-# Find max end_time, if possible
-    if ($PAR{data}{$t}{end_times}) {
-      E: foreach my $e (@{$PAR{data}{$t}{end_times}}) {
-        next E unless ($e > 0);
-        if (not defined $PAR{data}{$t}{max_end_time}) {
-          $PAR{data}{$t}{max_end_time} = $e;
-        }
-        elsif ($PAR{data}{$t}{max_end_time} < $e) {
-          $PAR{data}{$t}{max_end_time} = $e;
-        }
-      }
-    }
-    my %tmp; $tmp{C}=0; $tmp{S}=0; $tmp{P}=0; $tmp{R}=0; $tmp{F}=0; $tmp{E}=0; $tmp{U}=0; $tmp{done}=0;
-    if ($PAR{data}{$t}{states}) {
-      foreach my $s (@{$PAR{data}{$t}{states}}) {
-        if ($s eq 'CREATED') { $tmp{C}++; }
-        elsif ($s eq 'SUBMITTED') { $tmp{S}++; }
-        elsif ($s eq 'PENDING') { $tmp{P}++; }
-        elsif ($s eq 'RUNNING') { $tmp{R}++; }
-        elsif ($s eq 'EXPIRED') { $tmp{E}++; $tmp{done}++; }
-        elsif ($s eq 'UNKNOWN') { $tmp{U}++; $tmp{done}++; }
-        else { $tmp{F}++; $tmp{done}++; }
-      }
+    next SWARM if (_finished($t)); # Don't bother if the swarm is finished or deletable
+    _update_value($NEWDATA->{$t},'start_time',_find_min_start_time($t)); # If at least one subjob has started, update start_time
+    my %tmp = _tally_subjob_states($t); # Tally the states
+# Simplify the state
+    if    ($NEWDATA->{$t}{num_subjobs} == $tmp{C}) { _update_value($NEWDATA->{$t},'state','CREATED'); }
+    elsif ($NEWDATA->{$t}{num_subjobs} == $tmp{S}) { _update_value($NEWDATA->{$t},'state','SUBMITTED'); }
+    elsif ($NEWDATA->{$t}{num_subjobs} == $tmp{P}) { _update_value($NEWDATA->{$t},'state','PENDING'); }
+    elsif ($NEWDATA->{$t}{num_subjobs} == $tmp{R}) { _update_value($NEWDATA->{$t},'state','RUNNING'); }
+    elsif ($NEWDATA->{$t}{num_subjobs} == $tmp{E}) { _update_value($NEWDATA->{$t},'state','EXPIRED'); }
+    elsif ($NEWDATA->{$t}{num_subjobs} == $tmp{U}) { _update_value($NEWDATA->{$t},'state','UNKNOWN'); }
+    elsif ($NEWDATA->{$t}{num_subjobs} == $tmp{F}) { _update_value($NEWDATA->{$t},'state','FINISHED'); }
+    else { _update_value($NEWDATA->{$t},'state','MIXED'); }
 
-# The state reported will either be C, S, P, R, F, or M
-
-# The state is uniform:
-      if    ($PAR{data}{$t}{nsubjobs} == $tmp{C}) { _update_value($t,'state','CREATED'); }
-      elsif ($PAR{data}{$t}{nsubjobs} == $tmp{S}) { _update_value($t,'state','SUBMITTED'); }
-      elsif ($PAR{data}{$t}{nsubjobs} == $tmp{P}) { _update_value($t,'state','PENDING'); }
-      elsif ($PAR{data}{$t}{nsubjobs} == $tmp{R}) { _update_value($t,'state','RUNNING'); }
-      elsif ($PAR{data}{$t}{nsubjobs} == $tmp{E}) { _update_value($t,'state','EXPIRED'); }
-      elsif ($PAR{data}{$t}{nsubjobs} == $tmp{U}) { _update_value($t,'state','UNKNOWN'); }
-      elsif (($PAR{data}{$t}{nsubjobs} == $tmp{F}) && (defined $PAR{data}{$t}{max_end_time}) && ($PAR{data}{$t}{max_end_time} =~ /^\d+$/)) {
-        _update_value($t,'state','FINISHED');
-        _update_value($t,'end_time',$PAR{data}{$t}{max_end_time});
-      }
-# The state is mixed
-      else { 
-# The substates are uniformly done states 
-        if ($PAR{data}{$t}{nsubjobs} == $tmp{done}) {
-          _update_value($t,'state','FINISHED');
-# At least one of the subjobs has finished with an end_time
-          if ((defined $PAR{data}{$t}{max_end_time}) && ($PAR{data}{$t}{max_end_time} =~ /^\d+$/)) {
-            _update_value($t,'end_time',$PAR{data}{$t}{max_end_time});
-          }
-# The whole swarm is expired or unknown
-          else {
-            _update_value($t,'end_time',$PAR{data}{$t}{create_time});
-          }
-        } 
-# The substates are a mixture of done and undone states
-        else {
-          _update_value($t,'state','MIXED'); 
-        }
-      }
+# If all subjobs are done, find the max end time
+    if ($NEWDATA->{$t}{num_subjobs} == $tmp{done}) {
+      _update_value($NEWDATA->{$t},'end_time',_find_max_end_time($t));
     }
   }
   add_to_message((sprintf "simpify_states = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
@@ -595,16 +656,25 @@ sub _simplify_states_and_end_times
 #=================================================================================================
 sub _update_value
 {
-  my ($t,$key,$value) = @_;
-  return unless ((defined $t) && (defined $key) && (defined $value));
-  $PAR{data}{$t}{$key} = $value;
+  my ($h,$key,$value,$i) = @_;
+  return unless ((defined $h) && (defined $key) && (defined $value));
+  if (defined $i) {
+    if ((not defined ${$h->{$key}}[$i]) || (${$h->{$key}}[$i] ne $value)) { 
+      ${$h->{$key}}[$i] = $value;
+    }
+  }
+  else {
+    if ((not defined $h->{$key}) || ($h->{$key} ne $value)) { 
+      $h->{$key} = $value;
+    }
+  }
 }
 #=================================================================================================
 sub _find_action
 {
   my $t = shift;
-  if (_deletable($t)) { return 'DELETE'; }
-  elsif ($PAR{data}{$t}{deleted}) { return 'IGNORE'; }
+  if ($NEWDATA->{$t}{deletable}) { return 'DELETE'; }
+  elsif ($NEWDATA->{$t}{deleted}) { return 'IGNORE'; }
   else { return 'KEEP'; }
 }
 #=================================================================================================
@@ -612,24 +682,24 @@ sub print_data_level_2
 {
   $PAR{stopwatch} = 0; # reset the stopwatch
   my $x;
-  foreach my $t (keys %{$PAR{data}}) {
-    next if ($OPT{user} && ($PAR{data}{$t}{user} ne $OPT{user}));
-    next if ($OPT{jobid} && ($PAR{data}{$t}{jobid} ne $OPT{jobid}));
-    next if ($OPT{state} && ($PAR{data}{$t}{state} ne $OPT{state}));
+  foreach my $t (keys %{$NEWDATA}) {
+    next if ($OPT{user} && ($NEWDATA->{$t}{user} ne $OPT{user}));
+    next if ($OPT{jobid} && ($NEWDATA->{$t}{jobid} ne $OPT{jobid}));
+    next if ($OPT{state} && ($NEWDATA->{$t}{state} ne $OPT{state}));
     next if ($OPT{tempdir} && ($t ne $OPT{tempdir}));
-    #next if ($PAR{data}{$t}{state} eq 'DELETED');
-    next if ($OPT{delete} && (!_deletable($t)));
+    #next if ($NEWDATA->{$t}{state} eq 'DELETED');
+    next if ($OPT{delete} && (!$NEWDATA->{$t}{deletable}));
 
 # Push into array of hashrefs if needed
     push @{$x}, {
-      tempname => $PAR{data}{$t}{tempname},
-      user => $PAR{data}{$t}{user},
-      state => $PAR{data}{$t}{state},
+      tempname => $NEWDATA->{$t}{tempname},
+      user => $NEWDATA->{$t}{user},
+      state => $NEWDATA->{$t}{state},
       age => _find_age($t),
       action => _find_action($t),
-      jobid => $PAR{data}{$t}{jobid},
-      nsubjobs => $PAR{data}{$t}{nsubjobs},
-      p => $PAR{data}{$t}{p},
+      jobid => $NEWDATA->{$t}{jobid},
+      nsubjobs => $NEWDATA->{$t}{num_subjobs},
+      p => $NEWDATA->{$t}{p},
     };
   }
 
@@ -662,12 +732,12 @@ sub _find_age
   $age_unit = 3600 if $OPT{hours};
   $age_unit = 60 if $OPT{minutes};
 
-  if ($PAR{data}{$t}{max_end_time}) {
-    $age = int(($PAR{NOW}-$PAR{data}{$t}{max_end_time})/$age_unit);
-  } elsif ($PAR{data}{$t}{submit_time}) {
-    $age = int(($PAR{NOW}-$PAR{data}{$t}{submit_time})/$age_unit);
-  } elsif ($PAR{data}{$t}{create_time}) {
-    $age = int(($PAR{NOW}-$PAR{data}{$t}{create_time})/$age_unit);
+  if ($NEWDATA->{$t}{end_time}) {
+    $age = int(($PAR{NOW}-$NEWDATA->{$t}{end_time})/$age_unit);
+  } elsif ($NEWDATA->{$t}{submit_time}) {
+    $age = int(($PAR{NOW}-$NEWDATA->{$t}{submit_time})/$age_unit);
+  } elsif ($NEWDATA->{$t}{create_time}) {
+    $age = int(($PAR{NOW}-$NEWDATA->{$t}{create_time})/$age_unit);
   } else {
     $age = -1;
   }
@@ -679,42 +749,45 @@ sub print_data_level_1
   $PAR{stopwatch} = 0; # reset the stopwatch
   my $x;
   my $u;
-  foreach my $t (keys %{$PAR{data}}) {
-    next if ($OPT{user} && ($PAR{data}{$t}{user} ne $OPT{user}));
-    next if ($OPT{jobid} && ($PAR{data}{$t}{jobid} ne $OPT{jobid}));
-    next if ($OPT{state} && ($PAR{data}{$t}{state} ne $OPT{state}));
+  foreach my $t (keys %{$NEWDATA}) {
+    next if ($OPT{user} && ($NEWDATA->{$t}{user} ne $OPT{user}));
+    next if ($OPT{jobid} && ($NEWDATA->{$t}{jobid} ne $OPT{jobid}));
+    next if ($OPT{state} && ($NEWDATA->{$t}{state} ne $OPT{state}));
     next if ($OPT{tempdir} && ($t ne $OPT{tempdir}));
-    next if ($PAR{data}{$t}{state} eq 'DELETED');
     $x->{finished}++ if _finished($t);
-    $x->{created}++ if ($PAR{data}{$t}{state} eq 'CREATED');
-    $x->{submitted}++ if ($PAR{data}{$t}{state} eq 'SUBMITTED');
-    $x->{expired}++ if ($PAR{data}{$t}{state} eq 'EXPIRED');
-    $x->{pending}++ if ($PAR{data}{$t}{state} eq 'PENDING');
-    $x->{running}++ if ($PAR{data}{$t}{state} eq 'RUNNING');
-    $x->{mixed}++ if ($PAR{data}{$t}{state} eq 'MIXED');
-    $x->{files} += ($PAR{data}{$t}{nsubjobs}*$PAR{data}{$t}{p}); # the cmd scripts
-    if ($PAR{data}{$t}{state} eq 'UNKNOWN') {
+    $x->{deleted}++ if ($NEWDATA->{$t}{state} eq 'DELETED');
+    $x->{created}++ if ($NEWDATA->{$t}{state} eq 'CREATED');
+    $x->{submitted}++ if ($NEWDATA->{$t}{state} eq 'SUBMITTED');
+    $x->{expired}++ if ($NEWDATA->{$t}{state} eq 'EXPIRED');
+    $x->{pending}++ if ($NEWDATA->{$t}{state} eq 'PENDING');
+    $x->{running}++ if ($NEWDATA->{$t}{state} eq 'RUNNING');
+    $x->{mixed}++ if ($NEWDATA->{$t}{state} eq 'MIXED');
+    $x->{files} += ($NEWDATA->{$t}{num_subjobs}*$NEWDATA->{$t}{p}); # the cmd scripts
+    if ($NEWDATA->{$t}{state} eq 'UNKNOWN') {
       $x->{files} += 2; # batch script and directory
       $x->{unknown}++;
     }
     else {
       $x->{files} += 3; # batch script, directory, and symlink
     }
-    if (!$u->{$PAR{data}{$t}{user}}) {
+    if (!$u->{$NEWDATA->{$t}{user}}) {
       $x->{files} += 1; # parent directory
     }
-    if (_deletable($t)) {
+    if ($NEWDATA->{$t}{state} eq 'DELETED') {
+      $x->{purge}++;
+    }
+    elsif ($NEWDATA->{$t}{deletable}) {
       $x->{delete}++;
     }
     else {
       $x->{keep}++;
     }
-    $u->{$PAR{data}{$t}{user}}++;
+    $u->{$NEWDATA->{$t}{user}}++;
   }
-  add_to_message(sprintf ("files=%d\ncreated=%d,submitted=%d,pending=%d,running=%d,finished=%d,mixed=%d,expired=%d,unknown=%d\ndelete=%d,keep=%d\n",
+  add_to_message(sprintf ("files=%d\ncreated=%d,submitted=%d,pending=%d,running=%d,finished=%d,mixed=%d,expired=%d,unknown=%d\npurge=%d,delete=%d,keep=%d\n",
     $x->{files}, $x->{created}, $x->{submitted}, 
     $x->{pending}, $x->{running}, $x->{finished}, $x->{mixed}, $x->{expired}, $x->{unknown},
-    $x->{delete}, $x->{keep},
+    $x->{purge}, $x->{delete}, $x->{keep},
   ));
   add_to_message((sprintf "print_data_level_1 = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 }
@@ -724,35 +797,28 @@ sub delete_directories_and_files
   $PAR{stopwatch} = 0; # reset the stopwatch
 # Choose our victims
   my @victims;
-  foreach my $t (keys %{$PAR{data}}) {
-    next if ($OPT{user} && ((not defined $PAR{data}{$t}{user}) || ($PAR{data}{$t}{user} ne $OPT{user})));
-    next if ($OPT{jobid} && ((not defined $PAR{data}{$t}{jobid}) || ($PAR{data}{$t}{jobid} ne $OPT{jobid})));
-    next if ($OPT{state} && ((not defined $PAR{data}{$t}{state}) || ($PAR{data}{$t}{state} ne $OPT{state})));
+  foreach my $t (keys %{$NEWDATA}) {
+    next if ($OPT{user} && ((not defined $NEWDATA->{$t}{user}) || ($NEWDATA->{$t}{user} ne $OPT{user})));
+    next if ($OPT{jobid} && ((not defined $NEWDATA->{$t}{jobid}) || ($NEWDATA->{$t}{jobid} ne $OPT{jobid})));
+    next if ($OPT{state} && ((not defined $NEWDATA->{$t}{state}) || ($NEWDATA->{$t}{state} ne $OPT{state})));
     next if ($OPT{tempdir} && ($t ne $OPT{tempdir}));
-    push @victims, $t if (_deletable($t));
+    push @victims, $t if ($NEWDATA->{$t}{deletable});
   }
-  add_to_message((sprintf "choosing victims = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 
-  $PAR{stopwatch} = 0; # reset the stopwatch
 # Delete the victims in clumps of 20
   my $list;
   foreach my $i (0..$#victims) {
     my $t = $victims[$i];
-    $list .= " /spin1/swarm/".$PAR{data}{$t}{user}."/".$t if ($t);
-    my $print_list = "rm -rf /spin1/swarm/".$PAR{data}{$t}{user}."/".$t;
-    $list .= " /spin1/swarm/".$PAR{data}{$t}{user}."/".$PAR{data}{$t}{jobid} if ($PAR{data}{$t}{jobid});
-    $print_list .= " /spin1/swarm/".$PAR{data}{$t}{user}."/".$PAR{data}{$t}{jobid} if ($PAR{data}{$t}{jobid});
+    $list .= " /spin1/swarm/".$NEWDATA->{$t}{user}."/".$t if ($t);
+    my $print_list = "rm -rf /spin1/swarm/".$NEWDATA->{$t}{user}."/".$t;
+    $list .= " /spin1/swarm/".$NEWDATA->{$t}{user}."/".$NEWDATA->{$t}{jobid} if ($NEWDATA->{$t}{jobid});
+    $print_list .= " /spin1/swarm/".$NEWDATA->{$t}{user}."/".$NEWDATA->{$t}{jobid} if ($NEWDATA->{$t}{jobid});
     add_to_message($print_list) if (defined $OPT{verbose} && $OPT{verbose} > 1);
-    if (!$OPT{debug}) {
-      $PAR{data}{$t}{deleted} = 1;
-      $PAR{data}{$t}{state} = "DELETED";
-    }
+    $NEWDATA->{$t}{state} = "DELETED" if (!$OPT{debug});
     if ((!($i%20)) || ($i == $#victims)) {
       my $cmd = "rm -rf $list";
       undef $list;
-      if (!$OPT{debug}) {
-        system($cmd);
-      }
+      system($cmd) if (!$OPT{debug});
     }
   }
   if ($OPT{verbose} > 1) {
@@ -763,46 +829,54 @@ sub delete_directories_and_files
   add_to_message((sprintf "delete_directories_and_files = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 }
 #=================================================================================================
-sub _deletable
+sub _mark_for_deletion
+# A swarm is deletable iff:
+#
+# * none of its subjobs have are in PENDING or RUNNING state
+# * its calculated age is >= "delete-age"
+#
+# The calculated age is based on what times are available.
 {
   my $t = shift;
-  return if $PAR{data}{$t}{deleted};
-  my $age;
-  if ($PAR{data}{$t}{max_end_time}) {
-    $age = int(($PAR{NOW}-$PAR{data}{$t}{max_end_time})/$PAR{age_unit});
-  } elsif ($PAR{data}{$t}{submit_time}) {
-    $age = int(($PAR{NOW}-$PAR{data}{$t}{submit_time})/$PAR{age_unit});
-  } elsif ($PAR{data}{$t}{create_time}) {
-    $age = int(($PAR{NOW}-$PAR{data}{$t}{create_time})/$PAR{age_unit});
-  } else {
-    $age = -1;
+  return unless $NEWDATA->{$t};
+  return if ($NEWDATA->{$t}{deletable} == 1);
+  return if ($NEWDATA->{$t} eq 'RUNNING');
+  return if ($NEWDATA->{$t} eq 'PENDING');
+  return if ($NEWDATA->{$t} eq 'DELETED');
+  foreach my $i (0 .. $NEWDATA->{$t}{num_subjobs}-1) {
+    return if ((${$NEWDATA->{$t}{subjob_state}}[$i] eq 'PENDING') || (${$NEWDATA->{$t}{subjob_state}}[$i] eq 'RUNNING'));
   }
-  if (($age >= $PAR{delete_age}) && (((defined $PAR{data}{$t}{jobid}) && _finished($t)) || ($PAR{data}{$t}{state} eq 'CREATED') || ($PAR{data}{$t}{state} eq 'UNKNOWN'))) {
-    return 1;
-  }
+  if (_find_age($t) >= $PAR{"delete-age"}) { $NEWDATA->{$t}{deletable} = 1; }
+  else { $NEWDATA->{$t}{deletable} = 0; }
 }
 #=================================================================================================
 sub _finished
 {
   my $t = shift;
-  return 1 if ((defined $PAR{data}{$t}{state}) && ($PAR{data}{$t}{state} eq 'FINISHED') && (defined $PAR{data}{$t}{max_end_time})); 
+  return unless $NEWDATA->{$t};
+  return 1 if ($NEWDATA->{$t}{deletable});
+  return 1 if (($NEWDATA->{$t}{state} eq 'FINISHED') && (defined $NEWDATA->{$t}{end_time}));
+  return 1 if ($NEWDATA->{$t}{state} eq 'EXPIRED');
+  return 1 if ($NEWDATA->{$t}{state} eq 'UNKNOWN');
+  return 1 if ($NEWDATA->{$t}{state} eq 'DELETED');
 }
 #=================================================================================================
 sub dump_and_exit
 {
-  read_from_store();
+  $PAR{stopwatch} = 0; # reset the stopwatch
   my $x;
-  foreach my $t (keys %{$PAR{data}}) {
-    next if ($OPT{user} && ($PAR{data}{$t}{user} ne $OPT{user}));
-    next if ($OPT{jobid} && ($PAR{data}{$t}{jobid} ne $OPT{jobid}));
-    next if ($OPT{state} && ($PAR{data}{$t}{state} ne $OPT{state}));
+  foreach my $t (keys %{$OLDDATA}) {
+    next if ($OPT{user} && ($OLDDATA->{$t}{user} ne $OPT{user}));
+    next if ($OPT{jobid} && ($OLDDATA->{$t}{jobid} ne $OPT{jobid}));
+    next if ($OPT{state} && ($OLDDATA->{$t}{state} ne $OPT{state}));
     next if ($OPT{tempdir} && ($t ne $OPT{tempdir}));
-    $PAR{data}{$t}{age} = _find_age($t);
-    $PAR{data}{$t}{action} = _find_action($t);
-    $x->{$t} = $PAR{data}{$t};
+    $OLDDATA->{$t}{age} = _find_age($t);
+    $OLDDATA->{$t}{action} = _find_action($t);
+    $x->{$t} = $OLDDATA->{$t};
   }
   $OPT{verbose} = 1 if ($OPT{verbose} == 0);
   $Data::Dumper::Maxdepth=$OPT{verbose};
+  add_to_message((sprintf "submit_and_exit = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
   add_to_message(Dumper($x));
 }
 #=================================================================================================
@@ -810,19 +884,19 @@ sub print_data_level_3
 {
   $PAR{stopwatch} = 0; # reset the stopwatch
   my @printArray;
-  foreach my $t (keys %{$PAR{data}}) {
-    next if ($OPT{user} && ($PAR{data}{$t}{user} ne $OPT{user}));
-    next if ($OPT{jobid} && ($PAR{data}{$t}{jobid} ne $OPT{jobid}));
-    next if ($OPT{state} && ($PAR{data}{$t}{state} ne $OPT{state}));
+  foreach my $t (keys %{$NEWDATA}) {
+    next if ($OPT{user} && ($NEWDATA->{$t}{user} ne $OPT{user}));
+    next if ($OPT{jobid} && ($NEWDATA->{$t}{jobid} ne $OPT{jobid}));
+    next if ($OPT{state} && ($NEWDATA->{$t}{state} ne $OPT{state}));
     next if ($OPT{tempdir} && ($t ne $OPT{tempdir}));
-    next if ($OPT{delete} && (!_deletable($t)));
+    next if ($OPT{delete} && (!$NEWDATA->{$t}{deletable}));
 
 # If the swarm was never submitted, only list the global values
-    if (!$PAR{data}{$t}{submit_time}) {
+    if (!$NEWDATA->{$t}{submit_time}) {
       _add_created_swarm(\@printArray,$t);
 # If the swarm was submitted, list values for each subjob
     } else {
-      foreach my $i (0 .. $PAR{data}{$t}{nsubjobs}-1) {
+      foreach my $i (0 .. $NEWDATA->{$t}{num_subjobs}-1) {
         if ($i == 0) {
           _add_first_subjob(\@printArray,$t,$i,(_determine_subjob_age($t,$i)));
         } else {
@@ -845,12 +919,12 @@ sub _determine_subjob_age
 {
   my ($t,$i) = @_;
   my $s;
-  if ((${$PAR{data}{$t}{states}}[$i] eq 'SUBMITTED') || (${$PAR{data}{$t}{states}}[$i] eq 'PENDING') || (${$PAR{data}{$t}{states}}[$i] eq 'RUNNING')) {
-    $s = $PAR{NOW} - $PAR{data}{$t}{submit_time};
-  } elsif (defined ${$PAR{data}{$t}{end_times}}[$i]) {
-    $s = $PAR{NOW} - ${$PAR{data}{$t}{end_times}}[$i];
+  if ((${$NEWDATA->{$t}{subjob_state}}[$i] eq 'SUBMITTED') || (${$NEWDATA->{$t}{subjob_state}}[$i] eq 'PENDING') || (${$NEWDATA->{$t}{subjob_state}}[$i] eq 'RUNNING')) {
+    $s = $PAR{NOW} - $NEWDATA->{$t}{submit_time};
+  } elsif (defined ${$NEWDATA->{$t}{subjob_end_time}}[$i]) {
+    $s = $PAR{NOW} - ${$NEWDATA->{$t}{subjob_end_time}}[$i];
   } else {
-    $s = $PAR{NOW} - $PAR{data}{$t}{create_time};
+    $s = $PAR{NOW} - $NEWDATA->{$t}{create_time};
   }
 
 # Recalculate age if needed
@@ -874,17 +948,17 @@ sub _add_first_subjob
 {
   my ($y,$t,$i,$sage) = @_;
   push @{$y}, {
-    tempname => $PAR{data}{$t}{tempname},
-    user => $PAR{data}{$t}{user},
-    jobid => $PAR{data}{$t}{jobid},
-    state => $PAR{data}{$t}{state},
+    tempname => $NEWDATA->{$t}{tempname},
+    user => $NEWDATA->{$t}{user},
+    jobid => $NEWDATA->{$t}{jobid},
+    state => $NEWDATA->{$t}{state},
     age => _find_age($t),
     action => _find_action($t),
-    nsj => $PAR{data}{$t}{nsubjobs},
-    p => $PAR{data}{$t}{p},
+    nsj => $NEWDATA->{$t}{num_subjobs},
+    p => $NEWDATA->{$t}{p},
     cmd => $i,
-    sjobid => ${$PAR{data}{$t}{subjobid}}[$i],
-    sstate => ${$PAR{data}{$t}{states}}[$i],
+    sjobid => ${$NEWDATA->{$t}{subjob_jobid}}[$i],
+    sstate => ${$NEWDATA->{$t}{subjob_state}}[$i],
     sage => $sage,
   };
 }
@@ -902,8 +976,8 @@ sub _add_subjob
     nsj => "-",
     p => "-",
     cmd => $i,
-    sjobid => ${$PAR{data}{$t}{subjobid}}[$i],
-    sstate => ${$PAR{data}{$t}{states}}[$i],
+    sjobid => ${$NEWDATA->{$t}{subjob_jobid}}[$i],
+    sstate => ${$NEWDATA->{$t}{subjob_state}}[$i],
     sage => $sage,
   };
 }
@@ -912,14 +986,14 @@ sub _add_created_swarm
 {
   my ($y,$t) = @_;
   push @{$y}, {
-    tempname => $PAR{data}{$t}{tempname},
-    user => $PAR{data}{$t}{user},
-    jobid => $PAR{data}{$t}{jobid},
-    state => $PAR{data}{$t}{state},
+    tempname => $NEWDATA->{$t}{tempname},
+    user => $NEWDATA->{$t}{user},
+    jobid => $NEWDATA->{$t}{jobid},
+    state => $NEWDATA->{$t}{state},
     age => _find_age($t),
     action => _find_action($t),
-    nsj => $PAR{data}{$t}{nsubjobs},
-    p => $PAR{data}{$t}{p},
+    nsj => $NEWDATA->{$t}{num_subjobs},
+    p => $NEWDATA->{$t}{p},
   };
 }
 #=================================================================================================
@@ -937,20 +1011,20 @@ sub print_swarm_usage
   add_to_message($string);
 }
 #=================================================================================================
-sub purge_and_exit
-{
-# Removed the DELETED jobs from the store file
-  read_from_store();
-  my %new;
-  foreach my $t (keys %{$PAR{data}}) {
-    if (!$PAR{data}{$t}{state} eq 'DELETED') {
-      $new{$t} = $PAR{data}{$t};
-    }
-  }
-  $PAR{data} = \%new;
-  write_to_store() unless $OPT{debug};
-  exit;
-}
+#sub purge_and_exit
+#{
+## Removed the DELETED jobs from the store file
+#  read_from_store();
+#  my %new;
+#  foreach my $t (keys %{$PAR{data}}) {
+#    if (!$PAR{data}{$t}{state} eq 'DELETED') {
+#      $new{$t} = $PAR{data}{$t};
+#    }
+#  }
+#  $PAR{data} = \%new;
+#  write_to_store() unless $OPT{debug};
+#  exit;
+#}
 #=================================================================================================
 sub add_to_message
 {
@@ -962,5 +1036,161 @@ sub add_to_message
   else {
     $PAR{message} .= $msg."\n";
   }
+}
+#=================================================================================================
+sub create_tables
+{
+  my $zzz = $PAR{dbh}->selectall_hashref("SHOW TABLES","Tables_in_dashboard");
+  if (! $zzz->{$PAR{swarms_table}}) {
+    my $sql=<<EOF;
+CREATE TABLE `$PAR{swarms_table}` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `tempname` VARCHAR(32) NOT NULL,
+  `jobid` INT(11) DEFAULT NULL,
+  `user` VARCHAR(32) NOT NULL,
+  `p` TINYINT NOT NULL,
+  `num_subjobs` INT(8) NOT NULL,
+  `state` VARCHAR(32) NOT NULL,
+  `create_time` INT(10) NOT NULL,
+  `submit_time` INT(10) DEFAULT NULL,
+  `start_time` INT(10) DEFAULT NULL,
+  `end_time` INT(10) DEFAULT NULL,
+  `delete_time` INT(10) DEFAULT NULL,
+  `deletable` TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY `id` (`id`),
+  UNIQUE KEY `tempname` (`tempname`),
+  KEY `user` (`user`),
+  KEY `create_time` (`submit_time`),
+  KEY `submit_time` (`submit_time`),
+  KEY `start_time` (`start_time`),
+  KEY `end_time` (`end_time`),
+  KEY `delete_time` (`delete_time`),
+  KEY `state` (`state`)
+)
+EOF
+    _do_mysql($sql);
+    add_to_message("created $PAR{swarms_table} table");
+  }
+  if (! $zzz->{$PAR{swarm_subjobs_table}}) {
+    my $sql=<<EOF;
+CREATE TABLE `$PAR{swarm_subjobs_table}` (
+  `subjob_id` INT(11) NOT NULL AUTO_INCREMENT,
+  `subjob_tempname` VARCHAR(10) NOT NULL,
+  `subjob_jobid` INT(11) DEFAULT NULL,
+  `subjob_cmd` INT(8) NOT NULL,
+  `subjob_state` VARCHAR(32) NOT NULL,
+  `subjob_create_time` INT(11) NOT NULL,
+  `subjob_submit_time` INT(11) DEFAULT NULL,
+  `subjob_start_time` INT(11) DEFAULT NULL,
+  `subjob_end_time` INT(11) DEFAULT NULL,
+  PRIMARY KEY `subjob_id` (`subjob_id`),
+  KEY `subjob_tempname` (`subjob_tempname`),
+  KEY `subjob_cmd` (`subjob_cmd`),
+  KEY `subjob_state` (`subjob_state`)
+)
+EOF
+    _do_mysql($sql);
+    add_to_message("created $PAR{swarm_subjobs_table} table");
+  }
+  undef $zzz;
+}
+#=================================================================================================
+sub _do_mysql
+# This subroutine accepts an array of SQL statements and attempts to run all of them atomically.
+# If one fails, they all fail.  The script will not die, but will generate a warning in the logfile.
+{
+  my @sqlarray = @_;
+  return unless @sqlarray;
+
+# Run the SQL statements, concatenating any errors
+  my $err;
+  foreach my $sql (@sqlarray) {
+    add_to_message($sql,1) if $OPT{"show-sql"};
+    $PAR{dbh}->do($sql) unless $OPT{debug};
+    $err .= $PAR{dbh}->errstr."\n" if $PAR{dbh}->errstr;
+  }
+
+# Something bad has happened
+  if ($err) {
+
+# Rollback the changes
+    $PAR{dbh}->rollback unless $OPT{debug};
+
+# Record dying message
+    add_to_message($err,1);
+  }
+  else {
+# Commit the changes
+    $PAR{dbh}->commit unless $OPT{debug};
+  }
+  undef @sqlarray;
+
+  return;
+}
+#=================================================================================================
+sub update_tables
+# Find all the changes and create sqls
+{
+  $PAR{stopwatch} = 0; # reset the stopwatch
+  foreach my $t (keys %{$NEWDATA}) {
+    my @sqlarray;
+# --- INSERT
+    if (not defined $OLDDATA->{$t}) {
+      my @columns;
+      my @values;
+      foreach my $k (qw(tempname jobid user p num_subjobs state create_time submit_time start_time end_time delete_time deletable)) {
+        push @columns,"`$k`";
+        if (defined $NEWDATA->{$t}{$k}) { push @values,"'$NEWDATA->{$t}{$k}'"; }
+        else { push @values,'NULL'; }
+      }
+      my $c = join ',',@columns;
+      my $v = join ',',@values;
+      push @sqlarray,"INSERT INTO $PAR{swarms_table} ($c) VALUES ($v)";
+      foreach my $i (0 .. $NEWDATA->{$t}{num_subjobs}-1) {
+        undef @columns;
+        undef @values;
+        foreach my $k (qw(subjob_tempname subjob_jobid subjob_cmd subjob_state subjob_create_time subjob_submit_time subjob_start_time subjob_end_time)) {
+          push @columns,"`$k`";
+          if (defined ${$NEWDATA->{$t}{$k}}[$i]) { push @values,"'${$NEWDATA->{$t}{$k}}[$i]'"; }
+          else { push @values,'NULL'; }
+        }
+        $c = join ',',@columns;
+        $v = join ',',@values;
+        push @sqlarray,"INSERT INTO $PAR{swarm_subjobs_table} ($c) VALUES ($v)";
+      }
+    }
+# --- UPDATE pairs
+    else {
+      my @pairs;
+      foreach my $k (qw(tempname jobid user p num_subjobs state create_time submit_time start_time end_time delete_time deletable)) {
+        if (defined $OLDDATA->{$t}{$k}) {
+          if (defined $NEWDATA->{$t}{$k}) { if ($OLDDATA->{$t}{$k} ne $NEWDATA->{$t}{$k}) { push @pairs,"`$k`='$NEWDATA->{$t}{$k}'"; } }
+          else { push @pairs,"`$k`=NULL"; }
+        }
+        else {
+          if (defined $NEWDATA->{$t}{$k}) { push @pairs,"`$k`='$NEWDATA->{$t}{$k}'"; }
+        }
+      }
+      my $p = join ',',@pairs;
+      push @sqlarray,"UPDATE `$PAR{swarms_table}` SET $p WHERE `tempname`='$t'" if $p;
+      foreach my $i (0 .. $NEWDATA->{$t}{num_subjobs}-1) {
+        undef @pairs;
+        foreach my $k (qw(subjob_tempname subjob_jobid subjob_cmd subjob_state subjob_create_time subjob_submit_time subjob_start_time subjob_end_time)) {
+          if (defined ${$OLDDATA->{$t}{$k}}[$i]) {
+            if (defined ${$NEWDATA->{$t}{$k}}[$i]) { if (${$OLDDATA->{$t}{$k}}[$i] ne ${$NEWDATA->{$t}{$k}}[$i]) { push @pairs,"`$k`='${$NEWDATA->{$t}{$k}}[$i]'"; } }
+            else { push @pairs,"`$k`=NULL"; }
+          }
+          else {
+            if (defined ${$NEWDATA->{$t}{$k}}[$i]) { push @pairs,"`$k`='${$NEWDATA->{$t}{$k}}[$i]'"; }
+          }
+        }
+        my $p = join ',',@pairs;
+        push @sqlarray,"UPDATE `$PAR{swarm_subjobs_table}` SET $p WHERE `subjob_tempname`='$t' AND `subjob_cmd`=$i" if $p;
+      }
+    }
+    _do_mysql(@sqlarray) if @sqlarray;
+    undef @sqlarray;
+  }
+  add_to_message((sprintf "update_tables = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 }
 #=================================================================================================
