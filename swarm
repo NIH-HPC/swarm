@@ -105,6 +105,11 @@ sub setDefaults
   $PAR->{maxarraysize} = 1000;
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+# Currently we have nodes with up to 3000 GB of RAM memory
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+  $PAR->{maxmemsize} = 3000;
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 # In addition, we will not be concerned with QOS, as this will be handled downstream by slurm itself.
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 
@@ -773,7 +778,7 @@ sub getCommandLineOptions
   }
 
   if (defined $OPT{g}) { # assign to --mem, converted to MB
-    dieWithError("-g must be between 0.1 and 1000") if (($OPT{g} <= 0.1) || ($OPT{g} > 1000));
+    dieWithError("-g must be between 0.1 and ".$PAR->{maxmemsize}) if (($OPT{g} <= 0.1) || ($OPT{g} > $PAR->{maxmemsize}));
     if (($OPT{g} > 248) && ($SLURMOPT{binary}{partition} ne "largemem")) {
       dieWithError("-g $OPT{g} requires --partition largemem");
     }

@@ -96,7 +96,7 @@ cat <<testcases > testcases.list
 -g 8 -t 10 --partition=ccr --time=56:00:00
 -t 20 -g 8 --module afni --usecsh --partition nimh
 -t 5 -g 8 --module fastxtoolkit
--t 8 -g 200 --gres=lscratch:200 --module samtools/1.2 --time=12:00:00 --sbatch '--partition=b1 --mail-type=BEGIN,END'
+-t 8 -g 200 --gres=lscratch:200 --module samtools/1.2 --time=12:00:00 --sbatch '--partition=quick --mail-type=BEGIN,END'
 -t auto -g 6
 -g 4 --sbatch '--qos=ccrsprio' -t 8
 --dependency afterany:10605277
@@ -113,7 +113,7 @@ cat <<testcases > testcases.list
 -g 8 --time=6:00:00
 --module R
 -p 2 --partition=quick
---partition=b1
+--partition=norm
 --sbatch '--export spydaemon=spydaemon' --job-name cmm_0105 --time 5-00:00:00 --partition ccr
 --sbatch '--gres=lscratch:1 --partition quick'
 --sbatch '--partition=ccr --time=24:00:00 --job-name CNV_plup --mail-type=TIME_LIMIT_90,FAIL'
@@ -128,12 +128,15 @@ cat <<testcases > testcases.list
 --time=10-00:00:00
 --time 14:00:00 --module TORTOISE --sbatch '--cpus-per-task=32 --mem=35g'
 --verbose=1 -g 15 --time=72:00:00
---verbose=1 --partition=b1 -g 10 --time=36:00:00
---verbose=1 --partition=norm,b1,largemem -g 10 --time=36:00:00
+--verbose=1 --partition=quick -g 10 --time=36:00:00
+--verbose=1 --partition=norm,largemem -g 10 --time=36:00:00
 --verbose=1 --partition=ccr,niddk,quick -g 10 --time=2:00:00
---verbose=1 --partition=norm,b1,niddk,ccr,quick -g 10 --time=2:00:00
---partition ibqdr --logdir Align_FASTQs --sbatch "--nodes=4 --ntasks=8 --ntasks-per-node=2 --cpus-per-task=16 --exclusive" 
+--verbose=1 --partition=norm,niddk,ccr,quick -g 10 --time=2:00:00
+--partition norm --logdir Align_FASTQs --sbatch "--nodes=4 --ntasks=8 --ntasks-per-node=2 --cpus-per-task=16 --exclusive" 
 --verbose=1 --maxrunning 3 --time=10:00:00
+-g 2500
+-g 2500 --partition largemem
+-g 5000 --partition largemem
 testcases
 
 # Walk through each test case
