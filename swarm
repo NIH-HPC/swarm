@@ -377,22 +377,24 @@ sub writeBatchScript
       ###$fileContents .= "[[ -s \${d}/cmd.\${z}_$tag ]] && ( /bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${z}_$tag && /bin/echo '$ce_bot' && $PAR->{shell} \${d}/cmd.\${z}_$tag ";
       $fileContents .= "[[ -s \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i ]] && ( /bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i && /bin/echo '$ce_bot' && $PAR->{shell} \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i ";
 # Determine output/error redirects
-      if ($OPT{noout}) {
-        $fileContents .= "1> /dev/null ";
+      if ($OPT{"merge-output"}) {
+        $fileContents .= ">& $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.o ";
       }
       else {
-        ###$fileContents .= "1> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag.o ";
-        $fileContents .= "1> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.o ";
-      }
-      if ($OPT{noerr}) {
-        $fileContents .= "2> /dev/null ";
-      }
-      else {
-        ###$fileContents .= "2> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$tag.e ";
-        $fileContents .= "2> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.e ";
+        if ($OPT{noout}) {
+          $fileContents .= "1> /dev/null ";
+        }
+        else {
+          $fileContents .= "1> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.o ";
+        }
+        if ($OPT{noerr}) {
+          $fileContents .= "2> /dev/null ";
+        }
+        else {
+          $fileContents .= "2> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.e ";
+        }
       }
       $fileContents .= ") &\n";
-      
     }
     $fileContents .= "wait\n";
     $fileContents .= "exitcode=0\n";
@@ -422,17 +424,22 @@ sub submitSlurm
     $PAR->{sbatch_options} .= " --error=/dev/null";
   }
   else {
-    if ($OPT{noout}) {
-      $PAR->{sbatch_options} .= " --output=/dev/null";
-    }
-    else {
+    if ($OPT{"merge-output"}) {
       $PAR->{sbatch_options} .= " --output=".$OPT{logdir}."/".$PAR->{"job-name"}."_\%A_\%a.o";
     }
-    if ($OPT{noerr}) {
-      $PAR->{sbatch_options} .= " --error=/dev/null";
-    }
     else {
-      $PAR->{sbatch_options} .= " --error=".$OPT{logdir}."/".$PAR->{"job-name"}."_\%A_\%a.e";
+      if ($OPT{noout}) {
+        $PAR->{sbatch_options} .= " --output=/dev/null";
+      }
+      else {
+        $PAR->{sbatch_options} .= " --output=".$OPT{logdir}."/".$PAR->{"job-name"}."_\%A_\%a.o";
+      }
+      if ($OPT{noerr}) {
+        $PAR->{sbatch_options} .= " --error=/dev/null";
+      }
+      else {
+        $PAR->{sbatch_options} .= " --error=".$OPT{logdir}."/".$PAR->{"job-name"}."_\%A_\%a.e";
+      }
     }
   }
 
@@ -610,6 +617,7 @@ sub getCommandLineOptions
     "noout"             => \$OPT{noout},#  completely throw away STDOUT
     "noerr"             => \$OPT{noerr},#  completely throw away STDERR
     "logdir=s"          => \$OPT{logdir},# directory to which .o and .e files are written
+    "merge-output"      => \$OPT{"merge-output"},# merge stdout and stderr into .o
 
 # interactive stuff
     "h"                 => \$OPT{h},
@@ -865,6 +873,13 @@ sub getCommandLineOptions
   if ((defined $OPT{maxrunning}) && ($OPT{maxrunning} < 1)) {
     undef $OPT{maxrunning};
   }
+
+# noout and noerr are incompatible with merge-output
+  if ($OPT{"merge-output"}) {
+    if ($OPT{noout} || $OPT{noerr}) {
+      dieWithError("--noout and --noerr are incompatible with --merge-output");
+    }
+  }
 }
 #==============================================================================
 sub print_options
@@ -902,6 +917,7 @@ Usage: swarm [swarm options] [sbatch options]
   -c, --comment-char [chr]  
                          use something other than $PAR->{commentChar} as the comment character
 
+  --merge-output         combine STDOUT and STDERR into a single file per subjob (.o)
   --logdir               directory to which .o and .e files are to be written
                          (default is current working directory)
 

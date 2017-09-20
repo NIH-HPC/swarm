@@ -137,6 +137,7 @@ cat <<testcases > testcases.list
 -g 2500
 -g 2500 --partition largemem
 -g 5000 --partition largemem
+--merge-output --logdir bogus
 testcases
 
 # Walk through each test case

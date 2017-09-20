@@ -246,6 +246,7 @@ Usage: swarm [swarm options] [sbatch options]
   --no-comment           don't ignore text following comment character #
   --comment-char [chr]   use something other than # as the comment character
 
+  --merge-output         combine STDOUT and STDERR into a single file per subjob (.o)
   --logdir               directory to which .o and .e files are to be written
                          (default is current working directory)
 
@@ -484,7 +485,7 @@ At the bottom of the .e file, you may see a warning like this:</p>
 <pre class="term">slurmstepd: Exceeded job memory limit at some point. Job may have been partially swapped out to disk.</pre>
 
 <p> If a job dies before it is finished, this output may not be available.  Contact
-<a href="mailto:staff@helix.nih.gov">staff@helix.nih.gov</a> when you have a question about why
+<a href="mailto:staff@hpc.nih.gov">staff@hpc.nih.gov</a> when you have a question about why
 a swarm stopped prematurely.</p>
 
 <h3>Renaming output files</h3>
@@ -497,6 +498,11 @@ programAOK_21381_0.e  programAOK_21381_2.e  programAOK_21381_4.e  programAOK_213
 programAOK_21381_0.o  programAOK_21381_2.o  programAOK_21381_4.o  programAOK_21381_6.o
 programAOK_21381_1.e  programAOK_21381_3.e  programAOK_21381_5.e  programAOK_21381_7.e
 programAOK_21381_1.o  programAOK_21381_3.o  programAOK_21381_5.o  programAOK_21381_7.o</pre>
+
+<h3>Combining STDOUT and STDERR into a single file per subjob</h3>
+<p>Including the <b>--merge-outpt</b> option will cause the STDERR output to be combined into the file used
+for STDOUT.  For swarm, that means the content of the .e files are written to the .o file.  Keep in mind that
+interweaving of content will occur.</p>
 
 <h3>Writing output files to a separate directory</h3>
 <p>By default, the STDOUT and STDERR files are written to the same directory from which the swarm
