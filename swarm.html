@@ -500,9 +500,16 @@ programAOK_21381_1.e  programAOK_21381_3.e  programAOK_21381_5.e  programAOK_213
 programAOK_21381_1.o  programAOK_21381_3.o  programAOK_21381_5.o  programAOK_21381_7.o</pre>
 
 <h3>Combining STDOUT and STDERR into a single file per subjob</h3>
-<p>Including the <b>--merge-outpt</b> option will cause the STDERR output to be combined into the file used
+<p>Including the <b>--merge-output</b> option will cause the STDERR output to be combined into the file used
 for STDOUT.  For swarm, that means the content of the .e files are written to the .o file.  Keep in mind that
 interweaving of content will occur.</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm -f file.swarm --merge-output
+...
+<b>[biowulf]$</b> ls
+swarm_50158339_0.o   swarm_50158339_1.o  swarm_50158339_4.o  swarm_50158339_7.o
+swarm_50158339_10.o  swarm_50158339_2.o  swarm_50158339_5.o  swarm_50158339_8.o
+swarm_50158339_11.o  swarm_50158339_3.o  swarm_50158339_6.o  swarm_50158339_9.o</pre>
 
 <h3>Writing output files to a separate directory</h3>
 <p>By default, the STDOUT and STDERR files are written to the same directory from which the swarm
