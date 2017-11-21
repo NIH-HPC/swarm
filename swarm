@@ -83,7 +83,8 @@ sub setDefaults
   $PAR->{basedir} = "/spin1/swarm/$PAR->{user}";
   isDirCreateable($PAR->{basedir}) || dieWithError("can't write to $PAR->{basedir}");
   if (!-d $PAR->{basedir}) {
-    make_path($PAR->{basedir}, { mode => 0700, }) || dieWithError("Can't create swarm script basedir!");
+    mkdir $PAR->{basedir} || dieWithError("Can't create swarm script basedir!");
+    chmod 02750,$PAR->{basedir};
   }
 
 # Other defaults
@@ -291,6 +292,7 @@ sub insertLmodInit
 sub writeCommandFiles
 {
   mkdir $PAR->{tempdir};
+  chmod 02750,$PAR->{tempdir};
   append_to_tempdir_index(); # Record tempdir creation in the index
   my $len = length($#{$SWARM->{CMDLISTS}});
 # Walk through each subjob
@@ -310,7 +312,7 @@ sub writeCommandFiles
     }
 # Print the contents
     foreach my $file (sort keys %fileContents) {
-      printToFile($file,$fileContents{$file});
+      printToFile($file,$fileContents{$file},0640);
     }
   }
 }
@@ -318,7 +320,7 @@ sub writeCommandFiles
 sub printToFile
 # Open file, write contents, flush and close.  'nuff said.
 {
-  my ($file,$contents) = @_;
+  my ($file,$contents,$mode) = @_;
   my $fh = FileHandle->new;
   if ($fh->open("> $file")) {
     print $fh $contents;
@@ -326,6 +328,7 @@ sub printToFile
     $fh->close;
   }
   else { dieWithError("Can't write to $file\n"); }
+  chmod $mode,$file;
 }
 #==============================================================================
 sub appendToFile
@@ -409,7 +412,7 @@ sub writeBatchScript
   $fileContents .= "exit \$exitcode\n"; # Exit with the final exit code from the given command
 
 # Print the batch file
-  printToFile($PAR->{batchfile},$fileContents);
+  printToFile($PAR->{batchfile},$fileContents,0640);
 }
 #==============================================================================
 sub submitSlurm
