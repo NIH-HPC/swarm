@@ -105,7 +105,7 @@ eval {
   }
 
   if ($OPT{emailTo}) {
-    sendEmail(subject=>$0,message=>$PAR{message},emailTo=>$OPT{emailTo},Bcc=>$OPT{Bcc},debug=>$OPT{'dry-run'},provenance=>1);
+    sendEmail(subject=>"swarm_cleanup.log",message=>$PAR{message},emailTo=>$OPT{emailTo},Bcc=>$OPT{Bcc},debug=>$OPT{'dry-run'},provenance=>1);
   }
   else {
     print $PAR{message};
