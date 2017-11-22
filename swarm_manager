@@ -87,7 +87,7 @@ eval {
     exit;
   }
 
-  printSwarmUsage() if $OPT{routine};
+  $PAR{routine_message} = printSwarmUsage() if $OPT{routine};
   read_swarms_table();
   parse_index_and_logfile() if $OPT{update};
   parse_jobs_table() if $OPT{update};
@@ -100,10 +100,11 @@ eval {
   add_to_message((sprintf "TOTAL TIME TAKEN = %.2f",$PAR{stopwatch_full}),1) if $OPT{timing};
 
   if ($OPT{routine}) {
-    sleep(360);
-    $PAR{message} = printSwarmUsage();
+    sleep(1);
+    $PAR{routine_message} .= printSwarmUsage();
   }
 
+  $PAR{message} = $PAR{routine_message} if $OPT{routine};
   if ($OPT{emailTo}) {
     sendEmail(subject=>"swarm_cleanup.log",message=>$PAR{message},emailTo=>$OPT{emailTo},Bcc=>$OPT{Bcc},debug=>$OPT{'dry-run'},provenance=>1);
   }
@@ -677,10 +678,10 @@ sub delete_swarms
   add_to_message((sprintf "delete_swarms = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 
   if ($OPT{routine}) {
-    print "======================================================================\n";
-    print "Swarm directories scanned: ".scalar(keys %{$NEWDATA})."\n";
-    print "Swarm directories deleted: ".scalar(@victims)."\n";
-    print "======================================================================\n";
+    $PAR{routine_message} .= "======================================================================\n";
+    $PAR{routine_message} .= "Swarm directories scanned: ".scalar(keys %{$NEWDATA})."\n";
+    $PAR{routine_message} .= "Swarm directories deleted: ".scalar(@victims)."\n";
+    $PAR{routine_message} .= "======================================================================\n";
   }
 }
 #=================================================================================================
