@@ -52,20 +52,20 @@ Because the space in /spin1/swarm is limited, old directories need to be removed
 When run in --dry-run mode, swarm_manager prints out a summary of the known swarms, with a list of swarms and their corresponding status:
 
 ```
-$ swarm_manager --dry-run  --human | head -10
+$ swarm_manager --dry-run  --human
 Running in dry-run mode
 R/P=3123,F=18136,U=5260
 ...
-6WKbhKwgdE	53685609	F	2017-11-12T07:18:59	2017-11-12T09:28:59	2017-11-18T06:30:01	houl3
-MX6u9pc6qA	53719443	F	2017-11-12T17:45:46	2017-11-12T17:46:08	2017-11-18T06:30:01	houl3
+6WKbhKwgdE	53685609	F	2017-11-12T07:18:59	2017-11-12T09:28:59	2017-11-18T06:30:01	mmouse
+MX6u9pc6qA	53719443	F	2017-11-12T17:45:46	2017-11-12T17:46:08	2017-11-18T06:30:01	mmouse
 7Vs9wt_bj7	      -1	U	2017-11-22T02:57:31	                 -1	                 -1	baileykia
-wM4wmAGBf2	53685210	F	2017-11-12T07:14:45	2017-11-12T08:30:37	2017-11-18T06:30:01	houl3
-sYczw00gOi	54462141	R/P	2017-11-22T00:22:02	                 -1	                 -1	baileykia
-yJdZ0Teclu	      -1	U	2017-11-11T15:44:40	                 -1	2017-11-17T06:30:02	houl3
-CkHn5oWBWZ	54462144	R/P	2017-11-22T00:22:09	                 -1	                 -1	baileykia
-4YWcIPcqp9	54461506	F	2017-11-21T23:56:10	2017-11-21T23:56:13	                 -1	baileykia
-NcvQIL0TNN	53764812	F	2017-11-13T08:33:59	2017-11-15T18:48:45	2017-11-21T06:30:01	fanr
-z8OVfg_Az_	54303744	F	2017-11-20T11:51:34	2017-11-20T11:51:36	                 -1	waidmannen
+wM4wmAGBf2	53685210	F	2017-11-12T07:14:45	2017-11-12T08:30:37	2017-11-18T06:30:01	mmouse
+sYczw00gOi	54462141	R/P	2017-11-22T00:22:02	                 -1	                 -1	dduck
+yJdZ0Teclu	      -1	U	2017-11-11T15:44:40	                 -1	2017-11-17T06:30:02	mmouse
+CkHn5oWBWZ	54462144	R/P	2017-11-22T00:22:09	                 -1	                 -1	dduck
+4YWcIPcqp9	54461506	F	2017-11-21T23:56:10	2017-11-21T23:56:13	                 -1	dduck
+NcvQIL0TNN	53764812	F	2017-11-13T08:33:59	2017-11-15T18:48:45	2017-11-21T06:30:01	ggoofy
+z8OVfg_Az_	54303744	F	2017-11-20T11:51:34	2017-11-20T11:51:36	                 -1	dduck2
 ...
 ```
 **Columns**
@@ -83,9 +83,9 @@ Routine daily cleaning is done by including the --routine option.  Running in --
 $ ./swarm_manager --dry-run  --human --routine
 Running in dry-run mode
 ...
-2017-11-22T09:37:02	rm -rf /spin1/swarm/javiergc/bKuRukIcN0 /spin1/swarm/javiergc/54095527
-2017-11-22T09:37:02	rm -rf /spin1/swarm/nhansen/mgeLmPLATB /spin1/swarm/nhansen/54095086
-2017-11-22T09:37:02	rm -rf /spin1/swarm/javiergc/qdcR8dNqZZ /spin1/swarm/javiergc/54096680
+2017-11-22T09:37:02	rm -rf /spin1/swarm/dduck/bKuRukIcN0 /spin1/swarm/dduck/54095527
+2017-11-22T09:37:02	rm -rf /spin1/swarm/ggoofy/mgeLmPLATB /spin1/swarm/ggoofy/54095086
+2017-11-22T09:37:02	rm -rf /spin1/swarm/mmouse/qdcR8dNqZZ /spin1/swarm/mmouse/54096680
 ...
 /swarm usage:   2.03 GB ( 4.1%),  240274 files ( 6.9%)
 ======================================================================
@@ -99,11 +99,11 @@ Swarm directories deleted: 3
 An index file /usr/local/logs/swarm_tempdir.idx is updated when a swarm is created.  This file contains the creation timestamp, user, unique tag, number of commands, and P value (either 1 or 2):
 
 ```
-1509019983,bartesaghia,e4gLIFwqhq,1,1
-1509020005,zhaoy10,aFwi3QYiQ0,13,1
-1509020213,seidlitzjm,jqcJTSiIBH,3,1
-1509020215,bartesaghia,qqBMb2SLzl,1,1
-1509020225,hany6,64PZ3h80nB,1000,1
+1509019983,mmouse,e4gLIFwqhq,1,1
+1509020005,mmouse,aFwi3QYiQ0,13,1
+1509020213,dduck2,jqcJTSiIBH,3,1
+1509020215,dduck,qqBMb2SLzl,1,1
+1509020225,ggoofy,64PZ3h80nB,1000,1
 ```
 
 ## Logging
