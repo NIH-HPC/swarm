@@ -100,7 +100,7 @@ eval {
   add_to_message((sprintf "TOTAL TIME TAKEN = %.2f",$PAR{stopwatch_full}),1) if $OPT{timing};
 
   if ($OPT{routine}) {
-    sleep(1);
+    sleep(360);
     $PAR{routine_message} .= printSwarmUsage();
   }
 

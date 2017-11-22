@@ -47,71 +47,69 @@ When a user runs swarm in development mode (--devel), no temporary directory or 
 
 ## Clean up
 
-Because the space in /spin1/swarm is limited, old directories need to be removed.  We want to keep the directories and files around for a while to use in investigations, but not forever.  The leftovers are cleaned up daily by /usr/local/sbin/swarm_cleanup.pl in a root cron job on biowulf.  At the moment, subdirectories and their accompanying symlinks are deleted under these circumstances:
+Because the space in /spin1/swarm is limited, old directories need to be removed.  We want to keep the directories and files around for a while to use in investigations, but not forever.  The leftovers are cleaned up daily by /usr/local/sbin/swarm_manager in a root cron job on biowulf.  At the moment, subdirectories and their accompanying symlinks are deleted when either the full swarm ended 5 days prior, or if not run the modification time exceeds 5 days.
 
-* Proper jobid symlink (123456789 -> XXXXXXXXXX, meaning that the job was successfully submitted)
-  * the directory and symlink are removed **five days after the entire swarm job array has ended**
-  * they are also removed if the modification time of the directory exceeds the --orphan_min_age (default = 60 days) and the user is not currently running any jobs -- this is because sacct only contains job information for a restricted period of time
-* Job submission failed
-  * the subdirectory and symlink are removed when the **modification time of the directory exceeds one week**
-
-When run in --debug mode, swarm_cleanup.pl prints out a very nice description of what it might do:
+When run in --dry-run mode, swarm_manager prints out a summary of the known swarms, with a list of swarms and their corresponding status:
 
 ```
-$ swarm_cleanup.pl --debug
-Getting jobs
-Getting job states and ages since ending
-Getting symlinks for real jobs
-Walking through directories
-user              basename          STA   AGE   DSE  TYP : ACTION  EXTRA
-================================================================================
-chenp4            4073854           Q/R   14.9  ---  LNK : KEEP    states
-ebrittain         4400424           END   10.0  0.2  LNK : KEEP    FAILED
-sudregp           4467927           END    8.9  8.9  LNK : DELETE  COMPLETED,FAILED
-  rm -f /spin1/swarm/sudregp/4467927
-  rm -rf /spin1/swarm/sudregp/XhlnoNq0EF
-sudregp           4467928           SKP    6.9  ---  LNK : KEEP
-bartesaghia       4501010           END    9.2  9.2  LNK : DELETE  COMPLETED
-  rm -f /spin1/swarm/bartesaghia/4501010
-  rm -rf /spin1/swarm/bartesaghia/dR_NPaOkr3
-bartesaghia       4501011           END    9.1  9.1  LNK : DELETE  COMPLETED
-  rm -f /spin1/swarm/bartesaghia/4501011
-  rm -rf /spin1/swarm/bartesaghia/OePKGVUa9x
+$ swarm_manager --dry-run  --human | head -10
+Running in dry-run mode
+R/P=3123,F=18136,U=5260
+...
+6WKbhKwgdE	53685609	F	2017-11-12T07:18:59	2017-11-12T09:28:59	2017-11-18T06:30:01	houl3
+MX6u9pc6qA	53719443	F	2017-11-12T17:45:46	2017-11-12T17:46:08	2017-11-18T06:30:01	houl3
+7Vs9wt_bj7	      -1	U	2017-11-22T02:57:31	                 -1	                 -1	baileykia
+wM4wmAGBf2	53685210	F	2017-11-12T07:14:45	2017-11-12T08:30:37	2017-11-18T06:30:01	houl3
+sYczw00gOi	54462141	R/P	2017-11-22T00:22:02	                 -1	                 -1	baileykia
+yJdZ0Teclu	      -1	U	2017-11-11T15:44:40	                 -1	2017-11-17T06:30:02	houl3
+CkHn5oWBWZ	54462144	R/P	2017-11-22T00:22:09	                 -1	                 -1	baileykia
+4YWcIPcqp9	54461506	F	2017-11-21T23:56:10	2017-11-21T23:56:13	                 -1	baileykia
+NcvQIL0TNN	53764812	F	2017-11-13T08:33:59	2017-11-15T18:48:45	2017-11-21T06:30:01	fanr
+z8OVfg_Az_	54303744	F	2017-11-20T11:51:34	2017-11-20T11:51:36	                 -1	waidmannen
+...
 ```
+**Columns**
+* 1: unique tag that identifies the swarm
+* 2: the slurm jobid for the jobarray -- unsubmitted swarms are set to -1
+* 3: the metastate; R/P = running or pending, F = finished, U = unsubmitted
+* 4: submit/create time -- this is always set
+* 5: end time -- running/pending/unsubmitted swarms are set to -1
+* 6: delete time -- undeleted swarms are set to -1
+* 7: user
 
-Each subdirectory is given as a single line.  The user and basename (jobid for successful submissions) start each line.  The other fields are:
+Routine daily cleaning is done by including the --routine option.  Running in --dry-run mode shows what directories will get removed:
 
-**STA:** state of the job
-* Q/R: queued or running
-* END: the job has ended
-* SKP: sacct was skipped, so no information is known about the job
-* DEV: developemnt run
-* FAIL: submission failed
-* UNK: unknown state
+```
+$ ./swarm_manager --dry-run  --human --routine
+Running in dry-run mode
+...
+2017-11-22T09:37:02	rm -rf /spin1/swarm/javiergc/bKuRukIcN0 /spin1/swarm/javiergc/54095527
+2017-11-22T09:37:02	rm -rf /spin1/swarm/nhansen/mgeLmPLATB /spin1/swarm/nhansen/54095086
+2017-11-22T09:37:02	rm -rf /spin1/swarm/javiergc/qdcR8dNqZZ /spin1/swarm/javiergc/54096680
+...
+/swarm usage:   2.03 GB ( 4.1%),  240274 files ( 6.9%)
+======================================================================
+Swarm directories scanned: 26524
+Swarm directories deleted: 3
+======================================================================
+/swarm usage:   2.03 GB ( 4.1%),  240274 files ( 6.9%)
+```
+## Index File
 
-**AGE:** modification time of the subdirectory
+An index file /usr/local/logs/swarm_tempdir.idx is updated when a swarm is created.  This file contains the creation timestamp, user, unique tag, number of commands, and P value (either 1 or 2):
 
-**DSE:** days since ending, only known for ended jobs
-
-**TYP:** type of basename, either symlink (LNK) or directory (DIR)
-
-**ACTION:** what action is taken, either (DELETE) or (KEEP)
-
-**EXTRA:** extra information, such as the unique list of states of all the subjobs within the swarm
-
-## Indexes
-
-Two index files are created within the /swarm directory:
-
-* .tempdir.idx -- contains a timestamp, user, tempname, number of subjobs, and p value for the swarm
-* .swarm.idx -- contains a timestamp, tempname, and slurm jobid for the job array
-
-These index files will be used in the future for managing swarms.
+```
+1509019983,bartesaghia,e4gLIFwqhq,1,1
+1509020005,zhaoy10,aFwi3QYiQ0,13,1
+1509020213,seidlitzjm,jqcJTSiIBH,3,1
+1509020215,bartesaghia,qqBMb2SLzl,1,1
+1509020225,hany6,64PZ3h80nB,1000,1
+```
 
 ## Logging
 
 * swarm logs to /usr/local/logs/swarm.log
-* swarm_cleanup.pl logs to /usr/local/logs/swarm_cleanup.log
+* swarm_manager logs to /usr/local/logs/swarm_cleanup.log
 
 ## Testing
 
