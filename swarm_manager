@@ -328,7 +328,7 @@ sub parse_sacct
 # Do some filtering if needed
   my @f;
   push @f,"--user $OPT{user}" if $OPT{user};
-  push @f,"--jobid $OPT{jobid}" if $OPT{jobid};
+  push @f,"--jobs $OPT{jobid}" if $OPT{jobid};
   my $filter;
   if (@f) {
     $filter = join " ",@f;
@@ -362,6 +362,44 @@ sub parse_sacct
       _update_value($NEWDATA->{$PAR{jobid2tempname}{$j}},"end_time",$end_time);
     }
   }
+
+# Ugh.  Check through old swarms (>21 days) that may be erroneously marked as R/P.
+  my $ancient = time() - (86400 * 14);
+  foreach my $t (keys %{$NEWDATA}) {
+    next if ($OPT{user} && ($NEWDATA->{$t}{user} ne $OPT{user}));
+    next if ($OPT{jobid} && ($NEWDATA->{$t}{jobid} ne $OPT{jobid}));
+    next if ($OPT{tempdir} && ($t ne $OPT{tempdir}));
+    next unless ((defined $NEWDATA->{$t}{active}) && ($NEWDATA->{$t}{active} != 0)); # only evaluate R/P swarms
+    next unless ($NEWDATA->{$t}{create_time} < $ancient); # only evaluate ancient swarms
+
+# Use sacct -- faster than Elasticsearch
+    chomp(my $s = `sacct -j $NEWDATA->{$t}{jobid} --format jobid,state,submit,end --noheader`);
+    my $ANCIENT_JOBS;
+    foreach my $line (split /\n/,$s) {
+      if ($line =~ /^(\d+)\S*\s+(\S+)\s+(\S+)/) {
+        my ($j,$s,$t) = ($1,$2,$3);
+        if (defined $j) {
+          $ANCIENT_JOBS->{$j}{line}=$line;
+          $ANCIENT_JOBS->{$j}{count}++;
+          if (defined $s) { $ANCIENT_JOBS->{$j}{state}{$s}=1; }
+          if (defined $t) {
+            if ($t =~ /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/) {
+              my $tx = str2time($1);
+              $ANCIENT_JOBS->{$j}{end_time}{$tx}=1; 
+            }
+          }
+        }
+      }
+    }
+    foreach my $j (keys %{$ANCIENT_JOBS}) {
+      if (defined $PAR{jobid2tempname}{$j}) {
+        my ($active,$end_time) = find_active_and_end_time($ANCIENT_JOBS,$j); 
+        _update_value($NEWDATA->{$PAR{jobid2tempname}{$j}},"active",$active);
+        _update_value($NEWDATA->{$PAR{jobid2tempname}{$j}},"end_time",$end_time);
+      }
+    }
+  }
+
   add_to_message((sprintf "parse_sacct = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 }
 #===============================================================================================================================
@@ -661,11 +699,10 @@ sub delete_swarms
       my $cmd = "rm -rf $list";
       undef $list;
 # delete the directory and symlink and capture the exit code
-      my $ret = system($cmd) if (!$OPT{'dry-run'}); # blocked until production
-# update swarms table
+      my $ret = system($cmd) if (!$OPT{'dry-run'});
+# update swarms table and print to logfile if all went well
       _do_mysql(@sqlarray) unless $ret;
       undef @sqlarray;
-# print to logfile
       print_to_logfile($loglist) unless $ret;
       undef $loglist;
     }
