@@ -184,6 +184,7 @@ sub getOptions
     undef $OPT{verbose};
   }
 
+  $OPT{'show-sql'} = 1 if ((defined $OPT{verbose}) && ($OPT{verbose} > 2));
   $PAR{'delete-age'} = $OPT{'delete-age'} if ($OPT{'delete-age'});
 }
 #==================================================================================================
@@ -229,6 +230,11 @@ sub parse_index_and_logfile
 
 # Filters
       next MATCH1 if ((defined $OPT{user}) && ($OPT{user} ne $user));
+      if (defined $OPT{jobid}) {
+        if (defined $PAR{jobid2tempname}{$OPT{jobid}}) {
+          next MATCH1 if ($t ne $PAR{jobid2tempname}{$OPT{jobid}});
+        }
+      }
 
 # Only find jobs created within the last max_days_ago -- this takes a few seconds
       next MATCH1 if ((($PAR{now}-$time)/86400)>$PAR{max_days_ago});
@@ -275,6 +281,7 @@ sub parse_index_and_logfile
       close LOGFILE;
     }
   }
+
   add_to_message((sprintf "parse_index_and_logfile = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 }
 #=================================================================================================
@@ -376,7 +383,10 @@ sub parse_sacct
     next unless ($NEWDATA->{$t}{create_time} < $ancient); # only evaluate ancient swarms
 
 # Use sacct -- faster than Elasticsearch
-    chomp(my $s = `sacct -j $NEWDATA->{$t}{jobid} --format jobid,state,submit,end --noheader`);
+    my $cmd = "sacct -j $NEWDATA->{$t}{jobid} --format jobid,state,submit,end --noheader";
+    print "$cmd\n" if ($OPT{verbose} > 1);
+    chomp(my $s = `$cmd`);
+    print "$s\n" if ($OPT{verbose} > 2);
     my $ANCIENT_JOBS;
     foreach my $line (split /\n/,$s) {
       if ($line =~ /^(\d+)\S*\s+(\S+)\s+(\S+)/) {
