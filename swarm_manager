@@ -357,6 +357,7 @@ sub parse_sacct
   my @f;
   push @f,"--user $OPT{user}" if $OPT{user};
   push @f,"--jobs $OPT{jobid}" if $OPT{jobid};
+  push @f,"--jobs $NEWDATA->{$OPT{tempdir}}{jobid}" if $OPT{tempdir};
   my $filter;
   if (@f) {
     $filter = join " ",@f;
