@@ -233,7 +233,6 @@ sub parse_index_and_logfile
 # Filters
       next MATCH1 if ((defined $OPT{user}) && ($OPT{user} ne $user));
       next MATCH1 if ((defined $OPT{tempdir}) && ($OPT{tempdir} ne $t));
-      add_to_message($line) if ((defined $OPT{tempdir}) && ($OPT{tempdir} eq $t));
       if (defined $OPT{jobid}) {
         if (defined $PAR{jobid2tempname}{$OPT{jobid}}) {
           next MATCH1 if ($t ne $PAR{jobid2tempname}{$OPT{jobid}});
@@ -271,7 +270,6 @@ sub parse_index_and_logfile
           next LINE if ((defined $OPT{user}) && ($OPT{user} ne $user));
           next LINE if ((defined $OPT{jobid}) && ($OPT{jobid} ne $jobid));
           next LINE if ((defined $OPT{tempdir}) && ($OPT{tempdir} ne $t));
-          add_to_message($line) if ((defined $OPT{tempdir}) && ($OPT{tempdir} eq $t));
 
 # Only find jobs created within the last max_days_ago -- this takes a few seconds
           unless ($OPT{tempdir} || $OPT{jobid}) {
