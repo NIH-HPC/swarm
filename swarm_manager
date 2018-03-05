@@ -196,6 +196,7 @@ sub read_swarms_table
   my @f;
   push @f,"`user`='$OPT{user}'" if $OPT{user};
   push @f,"`jobid`='$OPT{jobid}'" if $OPT{jobid};
+  push @f,"`tempname`='$OPT{tempdir}'" if $OPT{tempdir};
   my $filter;
   if (@f) {
     $filter = join " AND ",@f;
@@ -206,6 +207,7 @@ sub read_swarms_table
   $PAR{stopwatch} = 0; # reset the stopwatch
   my $sql = "SELECT * FROM dashboard.$PAR{swarms_table} $filter";
   my $a = $PAR{dbh}->selectall_hashref($sql,["id"]);
+  add_to_message($sql) if $OPT{'show-sql'};
   foreach my $id (keys %{$a}) {
     my $t = $a->{$id}->{tempname};
     foreach my $k (@{$PAR{fields}}) {
@@ -230,6 +232,8 @@ sub parse_index_and_logfile
 
 # Filters
       next MATCH1 if ((defined $OPT{user}) && ($OPT{user} ne $user));
+      next MATCH1 if ((defined $OPT{tempdir}) && ($OPT{tempdir} ne $t));
+      add_to_message($line) if ((defined $OPT{tempdir}) && ($OPT{tempdir} eq $t));
       if (defined $OPT{jobid}) {
         if (defined $PAR{jobid2tempname}{$OPT{jobid}}) {
           next MATCH1 if ($t ne $PAR{jobid2tempname}{$OPT{jobid}});
@@ -237,7 +241,9 @@ sub parse_index_and_logfile
       }
 
 # Only find jobs created within the last max_days_ago -- this takes a few seconds
-      next MATCH1 if ((($PAR{now}-$time)/86400)>$PAR{max_days_ago});
+      unless ($OPT{tempdir} || $OPT{jobid}) {
+        next MATCH1 if ((($PAR{now}-$time)/86400)>$PAR{max_days_ago});
+      }
 
       $NEWDATA->{$t}{tempname}=$t;
       _update_value($NEWDATA->{$t},"create_time",$time);
@@ -264,9 +270,13 @@ sub parse_index_and_logfile
           my ($time,$jobid,$user,$num,$t) = (str2time($1),$2,$3,$4,$5);
           next LINE if ((defined $OPT{user}) && ($OPT{user} ne $user));
           next LINE if ((defined $OPT{jobid}) && ($OPT{jobid} ne $jobid));
+          next LINE if ((defined $OPT{tempdir}) && ($OPT{tempdir} ne $t));
+          add_to_message($line) if ((defined $OPT{tempdir}) && ($OPT{tempdir} eq $t));
 
 # Only find jobs created within the last max_days_ago -- this takes a few seconds
-          next LINE if ((($PAR{now}-$time)/86400)>$PAR{max_days_ago});
+          unless ($OPT{tempdir} || $OPT{jobid}) {
+            next LINE if ((($PAR{now}-$time)/86400)>$PAR{max_days_ago});
+          }
           my $p = 1;
           $p = 2 if ($line=~/; command=.+-p 2 /);
           $NEWDATA->{$t}{tempname}=$t;
@@ -287,6 +297,9 @@ sub parse_index_and_logfile
 #=================================================================================================
 sub parse_jobs_table
 {
+# Don't be stupid
+  return if ($OPT{tempdir} && not defined $NEWDATA->{$OPT{tempdir}}{jobid});
+
   $PAR{stopwatch} = 0; # reset the stopwatch
   my $JOBS;
 
@@ -296,7 +309,9 @@ sub parse_jobs_table
   push @f,"`jobid`='$OPT{jobid}'" if $OPT{jobid};
 
 # Only find jobs created within the last max_days_ago -- this may take 30 seconds
-  push @f,"`submit_time`>".($PAR{now}-($PAR{max_days_ago}*86400));
+  unless ($OPT{tempdir} || $OPT{jobid}) {
+    push @f,"`submit_time`>".($PAR{now}-($PAR{max_days_ago}*86400));
+  }
   my $filter;
   if (@f) {
     $filter = join " AND ",@f;
@@ -333,6 +348,9 @@ sub parse_jobs_table
 #===============================================================================================================================
 sub parse_sacct
 {
+# Don't be stupid
+  return if ($OPT{tempdir} && not defined $NEWDATA->{$OPT{tempdir}}{jobid});
+
   $PAR{stopwatch} = 0; # reset the stopwatch
 
 # Do some filtering if needed
@@ -345,9 +363,25 @@ sub parse_sacct
   }
 
 # Only find jobs created within the last max_days_ago -- for 7 days, this takes at least 4 minutes
-  my $since = strftime("%Y-%m-%dT%H:%M:%S",(localtime($PAR{now}-(86400*$PAR{max_days_ago})))[0 .. 5]);
-  my $until = strftime("%Y-%m-%dT%H:%M:%S",(localtime($PAR{now}))[0 .. 5]);
-  chomp(my $s = `sacct -S $since -E $until --format jobid,state,submit,end -s PENDING --noheader $filter`);
+  my $range;
+  if ($OPT{tempdir}) {
+    my $since = strftime("%Y-%m-%dT%H:%M:%S",(localtime($NEWDATA->{$OPT{tempdir}}{create_time}))[0 .. 5]);
+    my $until = strftime("%Y-%m-%dT%H:%M:%S",(localtime($PAR{now}))[0 .. 5]);
+    $range = "-S $since -E $until";
+  }
+  elsif ($OPT{jobid}) {
+    my $since = strftime("%Y-%m-%dT%H:%M:%S",(localtime($NEWDATA->{$PAR{jobid2tempname}{$OPT{jobid}}}{create_time}))[0 .. 5]);
+    my $until = strftime("%Y-%m-%dT%H:%M:%S",(localtime($PAR{now}))[0 .. 5]);
+    $range = "-S $since -E $until";
+  }
+  else {
+    my $since = strftime("%Y-%m-%dT%H:%M:%S",(localtime($PAR{now}-(86400*$PAR{max_days_ago})))[0 .. 5]);
+    my $until = strftime("%Y-%m-%dT%H:%M:%S",(localtime($PAR{now}))[0 .. 5]);
+    $range = "-S $since -E $until";
+  }
+  my $cmd = "sacct $range --format jobid,state,submit,end -s PENDING --noheader $filter";
+  add_to_message($cmd) if ($OPT{verbose} > 2);
+  chomp(my $s = `$cmd`);
   my $JOBS;
   foreach my $line (split /\n/,$s) {
     if ($line =~ /^(\d+)\S*\s+(\S+)\s+(\S+)/) {
@@ -375,41 +409,50 @@ sub parse_sacct
 
 # Ugh.  Check through old swarms (>21 days) that may be erroneously marked as R/P.
   my $ancient = time() - (86400 * 14);
-  foreach my $t (keys %{$NEWDATA}) {
-    next if ($OPT{user} && ($NEWDATA->{$t}{user} ne $OPT{user}));
-    next if ($OPT{jobid} && ($NEWDATA->{$t}{jobid} ne $OPT{jobid}));
-    next if ($OPT{tempdir} && ($t ne $OPT{tempdir}));
-    next unless ((defined $NEWDATA->{$t}{active}) && ($NEWDATA->{$t}{active} != 0)); # only evaluate R/P swarms
-    next unless ($NEWDATA->{$t}{create_time} < $ancient); # only evaluate ancient swarms
+  foreach my $tempname (keys %{$NEWDATA}) {
+    next if ($OPT{user} && ($NEWDATA->{$tempname}{user} ne $OPT{user}));
+    next if ($OPT{jobid} && ($NEWDATA->{$tempname}{jobid} ne $OPT{jobid}));
+    next if ($OPT{tempdir} && ($tempname ne $OPT{tempdir}));
+    next unless ((defined $NEWDATA->{$tempname}{active}) && ($NEWDATA->{$tempname}{active} != 0)); # only evaluate R/P swarms
+    next unless ($NEWDATA->{$tempname}{create_time} < $ancient); # only evaluate ancient swarms
 
 # Use sacct -- faster than Elasticsearch
-    my $cmd = "sacct -j $NEWDATA->{$t}{jobid} --format jobid,state,submit,end --noheader";
-    print "$cmd\n" if ($OPT{verbose} > 1);
+    my $cmd = "sacct -j $NEWDATA->{$tempname}{jobid} --format jobid,state,submit,end --noheader";
+    add_to_message($cmd) if ($OPT{verbose} > 2);
     chomp(my $s = `$cmd`);
-    print "$s\n" if ($OPT{verbose} > 2);
-    my $ANCIENT_JOBS;
-    foreach my $line (split /\n/,$s) {
-      if ($line =~ /^(\d+)\S*\s+(\S+)\s+(\S+)/) {
-        my ($j,$s,$t) = ($1,$2,$3);
-        if (defined $j) {
-          $ANCIENT_JOBS->{$j}{line}=$line;
-          $ANCIENT_JOBS->{$j}{count}++;
-          if (defined $s) { $ANCIENT_JOBS->{$j}{state}{$s}=1; }
-          if (defined $t) {
-            if ($t =~ /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/) {
-              my $tx = str2time($1);
-              $ANCIENT_JOBS->{$j}{end_time}{$tx}=1; 
+# swarm was found in sacct
+    if ($s=~/\w/) {
+      add_to_message($s) if ($OPT{verbose} > 2);
+      my $ANCIENT_JOBS;
+      foreach my $line (split /\n/,$s) {
+        if ($line =~ /^(\d+)\S*\s+(\S+)\s+(\S+)/) {
+          my ($j,$s,$t) = ($1,$2,$3);
+          if (defined $j) {
+            $ANCIENT_JOBS->{$j}{line}=$line;
+            $ANCIENT_JOBS->{$j}{count}++;
+            if (defined $s) { $ANCIENT_JOBS->{$j}{state}{$s}=1; }
+            if (defined $t) {
+              if ($t =~ /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/) {
+                my $tx = str2time($1);
+                $ANCIENT_JOBS->{$j}{end_time}{$tx}=1; 
+              }
             }
           }
         }
       }
-    }
-    foreach my $j (keys %{$ANCIENT_JOBS}) {
-      if (defined $PAR{jobid2tempname}{$j}) {
-        my ($active,$end_time) = find_active_and_end_time($ANCIENT_JOBS,$j); 
-        _update_value($NEWDATA->{$PAR{jobid2tempname}{$j}},"active",$active);
-        _update_value($NEWDATA->{$PAR{jobid2tempname}{$j}},"end_time",$end_time);
+      foreach my $j (keys %{$ANCIENT_JOBS}) {
+        if (defined $PAR{jobid2tempname}{$j}) {
+          my ($active,$end_time) = find_active_and_end_time($ANCIENT_JOBS,$j); 
+          _update_value($NEWDATA->{$PAR{jobid2tempname}{$j}},"active",$active);
+          _update_value($NEWDATA->{$PAR{jobid2tempname}{$j}},"end_time",$end_time);
+        }
       }
+    }
+# WTF -- swarm slipped past and out of slurmdb
+    else {
+      add_to_message(" -- sacct returned nothing, marking as finished --") if ($OPT{verbose} > 2);
+      _update_value($NEWDATA->{$tempname},"active",0);
+      _update_value($NEWDATA->{$tempname},"end_time",$ancient);
     }
   }
 
@@ -849,6 +892,7 @@ Filters:
 
   -u/--user            filter for those swarms owned by this user
   -j/--jobid           filter for the swarm with this jobid
+  -t/--tempdir         filter for the tempdir created for swarm
 
 Display modifiers:
 
@@ -869,7 +913,7 @@ Mode modifiers:
   -d, --dry-run        don't make any changes, just show wnat might happen
   -v, --verbose        increase verbosity level (0,1,2,3)
 
-Last modification date: 27 Nov 2017 (David Hoover)
+Last modification date: 05 Mar 2018 (David Hoover)
 
 EOF
   

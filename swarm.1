@@ -91,7 +91,8 @@ the other. The advantages of bundling includes fewer swarm jobs
 and output files, lower overhead due to scheduling and job startup,
 and disk file cache benefits under certain circumstances.  If a swarm contains
 a large number of short running commands (i.e. thousands of commands, each of
-which run for less than a minute), then you should bundle the swarm.
+which run for less than a minute), then you should bundle the swarm.  This automatically
+multiplies the time needed per subjob.
 
 .TP
 .B --noht
@@ -131,7 +132,7 @@ combine STDOUT and STDERR into a single file per subjob (.o)
 directory to which .o and .e files are to be written (default is current working directory)
 
 .TP
-.B --maxrunning
+.B --maxrunning [ int ]
 limit the number of simultaenously running subjobs
 
 .TP

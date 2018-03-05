@@ -908,7 +908,8 @@ Usage: swarm [swarm options] [sbatch options]
                          --threads-per-core=1
 
   -b,--bundle [int]      bundle more than one command line per subjob and run
-                         sequentially
+                         sequentially (this automatically multiplies the time
+                         needed per subjob)
 
   --usecsh               use tcsh as the shell instead of bash
   --err-exit             exit the subjob immediately on first non-zero exit status
@@ -924,7 +925,7 @@ Usage: swarm [swarm options] [sbatch options]
   --logdir               directory to which .o and .e files are to be written
                          (default is current working directory)
 
-  --maxrunning           limit the number of simultaenously running subjobs
+  --maxrunning [int]     limit the number of simultaenously running subjobs
 
 Development options:
 

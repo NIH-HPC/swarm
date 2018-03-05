@@ -236,7 +236,7 @@ Usage: swarm [swarm options] [sbatch options]
                          --threads-per-core=1
 
   <a href="#bundling"><b>-b,--bundle</b></a> [int]      bundle more than one command line per subjob and run
-                         sequentially
+                         sequentially.  This automatically multiplies the time needed per subjob.
 
   --usecsh               use tcsh as the shell instead of bash
   --err-exit             exit the subjob immediately on first non-zero exit status
@@ -250,7 +250,7 @@ Usage: swarm [swarm options] [sbatch options]
   --logdir               directory to which .o and .e files are to be written
                          (default is current working directory)
 
-  --maxrunning           limit the number of simultaenously running subjobs
+  --maxrunning  [int]    limit the number of simultaenously running subjobs
 
 Development options:
 
@@ -385,6 +385,9 @@ commands when run with a bundle value of 40 will generate 250 subjobs (10000/40 
 
 <p><b>NOTE</b>: If a swarmfile results in more than 1000 subjobs, swarm will <b>automatically bundle the commands</b>.
 In previous versions of swarm, this was enabled with <b>--autobundle</b>; this is now the default.</p>
+
+<p><b>ALSO</b>: The time needed per subjob will be automatically multiplied by the bundle factor.  If the total time
+per subjob exceeds the maximum walltime of the partition, an error will be given and the swarm will not be submitted.</p>
 
 <h3>Comments</h3>
 
