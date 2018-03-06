@@ -207,7 +207,7 @@ sub read_swarms_table
   $PAR{stopwatch} = 0; # reset the stopwatch
   my $sql = "SELECT * FROM dashboard.$PAR{swarms_table} $filter";
   my $a = $PAR{dbh}->selectall_hashref($sql,["id"]);
-  add_to_message($sql) if $OPT{'show-sql'};
+  add_to_message($sql,1) if $OPT{'show-sql'};
   foreach my $id (keys %{$a}) {
     my $t = $a->{$id}->{tempname};
     foreach my $k (@{$PAR{fields}}) {
@@ -225,6 +225,7 @@ sub parse_index_and_logfile
   $PAR{stopwatch} = 0; # reset the stopwatch
   my $mintime;
   open INDEXFILE, "<$PAR{tempdir_index}";
+  add_to_message("reading $PAR{tempdir_index}",1) if ($OPT{verbose} > 3);
   while (<INDEXFILE>) {
     chomp(my $line = $_);
     MATCH1: while ($line=~/(\d{10}),([^,]+),(\w{10}),(\d+),([12])/g) { # Hiccups in the write performance of /spin1
@@ -236,6 +237,9 @@ sub parse_index_and_logfile
       if (defined $OPT{jobid}) {
         if (defined $PAR{jobid2tempname}{$OPT{jobid}}) {
           next MATCH1 if ($t ne $PAR{jobid2tempname}{$OPT{jobid}});
+        }
+        else {
+          next MATCH1;
         }
       }
 
@@ -253,16 +257,21 @@ sub parse_index_and_logfile
     }
   }
   close INDEXFILE;
-  
+
+# Don't be stupid
+  $mintime = (time()-(86400*60)) if (not defined $mintime);
   my $maxdaysago = (int((time()-$mintime)/86400))+14;
+
+  add_to_message("maxdaysago = $maxdaysago",1) if ($OPT{verbose} > 3);
   
   my @files;
   chomp(my $x = `/bin/find /usr/local/logs/swarm_log_archives -type f -mtime -$maxdaysago`);
   @files = split /\n/,$x;
+  @files = sort @files; 
   push @files,"/usr/local/logs/swarm.log";
-  
-  foreach my $f (sort @files) {
+  LOG: foreach my $f (@files) {
     if (open LOGFILE, "<$f") {
+      add_to_message("reading $f",1) if ($OPT{verbose} > 3);
       LINE: while (<LOGFILE>) {
         my $line = $_;
         if ($line=~/^date=([^;]+);\s.+jobid=([^;]+);\suser=([^;]+);\s.+njobs=([^;]+);\stempname=([^;]+);/) {
@@ -284,13 +293,73 @@ sub parse_index_and_logfile
           _update_value($NEWDATA->{$t},"p",$p);
           _update_value($NEWDATA->{$t},"jobid",$jobid);
           $PAR{jobid2tempname}{$jobid}=$t if ((defined $jobid) && (defined $t));
+
+          if ($OPT{jobid} || $OPT{tempdir}) {
+            close LOGFILE;
+            last LOG;
+          }
         }
       }
       close LOGFILE;
     }
   }
 
+  if (((defined $OPT{jobid}) || (defined $OPT{tempdir})) && (not defined $NEWDATA)) {
+    parse_sbatch_logs();
+  }
+
   add_to_message((sprintf "parse_index_and_logfile = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
+}
+#=================================================================================================
+sub parse_sbatch_logs
+{
+  $PAR{stopwatch} = 0; # reset the stopwatch
+
+  my @files;
+  chomp(my $x = `/bin/find /usr/local/logs/sbatch_log_archives -type f -mtime -60`);
+  @files = split /\n/,$x;
+  @files = sort @files;
+  push @files,"/usr/local/logs/sbatch.log";
+  
+  LOG: foreach my $f (@files) {
+    if (open LOGFILE, "<$f") {
+      add_to_message("reading $f",1) if ($OPT{verbose} > 3);
+      LINE: while (<LOGFILE>) {
+        my $line = $_;
+
+#20180220 13:43:23 cn3167 SUBM[61905830]: clarkmg /data/clarkmg/ica_dualreg sbatch --array=0-0 --output=/data/clarkmg/ica_dualreg/model1_48_dualreg_split_output0016/scripts+logs/drD_%A_%a.o --error=/data/clarkmg/ica_dualreg/model1_48_dualreg_split_output0016/scripts+logs/drD_%A_%a.e --cpus-per-task=1 --dependency=afterany:61905773 --job-name=drD --mem=4096 --partition=norm --time=02:00:00 /spin1/swarm/clarkmg/mThglAnXQp/swarm.batch
+
+        if ($line=~/^(\d{4})(\d{2})(\d{2}) (\d\d:\d\d:\d\d)\s\w+\sSUBM\[(\d+)\]:\s(\w+)\s+.+array=0-(\d+)\s.+\/spin1\/swarm\/\w+\/(\w+)\/swarm\.batch/) {
+          my ($time,$jobid,$user,$num,$t) = (str2time("$1-$2-$3T$4"),$5,$6,$7,$8);
+          next LINE if ((defined $OPT{user}) && ($OPT{user} ne $user));
+          next LINE if ((defined $OPT{jobid}) && ($OPT{jobid} ne $jobid));
+          next LINE if ((defined $OPT{tempdir}) && ($OPT{tempdir} ne $t));
+
+# Only find jobs created within the last max_days_ago -- this takes a few seconds
+          unless ($OPT{tempdir} || $OPT{jobid}) {
+            next LINE if ((($PAR{now}-$time)/86400)>$PAR{max_days_ago});
+          }
+          my $p = 1;
+          $p = 2 if ($line=~/; command=.+-p 2 /);
+          $NEWDATA->{$t}{tempname}=$t;
+          _update_value($NEWDATA->{$t},"create_time",$time);
+          _update_value($NEWDATA->{$t},"user",$user);
+          _update_value($NEWDATA->{$t},"num",$num);
+          _update_value($NEWDATA->{$t},"p",$p);
+          _update_value($NEWDATA->{$t},"jobid",$jobid);
+          $PAR{jobid2tempname}{$jobid}=$t if ((defined $jobid) && (defined $t));
+
+          if ($OPT{jobid} || $OPT{tempdir}) {
+            close LOGFILE;
+            last LOG;
+          }
+        }
+      }
+      close LOGFILE;
+    }
+  }
+
+  add_to_message((sprintf "parse_sbatch_logs = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 }
 #=================================================================================================
 sub parse_jobs_table
@@ -379,7 +448,7 @@ sub parse_sacct
     $range = "-S $since -E $until";
   }
   my $cmd = "sacct $range --format jobid,state,submit,end -s PENDING --noheader $filter";
-  add_to_message($cmd) if ($OPT{verbose} > 2);
+  add_to_message($cmd,1) if ($OPT{verbose} > 2);
   chomp(my $s = `$cmd`);
   my $JOBS;
   foreach my $line (split /\n/,$s) {
@@ -417,11 +486,11 @@ sub parse_sacct
 
 # Use sacct -- faster than Elasticsearch
     my $cmd = "sacct -j $NEWDATA->{$tempname}{jobid} --format jobid,state,submit,end --noheader";
-    add_to_message($cmd) if ($OPT{verbose} > 2);
+    add_to_message($cmd,1) if ($OPT{verbose} > 2);
     chomp(my $s = `$cmd`);
 # swarm was found in sacct
     if ($s=~/\w/) {
-      add_to_message($s) if ($OPT{verbose} > 2);
+      add_to_message($s,1) if ($OPT{verbose} > 2);
       my $ANCIENT_JOBS;
       foreach my $line (split /\n/,$s) {
         if ($line =~ /^(\d+)\S*\s+(\S+)\s+(\S+)/) {
@@ -449,7 +518,7 @@ sub parse_sacct
     }
 # WTF -- swarm slipped past and out of slurmdb
     else {
-      add_to_message(" -- sacct returned nothing, marking as finished --") if ($OPT{verbose} > 2);
+      add_to_message(" -- sacct returned nothing, marking as finished --",1) if ($OPT{verbose} > 2);
       _update_value($NEWDATA->{$tempname},"active",0);
       _update_value($NEWDATA->{$tempname},"end_time",$ancient);
     }
@@ -607,7 +676,7 @@ CREATE TABLE `$PAR{swarms_table}` (
 )
 EOF
     _do_mysql($sql);
-    add_to_message("created $PAR{swarms_table} table");
+    add_to_message("created $PAR{swarms_table} table",1);
   }
   undef $zzz;
 }
