@@ -447,7 +447,7 @@ sub parse_sacct
     my $until = strftime("%Y-%m-%dT%H:%M:%S",(localtime($PAR{now}))[0 .. 5]);
     $range = "-S $since -E $until";
   }
-  my $cmd = "sacct $range --format jobid,state,submit,end -s PENDING --noheader $filter";
+  my $cmd = "sacct $range --format jobid,state,end -s PENDING --noheader $filter";
   add_to_message($cmd,1) if ($OPT{verbose} > 2);
   chomp(my $s = `$cmd`);
   my $JOBS;
@@ -475,8 +475,8 @@ sub parse_sacct
     }
   }
 
-# Ugh.  Check through old swarms (>21 days) that may be erroneously marked as R/P.
-  my $ancient = time() - (86400 * 14);
+# Ugh.  Check through old swarms (twice max_days_ago) that may be erroneously marked as R/P.
+  my $ancient = time() - (86400 * ($PAR{max_days_ago}*2));
   foreach my $tempname (keys %{$NEWDATA}) {
     next if ($OPT{user} && ($NEWDATA->{$tempname}{user} ne $OPT{user}));
     next if ($OPT{jobid} && ($NEWDATA->{$tempname}{jobid} ne $OPT{jobid}));
@@ -485,7 +485,7 @@ sub parse_sacct
     next unless ($NEWDATA->{$tempname}{create_time} < $ancient); # only evaluate ancient swarms
 
 # Use sacct -- faster than Elasticsearch
-    my $cmd = "sacct -j $NEWDATA->{$tempname}{jobid} --format jobid,state,submit,end --noheader";
+    my $cmd = "sacct -j $NEWDATA->{$tempname}{jobid} --format jobid,state,end --noheader";
     add_to_message($cmd,1) if ($OPT{verbose} > 2);
     chomp(my $s = `$cmd`);
 # swarm was found in sacct
@@ -981,7 +981,7 @@ Mode modifiers:
   -d, --dry-run        don't make any changes, just show wnat might happen
   -v, --verbose        increase verbosity level (0,1,2,3)
 
-Last modification date: 05 Mar 2018 (David Hoover)
+Last modification date: 15 Mar 2018 (David Hoover)
 
 EOF
   
