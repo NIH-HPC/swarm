@@ -91,6 +91,7 @@ eval {
   $PAR{NOW} = time();
   read_swarms_table();
   parse_index_and_logfile() if $OPT{update};
+  parse_sbatch_logs() if $OPT{update};
   parse_jobs_table() if $OPT{update};
   parse_sacct() if $OPT{update};
   update_swarms_table() if $OPT{update};
@@ -223,7 +224,6 @@ sub read_swarms_table
 sub parse_index_and_logfile
 {
   $PAR{stopwatch} = 0; # reset the stopwatch
-  my $mintime;
   open INDEXFILE, "<$PAR{tempdir_index}";
   add_to_message("reading $PAR{tempdir_index}",1) if ($OPT{verbose} > 3);
   while (<INDEXFILE>) {
@@ -253,19 +253,12 @@ sub parse_index_and_logfile
       _update_value($NEWDATA->{$t},"user",$user);
       _update_value($NEWDATA->{$t},"p",$p);
       _update_value($NEWDATA->{$t},"num",$num);
-      $mintime = $time if ((not defined $mintime) || ($mintime > $time));
     }
   }
   close INDEXFILE;
 
-# Don't be stupid
-  $mintime = (time()-(86400*60)) if (not defined $mintime);
-  my $maxdaysago = (int((time()-$mintime)/86400))+14;
-
-  add_to_message("maxdaysago = $maxdaysago",1) if ($OPT{verbose} > 3);
-  
   my @files;
-  chomp(my $x = `/bin/find /usr/local/logs/swarm_log_archives -type f -mtime -$maxdaysago`);
+  chomp(my $x = `/bin/find /usr/local/logs/swarm_log_archives -type f -mtime -$PAR{max_days_ago}`);
   @files = split /\n/,$x;
   @files = sort @files; 
   push @files,"/usr/local/logs/swarm.log";
@@ -295,6 +288,7 @@ sub parse_index_and_logfile
           $PAR{jobid2tempname}{$jobid}=$t if ((defined $jobid) && (defined $t));
 
           if ($OPT{jobid} || $OPT{tempdir}) {
+            add_to_message("found $OPT{jobid}/$OPT{tempdir} in $f",1) if ($OPT{verbose} > 3);
             close LOGFILE;
             last LOG;
           }
@@ -302,12 +296,10 @@ sub parse_index_and_logfile
       }
       close LOGFILE;
     }
+    else {
+      add_to_message("failed to read $f",1) if ($OPT{verbose} > 3);
+    }
   }
-
-  if (((defined $OPT{jobid}) || (defined $OPT{tempdir})) && (not defined $NEWDATA)) {
-    parse_sbatch_logs();
-  }
-
   add_to_message((sprintf "parse_index_and_logfile = %.2f",$PAR{stopwatch}),1) if $OPT{timing};
 }
 #=================================================================================================
@@ -316,11 +308,11 @@ sub parse_sbatch_logs
   $PAR{stopwatch} = 0; # reset the stopwatch
 
   my @files;
-  chomp(my $x = `/bin/find /usr/local/logs/sbatch_log_archives -type f -mtime -60`);
+  chomp(my $x = `/bin/find /usr/local/logs/sbatch_log_archives -type f -mtime -$PAR{max_days_ago}`);
   @files = split /\n/,$x;
   @files = sort @files;
   push @files,"/usr/local/logs/sbatch.log";
-  
+ 
   LOG: foreach my $f (@files) {
     if (open LOGFILE, "<$f") {
       add_to_message("reading $f",1) if ($OPT{verbose} > 3);
@@ -350,12 +342,16 @@ sub parse_sbatch_logs
           $PAR{jobid2tempname}{$jobid}=$t if ((defined $jobid) && (defined $t));
 
           if ($OPT{jobid} || $OPT{tempdir}) {
+            add_to_message("found $OPT{jobid}/$OPT{tempdir} in $f",1) if ($OPT{verbose} > 3);
             close LOGFILE;
             last LOG;
           }
         }
       }
       close LOGFILE;
+    }
+    else {
+      add_to_message("failed to read $f",1) if ($OPT{verbose} > 3);
     }
   }
 
@@ -448,6 +444,7 @@ sub parse_sacct
     $range = "-S $since -E $until";
   }
   my $cmd = "sacct $range --format jobid,state,end -s PENDING --noheader $filter";
+  #my $cmd = "sacct $range --format jobid,state,end --noheader $filter";
   add_to_message($cmd,1) if ($OPT{verbose} > 2);
   chomp(my $s = `$cmd`);
   my $JOBS;
