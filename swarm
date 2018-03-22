@@ -60,7 +60,7 @@ my $SBATCHOPT;
 getCommandLineOptions();
 validatePartition();
 parseCommands();
-avoidStupidCommands();
+avoidSbatchCommands();
 distributeCommands();
 adjustTime();
 report();
@@ -582,10 +582,7 @@ sub mergeLineContinuations
   return @merged;
 }
 #===============================================================================
-sub avoidStupidCommands
-# I hate to do this, but stupid users leave me no choice.  Keep in mind this
-# does not prevent users from encapsulating the sbatch call within a script that
-# is called in the swarm subjob (sigh...).
+sub avoidSbatchCommands
 {
 # Walk through each command
   COMM: foreach my $c (@{$SWARM->{COMMANDS}}) {
