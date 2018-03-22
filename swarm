@@ -60,6 +60,7 @@ my $SBATCHOPT;
 getCommandLineOptions();
 validatePartition();
 parseCommands();
+avoidStupidCommands();
 distributeCommands();
 adjustTime();
 report();
@@ -122,6 +123,10 @@ sub setDefaults
   my $slurm = Slurm::new();
   my $x = $slurm->load_partitions();
   foreach my $i (@{$x->{partition_array}}) {
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+# Don't allow interactive or huygens partitions
+    next if (($i->{name} eq 'huygens') || ($i->{name} eq 'interactive'));
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
     $PAR->{slurm_partitions}{$i->{name}}{default_time} = $i->{default_time};
     $PAR->{slurm_partitions}{$i->{name}}{max_time} = $i->{max_time};
   }
@@ -577,6 +582,41 @@ sub mergeLineContinuations
   return @merged;
 }
 #===============================================================================
+sub avoidStupidCommands
+# I hate to do this, but stupid users leave me no choice.  Keep in mind this
+# does not prevent users from encapsulating the sbatch call within a script that
+# is called in the swarm subjob (sigh...).
+{
+# Walk through each command
+  COMM: foreach my $c (@{$SWARM->{COMMANDS}}) {
+# Split the command up into distinct processes
+    PROC: foreach my $e (split /\;/,$c) {
+# Get rid of funny bashisms and simplify the words
+      $e=~s/\(|\)|\[|\]|\{|\}//g;
+      $e=~s/^\s+|\s+$//g;
+      $e=~s/\s+/ /g;
+# Split the processes into distinct words
+      my @a = split / /,$e;
+      my $x;
+# Find the zeroth argument of the process, eliminating bashisms
+      WORD: foreach my $w (@a) {
+        next WORD if ($w =~/=/);
+        next WORD if ($w eq 'do');
+        next WORD if ($w eq 'if');
+        next WORD if ($w eq 'in');
+        $x = $w;
+        last WORD;
+      }
+# Hopefully there is a zeroth argument
+      next PROC unless $x;
+# Don't allow the swarm to call sbatch or sinteractive from within the swarm
+      if (($x eq 'sbatch') || ($x eq 'sinteractive')) {
+        dieWithError("do not call sbatch or sinteractive from a swarm");
+      }
+    }
+  }
+}
+#===============================================================================
 sub getCommandLineOptions
 {   
 # capture command line 
@@ -965,7 +1005,7 @@ Environment variables
   SBATCH_TIMELIMIT       Same as --time
   SBATCH_EXCLUSIVE       Same as --exclusive
 
-  Last modification date: Apr 10, 2017
+  Last modification date: Mar 22, 2018
 EOF
   exit;
 }
