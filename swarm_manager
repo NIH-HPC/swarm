@@ -743,22 +743,34 @@ sub _create_insert
   my $t = shift;
   my @fields;
   my @values;
-  foreach my $k (@{$PAR{fields}}) {
-    next if ($k eq 'id');
-    push @fields,'`'.$k.'`';
-    if (defined $NEWDATA->{$t}{$k}) {
-      push @values,_mysql_quote($NEWDATA->{$t}{$k});
-    }
-    else {
-      push @values,"NULL";
+
+  foreach my $f (@{$PAR{fields}}) {
+    next if ($f eq 'id');
+    if (defined $NEWDATA->{$t}{$f}) {
+      push @fields,"`".$f."`";
+      push @values,"'".$NEWDATA->{$t}{$f}."'";
     }
   }
-  if (@fields && @values) {
-    return "INSERT INTO `$PAR{swarms_table}` (".join(",",@fields).") VALUES (".join(",",@values).")";
+
+  my $sql = "INSERT INTO $PAR{swarms_table} (";
+  $sql .= join ",",@fields;
+  $sql .= ") VALUES (";
+  $sql .= join ",",@values;
+  $sql .= ")";
+  $sql .= " ON DUPLICATE KEY UPDATE ";
+
+  my @pairs;
+  foreach my $f (@{$PAR{fields}}) {
+    next if ($f eq 'id');
+    next if ($f eq 'jobid');
+    next if ($f eq 'template');
+    if (defined $NEWDATA->{$t}{$f}) {
+      push @pairs,"`$f`='".$NEWDATA->{$t}{$f}."'";
+    }
   }
-  else {
-    return;
-  }
+  $sql .= join ",",@pairs;
+
+  return $sql;
 }
 #==================================================================================================
 sub _create_update
