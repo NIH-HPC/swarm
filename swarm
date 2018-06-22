@@ -1058,8 +1058,12 @@ sub validatePartition
 sub adjustTime
 # The timelimit must be changed to account for bundling and/or folding
 {
-# Don't bother if partition is unlimited
-  return if ($SLURMOPT{binary}{partition} eq "unlimited");
+# Unset --time if partition is unlimited
+  if ($SLURMOPT{binary}{partition} eq "unlimited") {
+    undef $SLURMOPT{binary}{time};
+    return;
+  }
+
 
 # Account for multiple partitions
   $PAR->{default_time} = 999999999999; # really long time
