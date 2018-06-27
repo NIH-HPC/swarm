@@ -34,6 +34,9 @@ function __test_swarm {
 }
 
 # These are the test cases (i.e. set of options) we want to test
+
+
+
 cat <<testcases > testcases.list
 -g 8
 -t 4
@@ -72,10 +75,10 @@ cat <<testcases > testcases.list
 --partition ccr --time 24:00:00 --logdir ~/pipeline_files/January_07_2016_04-26-30PM/ --dependency afterok:10559739,afterok:10559740,afterok:10559741 -g 24 -t 4
 --partition=ccr --job-name CNV_fmtD --dependency afterany:10560028
 --partition=ccr --job-name CNV_pile --sbatch='--time=24:00:00 --mail-type=TIME_LIMIT_90,FAIL'
---sbatch '--gres=lscratch:1 --partition niddk'
+--sbatch '--gres=lscratch:1 --partition norm'
 --sbatch '--gres=lscratch:200 --qos ccrprio' --job-name sprswarm -t 16 -g 60 --module Anaconda/2.1.0_py27 --partition ccr
---sbatch '--partition=niddk --cpus-per-task=24 --mem=24g'
---sbatch '--partition=niddk --mem=24g'
+--sbatch '--partition=norm --cpus-per-task=24 --mem=24g'
+--sbatch '--partition=norm --mem=24g'
 --sbatch '--qos ccrprio' --dependency=afterany:10556734 --gres=lscratch:400 --job-name frm_random -t auto -g 58 --module Anaconda/2.1.0_py27 --partition ccr --time 2:00:00
 --time 12:00:00 --partition ccr --logdir ~/pipeline_files/January_07_2016_04-26-30PM/ --dependency afterok:10559731 -g 32 -t 16
 --time 14:00:00 --module TORTOISE --sbatch '--cpus-per-task=32 --mem=40g'
@@ -96,7 +99,7 @@ cat <<testcases > testcases.list
 -g 8 -t 10 --partition=ccr --time=56:00:00
 -t 20 -g 8 --module afni --usecsh --partition nimh
 -t 5 -g 8 --module fastxtoolkit
--t 8 -g 200 --gres=lscratch:200 --module samtools/1.2 --time=12:00:00 --sbatch '--partition=quick --mail-type=BEGIN,END'
+-t 8 -g 200 --gres=lscratch:200 --module samtools/1.2 --time=6 --sbatch '--partition=quick --mail-type=BEGIN,END'
 -t auto -g 6
 -g 4 --sbatch '--qos=ccrsprio' -t 8
 --dependency afterany:10605277
@@ -125,18 +128,17 @@ cat <<testcases > testcases.list
 -t auto --time 12:00:00 --module R
 --time=00:01:00 --partition=quick --sbatch '--mail-type=TIME_LIMIT_90,FAIL' -g 1
 --time 10:00:00
---time=10-00:00:00
+--time=5-00:00:00
 --time 14:00:00 --module TORTOISE --sbatch '--cpus-per-task=32 --mem=35g'
 --verbose=1 -g 15 --time=72:00:00
---verbose=1 --partition=quick -g 10 --time=36:00:00
+--verbose=1 --partition=quick -g 10 --time=120
 --verbose=1 --partition=norm,largemem -g 10 --time=36:00:00
---verbose=1 --partition=ccr,niddk,quick -g 10 --time=2:00:00
---verbose=1 --partition=norm,niddk,ccr,quick -g 10 --time=2:00:00
+--verbose=1 --partition=norm,ccr,quick -g 10 --time=2:00:00
+--verbose=1 --partition=norm,ccr,quick -g 10 --time=2:00:00
 --partition norm --logdir Align_FASTQs --sbatch "--nodes=4 --ntasks=8 --ntasks-per-node=2 --cpus-per-task=16 --exclusive" 
 --verbose=1 --maxrunning 3 --time=10:00:00
--g 2500
--g 2500 --partition largemem
--g 5000 --partition largemem
+-g 2000 --partition largemem
+-g 0.2 --partition quick
 --merge-output --logdir bogus
 testcases
 
