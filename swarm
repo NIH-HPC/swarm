@@ -36,7 +36,7 @@ use File::Basename qw/basename/;
 use File::Spec;
 require File::Spec::Unix;
 use File::Path qw(make_path);
-use lib "/usr/local/slurm/lib/perl5/site_perl/5.18.2/x86_64-linux-thread-multi-ld";
+use lib "/usr/local/slurm/lib/perl5/site_perl/5.24.3/x86_64-linux-thread-multi-ld";
 use Slurm;
 use FileHandle;
 use strict;
@@ -680,6 +680,7 @@ sub getCommandLineOptions
     "hint=s"            => \$SLURMOPT{binary}{hint},
     "dependency=s"      => \$SLURMOPT{binary}{dependency},
     "partition=s"       => \$SLURMOPT{binary}{partition},
+    "reservation=s"     => \$SLURMOPT{binary}{reservation},
     "time=s"            => \$SLURMOPT{binary}{time},
     "exclusive"         => \$SLURMOPT{unary}{exclusive},
     "L=s"               => \$SLURMOPT{binary}{licenses},
@@ -1058,12 +1059,11 @@ sub validatePartition
 sub adjustTime
 # The timelimit must be changed to account for bundling and/or folding
 {
-# Unset --time if partition is unlimited
+# Don't bother if partition is unlimited
   if ($SLURMOPT{binary}{partition} eq "unlimited") {
     undef $SLURMOPT{binary}{time};
     return;
   }
-
 
 # Account for multiple partitions
   $PAR->{default_time} = 999999999999; # really long time
