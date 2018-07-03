@@ -89,6 +89,7 @@ eval {
 
   $PAR{routine_message} = printSwarmUsage() if $OPT{routine};
   $PAR{NOW} = time();
+  remove_empty_swarm_directories();
   read_swarms_table();
   parse_index_and_logfile() if $OPT{update};
   parse_sbatch_logs() if $OPT{update};
@@ -187,6 +188,11 @@ sub getOptions
 
   $OPT{'show-sql'} = 1 if ((defined $OPT{verbose}) && ($OPT{verbose} > 2));
   $PAR{'delete-age'} = $OPT{'delete-age'} if ($OPT{'delete-age'});
+}
+#==================================================================================================
+sub remove_empty_swarm_directories
+{
+  system("/usr/bin/find /spin1/swarm/ -mindepth 1 -maxdepth 1 -empty -exec rmdir {} +");
 }
 #==================================================================================================
 sub read_swarms_table
@@ -990,7 +996,7 @@ Mode modifiers:
   -d, --dry-run        don't make any changes, just show wnat might happen
   -v, --verbose        increase verbosity level (0,1,2,3)
 
-Last modification date: 15 Mar 2018 (David Hoover)
+Last modification date: 03 Jul 2018 (David Hoover)
 
 EOF
   
