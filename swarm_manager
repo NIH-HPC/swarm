@@ -41,6 +41,7 @@ use POSIX qw(setsid strftime);
 use DBI;
 use FileHandle;
 use File::Basename;
+use File::Find;
 use FindBin qw($RealBin);
 use Cwd 'abs_path';
 use Sort::ArrayOfArrays;
@@ -89,7 +90,6 @@ eval {
 
   $PAR{routine_message} = printSwarmUsage() if $OPT{routine};
   $PAR{NOW} = time();
-  remove_empty_swarm_directories();
   read_swarms_table();
   parse_index_and_logfile() if $OPT{update};
   parse_sbatch_logs() if $OPT{update};
@@ -98,6 +98,7 @@ eval {
   update_swarms_table() if $OPT{update};
   delete_swarms() if $OPT{delete};
   purge_swarms() if $OPT{purge};
+  remove_empty_swarm_directories() if ($OPT{delete});
   print_data_level_1() if ($OPT{verbose} == 1);
   print_data_level_2() if ($OPT{verbose} > 1);
   add_to_message((sprintf "TOTAL TIME TAKEN = %.2f",$PAR{stopwatch_full}),1) if $OPT{timing};
@@ -192,7 +193,21 @@ sub getOptions
 #==================================================================================================
 sub remove_empty_swarm_directories
 {
-  system("/usr/bin/find /spin1/swarm/ -mindepth 1 -maxdepth 1 -empty -exec rmdir {} +");
+  find (\&empty_swarm_dirs,"/spin1/swarm");
+  foreach my $d (sort @{$PAR{empty_directories}}) {
+    rmdir $d;
+  }
+}
+#==================================================================================================
+sub empty_swarm_dirs{
+  if ($File::Find::name) { # be safe
+    if (-d $File::Find::name) { # only think about directories
+      my $n = ($File::Find::name) =~ tr!/!!; # count slashes in file 
+      return $File::Find::prune = 1 if $n > 3; # don't go more than 3 levels
+      my $number_of_files = grep $_ => glob("$_/*"); # find how many files are inside
+      if ( $number_of_files == 0 ) { push @{$PAR{empty_directories}}, $File::Find::name; }
+    }
+  }
 }
 #==================================================================================================
 sub read_swarms_table
