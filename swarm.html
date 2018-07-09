@@ -125,7 +125,7 @@
      <div class="tocItem" style="margin-left:20px"><a href="#stdin">STDIN/STDOUT</a></div>
       <div class="tocItem" style="margin-left:20px"><a href="#bundling">-b, --bundle</a></div>
       <div class="tocItem" style="margin-left:20px"><A href="#gandt">-g and -t (memory and threads)</a></div>
-      <div class="tocItem" style="margin-left:20px"><A href="#p">-p, --processes-per-subjob</a></div>
+      <div class="tocItem" style="margin-left:20px"><a href="#p">-p, --processes-per-subjob</a></div>
       <div class="tocItem" style="margin-left:20px"><A href="#time">--time</a></div>
       <div class="tocItem" style="margin-left:20px"><a href="#dependency">--dependency</a></div>
       <div class="tocItem" style="margin-left:20px"><a href="#fixed">Fixed output path</a></div>
@@ -657,7 +657,7 @@ ERROR: -g 130 requires --partition largemem</pre>
 <!-- p -->
 <!-- ------------------------------------------------------------------------------------- -->
 
-<p><a name="p"></a><b>Using -p option</b></p>
+<p><a name="p"></a><b>Using -p option to "pack" commands</b></p>
 <p>By default, swarm allocates a single command line per subjob.  If the command is single-threaded, then swarm wastes half the
 cpus allocated, because the slurm batch system allocates no less than a single core (or two cpus) per subjob.  This effect
 can be seen using the <b>jobload</b> command for a 4-command swarm:</p>
@@ -693,6 +693,8 @@ USER SUMMARY
     Nodes: 2
      CPUs: 4
  Load Avg: 100%</pre>
+
+<p>In this case, we are "packing" 2 commands per subjob.</p>
 
 <p class="alert"><b>NOTE:</b> The cpus on the biowulf cluster are <i>hypercores</i>, and some programs run more inefficiently
 when packed onto hypercores.  Please test your application to see if it actually benefits from running two commands per core rather than one.</p>
@@ -1024,6 +1026,11 @@ by quotation marks.  In this example some extra sbatch options are added.</p>
     <li><b>--workdir=/data/user/test</b>: relocate to that directory prior to running any commands</li>
   </ul>
 </p>
+
+<p class="alert"><b>NOTE:</b> Sbatch options passed through swarm using the <b>--sbatch</b> option are listed last in the sbatch command, and thus will <b>override</b> swarm
+options.  When <a href="#bundling">bundling</a> or <a href="#p">packing</a> commands, <b>DO NOT</b> use <b>--time, --cpus-per-task, --mem, or --mem-per-cpu</b> sbatch options, as they will
+inevitably conflict with those values set by swarm per command.</p>
+
 
 <center><hr width="500" /></center>
 <a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>

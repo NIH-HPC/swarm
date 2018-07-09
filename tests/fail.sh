@@ -47,8 +47,8 @@ cat <<testcases > testcases.list
 -g 72 --module cufflinks -q nimh
 --verbose=1 --partition=ccr,niddk,quick -g 10 --time=36:00:00
 --verbose=1 --partition=norm,b1,niddk,ccr,quick -g 10 --time=36:00:00
--p2 --sbatch --cpus-per-task=20
---sbatch --output=my_output.log
+-p 2 --sbatch "--cpus-per-task=20"
+-b 2 -t 4 --sbatch "--mem=40g"
 testcases
 
 # Walk through each test case

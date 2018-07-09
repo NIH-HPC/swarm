@@ -11,7 +11,7 @@ EOF
 }
 
 
-foreach my $x (split /\n/,`tail -100 /usr/local/logs/swarm_on_slurm.log | tr ";" "\n" | grep "^ command=" | sed -e 's# command=/usr/local/bin/swarm ##g'`) {
+foreach my $x (split /\n/,`tail -100 /usr/local/logs/swarm.log | tr ";" "\n" | grep "^ command=" | sed -e 's# command=/usr/local/bin/swarm ##g'`) {
   chomp $x;
   if ($x=~/^(.*)\s+\-f\s+\S+\s+(.*)$/) {
     print "$1 $2\n";

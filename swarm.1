@@ -303,21 +303,6 @@ and ignored.
       $ swarm -f batchcmds
 .fi
 .PP
-Swarm submits clusters of subjobs using Slurm
-via the
-.I sbatch
-command; any valid sbatch command-line option is also valid for swarm when
-passed with the "--sbatch" option..
-In this example the "--time" option is given to increase the walltime for the subjob from the
-default 4 hours to 12 hours:
-.PP
-.nf
-      $ swarm -f swarmcmds --sbatch "--time=12:00:00"
-
-.fi
-For additional examples of --sbatch options for swarm, please see
-.I http://hpc.nih.gov/apps/swarm.html#sbatch.
-.PP
 By default swarm executes one command line per subjob, with each subjob allocated a single core.
 In this example 5 command lines are bundled per subjob. If the command
 file contains 1280 command lines and there are 16 cores per node, then
@@ -338,6 +323,30 @@ included in the swarm command.  Modules are separated commas, no spaces allowed.
       $ swarm -f cmdfile --module tophat/2.0.6,samtools/0.1.17 -g 4 -t 4  
 .fi
 .PP
+.SH "SBATCH OPTIONS"
+Swarm submits clusters of subjobs using Slurm
+via the
+.I sbatch
+command; any valid sbatch command-line option is also valid for swarm when
+passed with the "--sbatch" option..
+In this example the "--time" option is given to increase the walltime for the subjob from the
+default 4 hours to 12 hours:
+.PP
+.nf
+      $ swarm -f swarmcmds --sbatch "--time=12:00:00"
+
+.fi
+For additional examples of --sbatch options for swarm, please see
+.I http://hpc.nih.gov/apps/swarm.html#sbatch.
+.PP
+Keep in mind that sbatch command-line options passed using the --sbatch option are applied
+.B per-subjob
+while swarm options are applied
+.B per-command
+in the swarmfile.  In cases where --time, --cpus-per-task, and --mem/--mem-per-cpu are passed,
+these will
+.B override per-command
+settings, which may cause anomalous results in the swarm.
 
 .SH "SEE ALSO"
 .BR jobload (1), sbatch (1), scontrol (1), squeue (1), noded (8)
