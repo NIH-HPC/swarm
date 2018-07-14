@@ -194,6 +194,7 @@ sub getOptions
 sub remove_empty_swarm_directories
 {
   find (\&empty_swarm_dirs,"/spin1/swarm");
+  return unless $PAR{empty_directories};
   foreach my $d (sort @{$PAR{empty_directories}}) {
     rmdir $d;
   }
