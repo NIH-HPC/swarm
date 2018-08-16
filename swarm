@@ -467,7 +467,7 @@ sub submitSlurm
     if (!-d $OPT{logdir}) {
       make_path($OPT{logdir}) || dieWithError("can't create logdir $OPT{logdir}");
     }
-    elsif (!-w $OPT{logdir}) {
+    elsif (not writeable($OPT{logdir})) {
       dieWithError("can't write to logdir $OPT{logdir}");
     }
     my $slurm_response = `sbatch $PAR->{sbatch_options} $PAR->{batchfile}`;
@@ -479,6 +479,20 @@ sub submitSlurm
     else {
       dieWithError("Something went wrong with sbatch!  I don't know the jobid!");
     }
+  }
+}
+#==============================================================================
+sub writeable
+# Is the directory writeable by the user?
+{
+  my $dir = shift;
+  my (undef, $filename) = tempfile(DIR=>$dir,OPEN => 0, UNLINK=>1);
+  if (open FILE, ">$filename") {
+    unlink $filename;
+    return 1;
+  }
+  else {
+    return;
   }
 }
 #==============================================================================
@@ -1041,7 +1055,7 @@ sub isDirCreateable
   my $path = shift;
   my $str = File::Spec->rel2abs($path); # convert path to absolute
   while (!-d $str) { $str =~s/\/[^\/]*$//; }
-  return 1 if (-w $str);
+  return writeable($str);
 }
 #==============================================================================
 sub validatePartition
