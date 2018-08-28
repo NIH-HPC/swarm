@@ -184,12 +184,6 @@ sub report
 # Report what modules will be loaded
   print "Using comment character $OPT{commentChar}\n" if (($OPT{verbose} > 2) && ($OPT{commentChar}));
 
-# Fix OPT{p} and OPT{b} for single subjobs
-  if ($PAR->{subjobs} == 1) {
-    $OPT{p} = $PAR->{commands} if (defined $OPT{p});
-    $PAR->{b} = $PAR->{commands} if ($PAR->{b} > $PAR->{commands});
-  }
-
 # update cpus-per-task and mem for single-threaded swarms
   if (defined $OPT{p}) {
     $SLURMOPT{binary}{"cpus-per-task"} = $OPT{p};
