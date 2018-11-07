@@ -741,12 +741,12 @@ For example, if the command lines in a swarm are expected to require no more tha
 <p>Because a subjob is typically running a single command from the swarmfile, the value of <b>--time</b> can be considered
 the amount of time to run a single command.  When a swarm is bundled, the value for <b>--time</b> is then
 multiplied by the bundle factor.  For example, if
-a swarm that normally creates 14 commands is bundled to run 4 commands serially, the value of <b>--time</b> is
+a swarm that normally creates 64 commands is bundled to run 4 commands serially, the value of <b>--time</b> is
 multiplied by 4:</p>
 
 <pre class="term"><b>[biowulf]$</b> swarm -f swarmfile <b>--time 00:30:00 -b 4</b> --devel
-14 commands run in 3 subjobs, each command requiring 1.5 gb and 1 thread, running 4 processes serially per subjob, allocating 3 cpus
-sbatch --array=0-3 --job-name=swarm <b>--time=2:00:00</b> --cpus-per-task=2 --partition=norm --mem=1536</pre>
+64 commands run in 16 subjobs, each command requiring 1.5 gb and 1 thread, running 4 processes serially per subjob
+sbatch --array=0-15 --job-name=swarm <b>--time=2:00:00</b> --cpus-per-task=2 --partition=norm --mem=1536</pre>
 
 <p>If a swarm has more than 1000 commands and is autobundled, there is a chance that the time requested will exceed
 the maximum allowed.  In that case, an error will be thrown:</p>
