@@ -306,7 +306,7 @@ sub writeCommandFiles
 # Change command filename if packing
         ###$commandFileName = $PAR->{tempdir}."/cmd.$suffix"."_".($cpu) if $OPT{p};
         $commandFileName = $PAR->{tempdir}."/cmd.$sj"."_".($cpu) if $OPT{p};
-        $fileContents{$commandFileName} .= ${$SWARM->{COMMANDS}}[$comm]."\n";
+        $fileContents{$commandFileName} .= "( " . ${$SWARM->{COMMANDS}}[$comm]." )\n";
       }
     }
 # Print the contents
