@@ -650,7 +650,7 @@ the subjob to use all available cpus on the node.</p>
 <p class="alert">The default partition <b>norm</b> has nodes with a maximum of 248GB memory.  If <b>-g</b> exceeds 248GB, swarm will give a warning message:</p>
 
 <pre class="term"><b>[biowulf]$</b> swarm -f swarmfile -g 250
-ERROR: -g 130 requires --partition largemem</pre>
+ERROR: -g 250 requires --partition largemem</pre>
 
 <p>To allocate more than 248GB of memory per command, include <b>--partition largmem</b>:</p>
 <pre class="term"><b>[biowulf]$</b> swarm -f swarmfile -g 500 --partition largemem</pre>
