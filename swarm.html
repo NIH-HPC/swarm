@@ -961,13 +961,13 @@ corresponding to the jobid, e.g.:</p>
 
 <pre class="term"><b>/lscratch/$SLURM_JOB_ID/</b></pre>
 
-<p>Local scratch space is allocated <b>per job</b>.  By default, that means each command or command list (single line in
+<p>Local scratch space is allocated <b>per subjob</b>.  By default, that means each command or command list (single line in
 swarmfile) is allocated its own independent local scratch space.  <b>HOWEVER</b>, there are two situations where some
 thought must be given to local scratch space:</p>
 
 <ul>
-  <li><b>bundled swarms</b> - <a href="#bundling">Bundled swarms</a> serialize multiple commands into a single job.  Since local scratch space is
-allocated per job, this means that each command in the job inherits the same local scratch space.  This means that each
+  <li><b>bundled swarms</b> - <a href="#bundling">Bundled swarms</a> serialize multiple commands into a single subjob.  Since local scratch space is
+allocated per subjob, this means that each command in the job inherits the same local scratch space.  This means that each
 command should be written to deal with any "leftover" files from the previous commands.  A simple solution might be to
 clean out the local scratch space at the end of each command.  For example:<br>
 
