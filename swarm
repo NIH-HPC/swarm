@@ -290,6 +290,12 @@ sub insertLmodInit
 #==============================================================================
 sub writeCommandFiles
 {
+# tcsh module
+  my $module_extra;
+  if (($OPT{module}) && ($OPT{usecsh})) {
+    $module_extra = "module load $OPT{module} ; ";
+  }
+
   mkdir $PAR->{tempdir};
   chmod 02750,$PAR->{tempdir};
   append_to_tempdir_index(); # Record tempdir creation in the index
@@ -306,7 +312,7 @@ sub writeCommandFiles
 # Change command filename if packing
         ###$commandFileName = $PAR->{tempdir}."/cmd.$suffix"."_".($cpu) if $OPT{p};
         $commandFileName = $PAR->{tempdir}."/cmd.$sj"."_".($cpu) if $OPT{p};
-        $fileContents{$commandFileName} .= "( " . ${$SWARM->{COMMANDS}}[$comm]." )\n";
+        $fileContents{$commandFileName} .= "( $module_extra " . ${$SWARM->{COMMANDS}}[$comm]." )\n";
       }
     }
 # Print the contents

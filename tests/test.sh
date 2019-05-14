@@ -97,7 +97,7 @@ cat <<testcases > testcases.list
 -g 8 -t 1 --partition quick --module fastqc
 -g 8 -t 1 --time 18:00:00 --logdir ~/temp/analysis_results/netMHC/1_4_15_working_folder/ --partition ccr
 -g 8 -t 10 --partition=ccr --time=56:00:00
--t 20 -g 8 --module afni --usecsh --partition nimh
+-t 20 -g 8 --module afni --usecsh
 -t 5 -g 8 --module fastxtoolkit
 -t 8 -g 200 --gres=lscratch:200 --module samtools/1.2 --time=6 --sbatch '--partition=quick --mail-type=BEGIN,END'
 -t auto -g 6
