@@ -766,6 +766,7 @@ sub getCommandLineOptions
     $OPT{verbose} = 3 unless (defined $OPT{verbose});
   }
   elsif ($OPT{debug}) {
+    $OPT{'no-scripts'} = 1;
     $OPT{verbose} = 2;
     $OPT{'no-run'} = 1;
     $OPT{'no-log'} = 1;
