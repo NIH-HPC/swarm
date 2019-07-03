@@ -168,6 +168,17 @@ sub distributeCommands
     push @{${$SWARM->{CMDLISTS}}[$sj][$cpu]},$i;
   }
 
+# Update bundle factor
+  my $max=0;
+  foreach my $sj (0 .. $#{$SWARM->{CMDLISTS}}) {
+    my $num_cmds_in_subjob=0;
+    $num_cmds_in_subjob += scalar(@{${$SWARM->{CMDLISTS}}[$sj][0]});
+    $num_cmds_in_subjob += scalar(@{${$SWARM->{CMDLISTS}}[$sj][1]}) if (defined ${$SWARM->{CMDLISTS}}[$sj][1]);
+    $max = $num_cmds_in_subjob if ($num_cmds_in_subjob > $max);
+  }
+  $OPT{b} = $max;
+  $PAR->{b} = $max;
+
   $PAR->{subjobs} = scalar(@{$SWARM->{CMDLISTS}});
 }
 #==============================================================================

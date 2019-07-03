@@ -59,6 +59,7 @@ $PAR{swarms_table} = "swarms";
 $PAR{logfile} = "/usr/local/logs/swarm_cleanup.log";
 $PAR{max_days_ago} = 7; # how many days back should we look for swarms in index, logfile, jobs, and sacct?
 $PAR{'delete-age'} = 5; # how old should a swarm be to be deleted?
+$PAR{'unknown-delete-age'} = 1; # how old should an unknown swarm (no associated jobid) be to be deleted?
 $PAR{'purge-age'} = $PAR{max_days_ago} + 3; # delete_time must be older than the max_days_ago
 $PAR{now} = time();
 my $OLDDATA;
@@ -151,6 +152,7 @@ sub getOptions
     'v=i' => \$OPT{verbose},
     'delete' => \$OPT{delete},
     'delete-age=i' => \$OPT{'delete-age'}, 
+    'unknown-delete-age=i' => \$OPT{'unknown-delete-age'}, 
     'purge' => \$OPT{purge},
     'wipeout' => \$OPT{wipeout},
     'routine' => \$OPT{routine},
@@ -189,6 +191,7 @@ sub getOptions
 
   $OPT{'show-sql'} = 1 if ((defined $OPT{verbose}) && ($OPT{verbose} > 2));
   $PAR{'delete-age'} = $OPT{'delete-age'} if ($OPT{'delete-age'});
+  $PAR{'unknown-delete-age'} = $OPT{'unknown-delete-age'} if ($OPT{'unknown-delete-age'});
 }
 #==================================================================================================
 sub remove_empty_swarm_directories
@@ -912,7 +915,7 @@ sub _deleteable
   if ((defined $NEWDATA->{$t}{end_time}) && ((($PAR{now}-$NEWDATA->{$t}{end_time})/86400)>$PAR{'delete-age'})) {
     return 1;
   } # finished
-  if ((not defined $NEWDATA->{$t}{active}) && ((($PAR{now}-$NEWDATA->{$t}{create_time})/86400)>$PAR{'delete-age'})) {
+  if ((not defined $NEWDATA->{$t}{active}) && ((($PAR{now}-$NEWDATA->{$t}{create_time})/86400)>$PAR{'unknown-delete-age'})) {
     return 1;
   } # unknown
   return 0;
@@ -980,6 +983,7 @@ Options:
   --delete             update and then delete expired swarm directories that
                        have ended at least $PAR{'delete-age'} days ago
   --delete-age         days past ending for deletion (default = $PAR{'delete-age'})
+  --unknown-delete-age for unknown (no associated jobid) swarms (default = $PAR{'unknown-delete-age'})
   --purge              remove rows in the swarms table that have been 
                        deleted at least $PAR{'purge-age'} days ago
   --routine            enables --update, --delete, and --purge and simplifies
