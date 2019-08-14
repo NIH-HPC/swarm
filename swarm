@@ -178,6 +178,7 @@ sub distributeCommands
   }
   $OPT{b} = $max;
   $PAR->{b} = $max;
+  $PAR->{b} /= $OPT{p} if ($OPT{p});
 
   $PAR->{subjobs} = scalar(@{$SWARM->{CMDLISTS}});
 }
@@ -258,12 +259,12 @@ sub report
     print "$PAR->{commands} commands run in $PAR->{subjobs} subjob".write_s_if_needed($PAR->{subjobs}).", ";
     print "each command requiring $OPT{g} gb and $OPT{t} thread".write_s_if_needed($OPT{t});
     if ($OPT{p}) {
-      print ", packing $OPT{p} processes per subjob";
+      print ", packing $OPT{p} processes simultaneously per subjob";
     }
     if ($PAR->{b} > 1) {
       print ", running $PAR->{b} processes serially per subjob";
     }
-    elsif ((not defined $OPT{t}) || ($OPT{t} ne 'auto')) {
+    if ((not defined $OPT{t}) || ($OPT{t} ne 'auto')) {
 # allocating by core, not by cpu
       my $cpus = $SLURMOPT{binary}{"cpus-per-task"};
       ($cpus%2) && $cpus++;
