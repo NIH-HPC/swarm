@@ -86,7 +86,7 @@ An index file /usr/local/logs/swarm_tempdir.idx is updated when a swarm is creat
 
 ## Clean up
 
-Because the space in /spin1/swarm is limited, old directories need to be removed.  We want to keep the directories and files around for a while to use in investigations, but not forever.  The leftovers are cleaned up daily by /usr/local/sbin/swarm_cleanup.pl in a root cron job on biowulf.  At the moment, subdirectories and their accompanying symlinks are deleted when either the full swarm ended 5 days prior, or if not run the modification time exceeds 5 days.
+Because the space in /spin1/swarm is limited, old directories need to be removed.  We want to keep the directories and files around for a while to use in investigations, but not forever.  The leftovers are cleaned up daily by `/usr/local/sbin/swarm_cleanup.pl` in a root cron job on biowulf.
 
 Under normal use, swarm_cleanup.pl first identifies all jobarrays from the biowulf_job_table of the slurmacct database (using the replicate slave).  Then it parses the swarm_tempdir.idx, recent swarm.log and sbatch.log files and determines the status and age of all created swarms.  Swarms that are either inactive (they finished in slurm) or are unknown (never submitted to slurm) and are 5 days old are deleted from /spin1/swarm.
 
