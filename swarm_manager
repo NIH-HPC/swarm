@@ -151,6 +151,7 @@ sub getOptions
     'verbose=i' => \$OPT{verbose},
     'v=i' => \$OPT{verbose},
     'delete' => \$OPT{delete},
+    'purge-age=i' => \$OPT{'purge-age'}, 
     'delete-age=i' => \$OPT{'delete-age'}, 
     'unknown-delete-age=i' => \$OPT{'unknown-delete-age'}, 
     'purge' => \$OPT{purge},
@@ -192,6 +193,7 @@ sub getOptions
   $OPT{'show-sql'} = 1 if ((defined $OPT{verbose}) && ($OPT{verbose} > 2));
   $PAR{'delete-age'} = $OPT{'delete-age'} if ($OPT{'delete-age'});
   $PAR{'unknown-delete-age'} = $OPT{'unknown-delete-age'} if ($OPT{'unknown-delete-age'});
+  $PAR{'purge-age'} = $OPT{'purge-age'} if ($OPT{'purge-age'});
 }
 #==================================================================================================
 sub remove_empty_swarm_directories
@@ -984,8 +986,9 @@ Options:
                        have ended at least $PAR{'delete-age'} days ago
   --delete-age         days past ending for deletion (default = $PAR{'delete-age'})
   --unknown-delete-age for unknown (no associated jobid) swarms (default = $PAR{'unknown-delete-age'})
+  --purge-age          days past deleting swarm before purging from table (default = $PAR{'purge-age'})
   --purge              remove rows in the swarms table that have been 
-                       deleted at least $PAR{'purge-age'} days ago
+                       deleted at least --purge-age days ago
   --routine            enables --update, --delete, and --purge and simplifies
                        output
 
