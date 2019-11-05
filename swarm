@@ -394,6 +394,8 @@ sub writeBatchScript
   $stupid_logdir=~s/`/\\`/g;
   $stupid_logdir=~s/\$/\\\$/g;
   (my $stupid_job_name = $PAR->{"job-name"})=~s/"/\\"/g;;
+  $stupid_job_name=~s/`/\\`/g;
+  $stupid_job_name=~s/\$/\\\$/g;
 
 # Run the commands in series on a single node
   if ($OPT{p}) {
@@ -446,6 +448,8 @@ sub submitSlurm
   $stupid_logdir=~s/`/\\`/g;
   $stupid_logdir=~s/\$/\\\$/g;
   (my $stupid_job_name = $PAR->{"job-name"})=~s/"/\\"/g;
+  $stupid_job_name=~s/`/\\`/g;
+  $stupid_job_name=~s/\$/\\\$/g;
 
   $PAR->{sbatch_options} .= " --job-name=\"".$stupid_job_name."\"" unless ($SLURMOPT{binary}{"job-name"});
 
@@ -481,6 +485,8 @@ sub submitSlurm
   foreach my $i (sort keys %{$SLURMOPT{binary}}) {
     if ($i eq 'job-name') {
       (my $s = $SLURMOPT{binary}{$i})=~s/"/\\"/g;
+      $s=~s/`/\\`/g;
+      $s=~s/\$/\\\$/g;
       $PAR->{sbatch_options} .= " --${i}=\"$s\"" if ($SLURMOPT{binary}{$i});
     }
     else {
