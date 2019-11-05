@@ -390,31 +390,36 @@ sub writeBatchScript
   my $ce_top = "---- COMMAND EXECUTED: ---------------------------------------------------------";
   my $ce_bot = "--------------------------------------------------------------------------------";
 
+  (my $stupid_logdir = $OPT{logdir})=~s/"/\\"/g;
+  $stupid_logdir=~s/`/\\`/g;
+  $stupid_logdir=~s/\$/\\\$/g;
+  (my $stupid_job_name = $PAR->{"job-name"})=~s/"/\\"/g;;
+
 # Run the commands in series on a single node
   if ($OPT{p}) {
     foreach my $i (0 .. $OPT{p}-1) {
       ###my $tag = sprintf "%0${len3}d",$i;
       ###$fileContents .= "[[ -s \${d}/cmd.\${z}_$tag ]] && ( /bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${z}_$tag && /bin/echo '$ce_bot' && $PAR->{shell} \${d}/cmd.\${z}_$tag ";
-      $fileContents .= "[[ -s \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i ]] && ( /bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i && /bin/echo '$ce_bot' && $PAR->{shell} \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i ";
+      $fileContents .= "[[ -s \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i ]] && ( /bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i && /bin/echo '$ce_bot' && $PAR->{shell} \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i ) ";
 # Determine output/error redirects
       if ($OPT{"merge-output"}) {
-        $fileContents .= ">& $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.o ";
+        $fileContents .= "1> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.o\" 2> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.o\" ";
       }
       else {
         if ($OPT{noout}) {
           $fileContents .= "1> /dev/null ";
         }
         else {
-          $fileContents .= "1> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.o ";
+          $fileContents .= "1> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.o\" ";
         }
         if ($OPT{noerr}) {
           $fileContents .= "2> /dev/null ";
         }
         else {
-          $fileContents .= "2> $OPT{logdir}/$PAR->{'job-name'}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.e ";
+          $fileContents .= "2> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.e\" ";
         }
       }
-      $fileContents .= ") &\n";
+      $fileContents .= " &\n";
     }
     $fileContents .= "wait\n";
     $fileContents .= "exitcode=0\n";
@@ -436,7 +441,13 @@ sub submitSlurm
 {
   $PAR->{sbatch_options} .= "--array=0-$#{$SWARM->{CMDLISTS}}";
   $PAR->{sbatch_options} .= '%'.$OPT{maxrunning} if (defined $OPT{maxrunning});
-  $PAR->{sbatch_options} .= " --job-name=".$PAR->{"job-name"} unless ($SLURMOPT{binary}{"job-name"});
+
+  (my $stupid_logdir = $OPT{logdir})=~s/"/\\"/g;
+  $stupid_logdir=~s/`/\\`/g;
+  $stupid_logdir=~s/\$/\\\$/g;
+  (my $stupid_job_name = $PAR->{"job-name"})=~s/"/\\"/g;
+
+  $PAR->{sbatch_options} .= " --job-name=\"".$stupid_job_name."\"" unless ($SLURMOPT{binary}{"job-name"});
 
 # output and error handled in the batch script
   if ($OPT{p}) {
@@ -445,20 +456,20 @@ sub submitSlurm
   }
   else {
     if ($OPT{"merge-output"}) {
-      $PAR->{sbatch_options} .= " --output=".$OPT{logdir}."/".$PAR->{"job-name"}."_\%A_\%a.o";
+      $PAR->{sbatch_options} .= " --output=\"".$stupid_logdir."/".$stupid_job_name."_\%A_\%a.o\"";
     }
     else {
       if ($OPT{noout}) {
         $PAR->{sbatch_options} .= " --output=/dev/null";
       }
       else {
-        $PAR->{sbatch_options} .= " --output=".$OPT{logdir}."/".$PAR->{"job-name"}."_\%A_\%a.o";
+        $PAR->{sbatch_options} .= " --output=\"".$stupid_logdir."/".$stupid_job_name."_\%A_\%a.o\"";
       }
       if ($OPT{noerr}) {
         $PAR->{sbatch_options} .= " --error=/dev/null";
       }
       else {
-        $PAR->{sbatch_options} .= " --error=".$OPT{logdir}."/".$PAR->{"job-name"}."_\%A_\%a.e";
+        $PAR->{sbatch_options} .= " --error=\"".$stupid_logdir."/".$stupid_job_name."_\%A_\%a.e\"";
       }
     }
   }
@@ -468,7 +479,13 @@ sub submitSlurm
     $PAR->{sbatch_options} .= " --$i" if ($SLURMOPT{unary}{$i});
   }
   foreach my $i (sort keys %{$SLURMOPT{binary}}) {
-    $PAR->{sbatch_options} .= " --${i}=$SLURMOPT{binary}{$i}" if ($SLURMOPT{binary}{$i});
+    if ($i eq 'job-name') {
+      (my $s = $SLURMOPT{binary}{$i})=~s/"/\\"/g;
+      $PAR->{sbatch_options} .= " --${i}=\"$s\"" if ($SLURMOPT{binary}{$i});
+    }
+    else {
+      $PAR->{sbatch_options} .= " --${i}=$SLURMOPT{binary}{$i}" if ($SLURMOPT{binary}{$i});
+    }
   }
   if ($SBATCHOPT) {
     $PAR->{sbatch_options} .= " ".$SBATCHOPT;
@@ -482,6 +499,9 @@ sub submitSlurm
     elsif (not writeable($OPT{logdir})) {
       dieWithError("can't write to logdir $OPT{logdir}");
     }
+#    my $slurm_response;
+#    print "sbatch $PAR->{sbatch_options} $PAR->{batchfile}\n";
+#    exit;
     my $slurm_response = `sbatch $PAR->{sbatch_options} $PAR->{batchfile}`;
     print $slurm_response;
     if ($slurm_response=~/^(\d+)$/) {
