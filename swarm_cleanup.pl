@@ -29,7 +29,6 @@ my %ERR;
 $PAR{delete_index} = "/usr/local/logs/swarm_cleanup.idx"; # index of deleted swarm directories
 $PAR{logfile} = "/usr/local/logs/swarm_cleanup.log"; # logfile
 $PAR{CONFIG} = Config::IniFiles->new( -file => "/usr/local/etc/my.cnf" );
-$PAR{dashboard_cnf_group} = "dashboard"; # the group name for the dashboard connection in /usr/local/etc/my.cnf
 $PAR{slurm_cnf_group} = "dashboardSlurm"; # the group name for the slurm connection in /usr/local/etc/my.cnf, probably slave
 $PAR{'delete-age'} = 7; # how many days past finishing should we delete the directory?
 
@@ -374,7 +373,6 @@ sub get_arrays
   my $userfilter = "AND `user` = '$OPT{user}'" if ($OPT{user});
   my $sql = "SELECT q4.id_array_job AS jobid, `user`, q4.time_submit AS create_time, q5.time_finish AS finish_time, q7.num AS num, q4.active AS active FROM (SELECT id_array_job,id_user,time_submit,active,`user` FROM (SELECT id_array_job,id_user,time_submit,IF(tactive > 0,1,0) AS active,`user` FROM (SELECT id_array_job,id_user,time_submit,SUM(active) AS tactive,`user` FROM (SELECT id_array_job,id_user,time_submit,IF(state > 1,0,1) AS active,`user` FROM biowulf_job_table JOIN biowulf_assoc_table ON biowulf_job_table.id_assoc = biowulf_assoc_table.id_assoc WHERE id_array_job > 0 $userfilter) AS q1 GROUP BY id_array_job) AS q2) AS q3) AS q4 INNER JOIN (SELECT id_array_job,MAX(time_end) AS time_finish FROM biowulf_job_table GROUP BY id_array_job) AS q5 ON q4.id_array_job = q5.id_array_job INNER JOIN (SELECT id_array_job,IF(s1=0,c1,c1+s1-1) AS num FROM ( SELECT id_array_job,COUNT(id_array_job) AS c1, SUM(array_task_pending) AS s1 FROM biowulf_job_table GROUP BY id_array_job) AS q6) AS q7 ON q4.id_array_job = q7.id_array_job";
 
-  #my $sth = $PAR{$PAR{dashboard_cnf_group}}->prepare($sql);
   print "$sql\n" if ($OPT{verbose} > 2);
   my $sth = $PAR{$PAR{slurm_cnf_group}}->prepare($sql);
   $sth->execute();
@@ -387,54 +385,9 @@ sub get_arrays
     $PAR{arrays}->{$x->{jobid}}{num} = $x->{num};
   }
   $sth->finish();
-#  $PAR{$PAR{dashboard_cnf_group}}->disconnect();
   $PAR{$PAR{slurm_cnf_group}}->disconnect();
 }
 #=================================================================================================
-sub _do_mysql
-# This subroutine accepts an array of SQL statements and attempts to run all of them atomically.
-# If one fails, they all fail.  The script will not die, but will generate a warning in the logfile.
-{
-  my @sqlarray = @_;
-  return unless @sqlarray;
-
-# Run the SQL statements, concatenating any errors
-  my $err;
-  foreach my $sql (@sqlarray) {
-    print_to_logfile($sql) if ($OPT{verbose} > 2);
-    $PAR{$PAR{dashboard_cnf_group}}->do($sql) unless $OPT{debug};
-    $err .= $PAR{$PAR{dashboard_cnf_group}}->errstr."\n" if $PAR{$PAR{dashboard_cnf_group}}->errstr;
-  }
-
-# Something bad has happened
-  if ($err) {
-
-# Rollback the changes
-    $PAR{$PAR{dashboard_cnf_group}}->rollback unless $OPT{debug};
-
-# Record dying message
-    print_to_logfile($err);
-
-# Maybe this is a quick fix?
-    if ($err =~/server has gone away/) {
-      $PAR{$PAR{dashboard_cnf_group}}->disconnect();
-      try_connecting($PAR{dashboard_cnf_group});
-    }
-    else {
-      print_to_logfile("ERROR: mysql failed");
-    }
-    $ERR{mysql}=1; # Make error global
-  }
-  else {
-# Commit the changes
-    undef $ERR{mysql};
-    $PAR{$PAR{dashboard_cnf_group}}->commit unless $OPT{debug};
-  }
-  undef @sqlarray;
-
-  return;
-}
-#============================================================================================================================
 sub try_connecting
 {
   my $dbh_tag = shift;
