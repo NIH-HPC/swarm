@@ -54,3 +54,9 @@ Removed swarmdel.
 2017-04-12
 
 swarm_manager uses the index files created by swarm and the jobs table for the dashboard to keep track of swarms in a more comprehensive and systematic way than simply running find and sacct a lot.
+
+--------
+
+2020-01-24
+
+swarm_cleanup.pl is now the script for cleaning.  Removed swarm_manager.
