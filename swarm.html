@@ -26,17 +26,30 @@
 <div id="skiplink">
         <a href="#content-area" id="skiplink"></a>
 </div>
+
+<!-- downtime alert banner
+<div style="display: block; top: 0; background-color: yellow; padding: 5px; border: 1px black; width: 940px; margin: auto; text-align: center;">
+  <a href="/about/announcements.php?822">
+    <span style="font-size: 24px;">HPC Downtime this Saturday, Jan 11</span><br>
+    <span style="font-size: 20px;">Jobs submitted with walltimes which extend into the downtime will remain pending until after its conclusion.</span>
+  </a>
+</div>
+-->
+
 <div class="container">
 <table class="head_area" cellpadding="0" cellspacing="0" border="0" width="100%">
 <tr><th scope="col"></th><td valign="bottom" scope="col">
 <div class="titleLocation">
-<a href="https://hpc.nih.gov"><img src="/images/BIOWULF_LOGO" border=0 height=72 alt="Biowulf High Performance Computing at the NIH"></a>
+<a href="/"><img src="/images/BIOWULF_LOGO" border=0 height=72 alt="Biowulf High Performance Computing at the NIH"></a>
 </td>
 <td align="right" valign="top" scope="col">
 <div  class="searchCell">
-<form action="https://hpc.nih.gov/cgi-bin/search/swish.cgi" method="get">
+<form action="/cgi-bin/search/swish.cgi" method="get">
 <input type="hidden" name="maxresultflag" value="200" />
+<!-- search all three swish-e indices by default -->
 <input type="hidden" name="si" value="0" />
+<input type="hidden" name="si" value="1" />
+<input type="hidden" name="si" value="2" />
 <input type="text" class="formfield" size="14" id="searchbox" name="query" aria-label="search NIH HPC site" placeholder=" Search " />
 </form>
 
@@ -50,18 +63,18 @@
 <a href="https://www.youtube.com/channel/UCx-kNd1kBskYr5KLT9-Erew">
     <img border="0"
     align="right" style="position: absolute; top: 72px; right: 48px; "
-    src="https://hpc.nih.gov/images/YouTube-social-squircle_red_20px.png" alt="YouTube"
+    src="/images/YouTube-social-squircle_red_20px.png" alt="YouTube"
     title="Click here to visit our YouTube channel" />
 </a>
 <a href="https://twitter.com/nih_hpc">
     <img border="0"
     align="right" style="position: absolute; top: 72px; right: 24px; "
-    src="https://hpc.nih.gov/images/TwitterLogo20.png" alt="@nih_hpc"
+    src="/images/TwitterLogo20.png" alt="@nih_hpc"
     title="Click here to visit our twitter feed @nih_hpc" />
 </a>
-<a href="https://hpc.nih.gov/hpc_RSS.xml"><img border="0"
+<a href="/hpc_RSS.xml"><img border="0"
     align="right" style="position: absolute; top: 72px; right: 0px;"
-    src="https://hpc.nih.gov/images/RSS20.png" alt="RSS Feed"
+    src="/images/RSS20.png" alt="RSS Feed"
     title="Click here to add an RSS feed from HPC @ NIH" />
 </a>
 
@@ -73,8 +86,8 @@
 <!-- The new and improved dropdown navigation bar -->
 <div id='cssmenu'>
   <ul>
-    <li class='has-sub'><a href='https://hpc.nih.gov/systems/status/'><span>Status</span></a>
-      <span id="Status_menulist"></span>
+    <li class='has-sub'><a href='https://hpc.nih.gov/systems/'><span>Systems</span></a>
+      <span id="Systems_menulist"></span>
     </li>
 
     <li class='has-sub'><a href='https://hpc.nih.gov/apps/'><span>Applications</span></a>
@@ -1186,13 +1199,13 @@ be adapted for other batch systems to work properly.
 <div align="right" class="lastmod"><script type="text/javascript" language="JavaScript" src='/js/lastmod.js'></script></div>
 <div class="footarea">
 <div class="footer">
-<a href='https://hpc.nih.gov/' class="footlink">HPC @ NIH </a> ~
-<a href='/about/contact.html' class="footlink">Contact</a> 
+<a href='https://hpc.nih.gov' class="footlink">HPC @ NIH </a> ~
+<a href='https://hpc.nih.gov/about/contact.html' class="footlink">Contact</a> 
 </div>
 <div class="footer2">
-<a href='/docs/disclaimer.html' class="footlink">Disclaimer</a> ~ 
-<a href='/docs/privacy.html' class="footlink">Privacy</a> ~ 
-<a href='/docs/accessibility.html' class="footlink">Accessibility</a> ~ 
+<a href='https://hpc.nih.gov/docs/disclaimer.html' class="footlink">Disclaimer</a> ~ 
+<a href='https://hpc.nih.gov/docs/privacy.html' class="footlink">Privacy</a> ~ 
+<a href='https://hpc.nih.gov/docs/accessibility.html' class="footlink">Accessibility</a> ~ 
 <a href='http://cit.nih.gov/' class="footlink">CIT</a> ~ 
 <a href='http://www.nih.gov/' class="footlink">NIH</a> ~ 
 <a href='http://www.dhhs.gov/' class="footlink">DHHS</a> ~ 
