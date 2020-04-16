@@ -1041,7 +1041,10 @@ by quotation marks.  In this example some extra sbatch options are added.</p>
 
 <p>In this case,
   <ul>
-    <li><b>--mail-type=FAIL</b>: causes an email to be sent if a subjob fails for some reason</li>
+    <li><b>--mail-type=FAIL</b>: causes a single email per swarm to be sent if one subjob fails for some reason</li>
+    <li><b>--mail-type=END,ARRAY_TASKS</b>: causes each subjob to issue an email when the subjob ends for any reason
+<p class="alert">Unless the ARRAY_TASKS option is specified, mail notifications on job BEGIN, END and FAIL apply to a job array as a whole rather than generating individual email messages for each task in the job array.</p>
+    </li>
     <li><b>--export=var=100,nctype=12</b>: sets two environment variables <b><em>var</em></b> and <b><em>nctype</em></b> to 100 and 12 prior to running</li>
     <li><b>--workdir=/data/user/test</b>: relocate to that directory prior to running any commands</li>
   </ul>
