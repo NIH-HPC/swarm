@@ -64,7 +64,6 @@ avoidSbatchCommands();
 distributeCommands();
 adjustTime();
 report();
-slowdown();
 writeCommandFiles() unless $OPT{'no-scripts'};
 writeBatchScript() unless $OPT{'no-scripts'};
 sleep(2) unless $OPT{debug}; # sleep 2 seconds to prevent weirdness
@@ -1242,18 +1241,5 @@ sub append_to_tempdir_index
   my $fileContents = time().",$PAR->{user},$PAR->{tempname},$PAR->{subjobs},$p\n";
   appendToFile($PAR->{tempdir_index},$fileContents);
   chmod 0666, $PAR->{tempdir_index};
-}
-#==============================================================================
-sub slowdown
-# How many swarms have been submitted in the last 1000 seconds (roughly)
-# If a user is submitting swarms too rapidly, slow down
-{
-  my $now=time();
-  my $sub=substr($now,0,7);
-  my $rate=0;
-  chomp($rate=`/usr/bin/grep ^${sub} $PAR->{tempdir_index} | /usr/bin/grep -c ,$PAR->{user},`);
-  if ($rate > 100) { warn("WARNING: you are submitting swarms too rapidly\n");   sleep 60; }
-  elsif ($rate > 60) { warn("WARNING: you are submitting swarms too rapidly\n"); sleep 30; }
-  elsif ($rate > 30) { warn("WARNING: you are submitting swarms too rapidly\n"); sleep 10; }
 }
 #==============================================================================
