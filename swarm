@@ -1243,15 +1243,15 @@ sub append_to_tempdir_index
 }
 #==============================================================================
 sub slowdown
-# How many swarms have been submitted in the last 10000 seconds (roughly)
+# How many swarms have been submitted in the last 1000 seconds (roughly)
 # If a user is submitting swarms too rapidly, slow down
 {
   my $now=time();
-  my $sub=substr($now,0,6);
+  my $sub=substr($now,0,7);
   my $rate=0;
   chomp($rate=`/usr/bin/grep ^${sub} $PAR->{tempdir_index} | /usr/bin/grep -c ,$PAR->{user},`);
-  if ($rate > 8000) { warn("WARNING: you are submitting swarms too rapidly\n");   sleep 60; }
-  elsif ($rate > 4000) { warn("WARNING: you are submitting swarms too rapidly\n"); sleep 30; }
-  elsif ($rate > 2000) { warn("WARNING: you are submitting swarms too rapidly\n"); sleep 10; }
+  if ($rate > 100) { warn("WARNING: you are submitting swarms too rapidly\n");   sleep 60; }
+  elsif ($rate > 60) { warn("WARNING: you are submitting swarms too rapidly\n"); sleep 30; }
+  elsif ($rate > 30) { warn("WARNING: you are submitting swarms too rapidly\n"); sleep 10; }
 }
 #==============================================================================
