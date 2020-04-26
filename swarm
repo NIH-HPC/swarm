@@ -516,6 +516,8 @@ sub submitSlurm
       $PAR->{jobid} = $1;
     }
     else {
+# Clean up!
+      system("/usr/bin/rm -rf $PAR->{tempdir}");
       dieWithError("Something went wrong with sbatch!  I don't know the jobid!");
     }
   }
