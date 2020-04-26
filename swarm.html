@@ -771,7 +771,7 @@ Try lowering the time per command (--time=04:00:00), lowering the bundle factor
 (if not autobundled), picking another partition, or splitting up the swarmfile.</pre>
 
 
-<p>See the <a href="/docs/b2-userguide.html#wall"> Biowulf User Guide for a discussion of walltime limits</a>.</p>
+<p>See the <a href="/docs/userguide.html#wall"> Biowulf User Guide for a discussion of walltime limits</a>.</p>
 
 <center><hr width="500" /></center>
 <a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
@@ -866,7 +866,7 @@ remain queued forever:</P>
 User       JobId    JobName    Part  St      Runtime   Nodes  CPUs     Mem        Dependency     Features             Nodelist
 user       10003    last.sh    norm   PD          0:00   1       1   2.0GB/cpu   afterok:10002_*   (null)               (DependencyNeverSatisfied)</pre>
 
-<p>See <a href="/docs/b2-userguide.html#depend">the Biowulf User Guide</a>, or <a href="http://slurm.schedmd.com/job_exit_code.html">
+<p>See <a href="/docs/userguide.html#depend">the Biowulf User Guide</a>, or <a href="http://slurm.schedmd.com/job_exit_code.html">
 SchedMD for a discussion on how Slurm handles exit codes</a>.</P>
 
 <p class="alert">NOTE: Setting <b>-p</b> causes multiple commands to run per subjob. Because of this, the exit status of the
@@ -1032,7 +1032,7 @@ MYENV=4 command ; MYENV=5 command ; MYENV=6 command</pre>
 <!-- ------------------------------------------------------------------------------------- -->
 
 <p><a name="sbatch"></a><b>Using sbatch flags</b></p>
-<p>Swarm creates a single <a href="http://hpc.nih.gov/docs/b2-userguide.html#submit">job array via the sbatch command</a>
+<p>Swarm creates a single <a href="http://hpc.nih.gov/docs/userguide.html#submit">job array via the sbatch command</a>
 ; all valid sbatch commandline options are also valid for swarm.
 However, they must be passed with a single <b>--sbatch</b> option, surrounded
 by quotation marks.  In this example some extra sbatch options are added.</p>
@@ -1043,7 +1043,7 @@ by quotation marks.  In this example some extra sbatch options are added.</p>
   <ul>
     <li><b>--mail-type=FAIL</b>: causes a single email per swarm to be sent if one subjob fails for some reason</li>
     <li><b>--mail-type=END,ARRAY_TASKS</b>: causes each subjob to issue an email when the subjob ends for any reason
-<p class="alert">Unless the ARRAY_TASKS option is specified, mail notifications on job BEGIN, END and FAIL apply to a job array as a whole rather than generating individual email messages for each task in the job array.</p>
+<p class="alert">Unless the ARRAY_TASKS option is specified, mail notifications on job BEGIN, END and FAIL apply to a job array as a whole rather than generating individual email messages for each task in the job array.  See <a href="/docs/userguide.html#email">userguide.html#email</a> for more information about email notifications.</p>
     </li>
     <li><b>--export=var=100,nctype=12</b>: sets two environment variables <b><em>var</em></b> and <b><em>nctype</em></b> to 100 and 12 prior to running</li>
     <li><b>--workdir=/data/user/test</b>: relocate to that directory prior to running any commands</li>
@@ -1166,7 +1166,7 @@ Once the swarm jobs are complete, you could if desired combine all the sequences
 <div class="heading"><a name="monitor"></a>Monitoring a swarm</div>
 <a href="/apps/swarm.html" style="font-size:12px">back to top</a><br />
 
-<p>Monitoring a swarm is handled the same way<a href="http://hpc.nih.gov/docs/b2-userguide.html#monitor">as any
+<p>Monitoring a swarm is handled the same way<a href="http://hpc.nih.gov/docs/userguide.html#monitor">as any
 other batch job on the cluster</a>, using
 <b>sjobs</b>,
 <b>squeue</b>,
@@ -1181,7 +1181,7 @@ other batch job on the cluster</a>, using
 <div class="heading"><a name="delete"></a>Deleting/Canceling a swarm</div>
 <a href="/apps/swarm.html" style="font-size:12px">back to top</a><br />
 
-<p>Because a swarm is treated as a single job by Slurm, deleting a swarm is handled with the <a href="http://hpc.nih.gov/docs/b2-userguide.html#delete">same command as other batch jobs</a>, 
+<p>Because a swarm is treated as a single job by Slurm, deleting a swarm is handled with the <a href="http://hpc.nih.gov/docs/userguide.html#delete">same command as other batch jobs</a>, 
 <b>scancel</b>.
 </p>
 
