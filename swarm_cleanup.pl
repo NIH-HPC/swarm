@@ -1,5 +1,7 @@
 #!/usr/local/bin/perl
 
+use lib "/usr/local/HPCNIH_perl/lib";
+
 use strict;
 use Bit::Vector;
 use Config::IniFiles;
