@@ -883,7 +883,7 @@ sub getCommandLineOptions
 
   if (defined $OPT{g}) { # assign to --mem, converted to MB
     dieWithError("-g must be between 0.1 and ".$PAR->{maxmemsize}) if (($OPT{g} <= 0.1) || ($OPT{g} > $PAR->{maxmemsize}));
-    if (($OPT{g} > 376) && ($SLURMOPT{binary}{partition} ne "largemem")) {
+    if (($OPT{g} > 373) && ($SLURMOPT{binary}{partition} ne "largemem")) {
       dieWithError("-g $OPT{g} requires --partition largemem");
     }
   }
