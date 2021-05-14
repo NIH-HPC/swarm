@@ -1095,7 +1095,9 @@ sub isDirCreateable
 {
   my $path = shift;
   my $str = File::Spec->rel2abs($path); # convert path to absolute
-  while (!-d $str) { $str =~s/\/[^\/]*$//; }
+  while ((!-d $str) && ($str)) { 
+    $str =~s/\/[^\/]*$//; 
+  }
   return writeable($str);
 }
 #==============================================================================
