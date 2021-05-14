@@ -4,6 +4,7 @@ help:
 swarm:
 	@echo installing swarm
 	install -p -m 0755 -o root -g root swarm /usr/local/bin
+	sed -i "s/NNNNN_DATESTAMP_NNNNN/$(shell git log -1 --format=%cd swarm)/" /usr/local/bin/swarm
 	ls -l /usr/local/bin/swarm
 
 swarm_cleanup:

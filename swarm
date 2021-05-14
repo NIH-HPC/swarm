@@ -1058,7 +1058,7 @@ Environment variables
   SBATCH_TIMELIMIT       Same as --time
   SBATCH_EXCLUSIVE       Same as --exclusive
 
-  Last modification date: Mar 22, 2018
+  Last modification date: NNNNN_DATESTAMP_NNNNN (David Hoover)
 EOF
   exit;
 }
