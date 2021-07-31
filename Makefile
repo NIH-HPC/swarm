@@ -19,7 +19,7 @@ webpages:
 
 manpages:
 	@echo installing manpages
-	install -p -m 0644 -o root -g root swarm.1 /usr/local/share/man/man1
+	install -p -m 0644 -o root -g root man1/swarm.1 /usr/local/share/man/man1
 	ls -l /usr/local/share/man/man1/swarm.1
 
 .PHONY: swarm swarm_cleanup webpages manpages

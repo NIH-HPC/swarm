@@ -83,6 +83,10 @@ allocates per core, and each core has two cpus.  To push more commands onto cpus
 computational performance, -p can set the 
 number of commands run per subjob, with each process taking a single cpu.  -p requires -t = 1.
 
+.B $SWARM_PROC_ID:
+An environment variable SWARM_PROC_ID is set to either 0 (default) or 1 for jobs with -p.  This can be
+used to create unique paths or names of files.
+
 .TP
 .B -b,--bundle [ int ]
 Swarm evaluates a single command line as a subjob.
