@@ -402,7 +402,7 @@ sub writeBatchScript
     foreach my $i (0 .. $OPT{p}-1) {
       ###my $tag = sprintf "%0${len3}d",$i;
       ###$fileContents .= "[[ -s \${d}/cmd.\${z}_$tag ]] && ( /bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${z}_$tag && /bin/echo '$ce_bot' && $PAR->{shell} \${d}/cmd.\${z}_$tag ";
-      $fileContents .= "[[ -s \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i ]] && ( /bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i && /bin/echo '$ce_bot' && $PAR->{shell} \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i ) ";
+      $fileContents .= "[[ -s \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i ]] && ( /bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i && /bin/echo '$ce_bot' && SWARM_PROC_ID=$i $PAR->{shell} \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i ) ";
 # Determine output/error redirects
       if ($OPT{"merge-output"}) {
         $fileContents .= "1> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.o\" 2> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.o\" ";
@@ -428,7 +428,7 @@ sub writeBatchScript
   }
   else {
     ###$fileContents .= "/bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${z} && /bin/echo '$ce_bot' && $PAR->{shell} \${d}/cmd.\${z}\n";
-    $fileContents .= "/bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${SLURM_ARRAY_TASK_ID} && /bin/echo '$ce_bot' && $PAR->{shell} \${d}/cmd.\${SLURM_ARRAY_TASK_ID}\n";
+    $fileContents .= "/bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${SLURM_ARRAY_TASK_ID} && /bin/echo '$ce_bot' && SWARM_PROC_ID=0 $PAR->{shell} \${d}/cmd.\${SLURM_ARRAY_TASK_ID}\n";
 # Capture final exit code
     $fileContents .= "exitcode=\$?\n";
   }
@@ -1057,6 +1057,10 @@ Environment variables
   SBATCH_QOS             Same as --qos
   SBATCH_TIMELIMIT       Same as --time
   SBATCH_EXCLUSIVE       Same as --exclusive
+
+  The following environment variables are set within a swarm:
+
+  SWARM_PROC_ID          can be 0 or 1
 
   Last modification date: NNNNN_DATESTAMP_NNNNN (David Hoover)
 EOF
