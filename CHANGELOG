@@ -60,3 +60,19 @@ swarm_manager uses the index files created by swarm and the jobs table for the d
 2020-01-24
 
 swarm_cleanup.pl is now the script for cleaning.  Removed swarm_manager.
+
+--------
+
+2020-08-02
+
+Began versioning (21.08.0)
+
+--------
+
+2020-12-22 (version 21.12.0) 
+
+Added file directives and made adding options easier by creating a single options object.
+
+Also, -f and --f are deprecated.  swarm now accepts 1 argument, the swarm file.
+
+--------

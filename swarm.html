@@ -28,13 +28,14 @@
         <a href="#content-area" id="skiplink"></a>
 </div>
 
-<!-- downtime alert banner 
+<!-- downtime alert banner
 <div style="display: block; top: 0; background-color: yellow; padding: 5px; border: 1px black; width: 940px; margin: auto; text-align: center;">
-  <a href="/about/announcements.php?889">
-    <span style="font-size: 24px;">HPC Downtime Saturday, Jun 5 to Sunday, Jun 6</span><br>
+  <a href="/about/announcements.php?915">
+    <span style="font-size: 24px;">HPC Downtime Friday, Nov 5 to Sunday, Nov 7</span><br>
     <span style="font-size: 20px;">Jobs submitted with walltimes which extend into the downtime will remain pending until after its conclusion.</span>
   </a>
-</div> -->
+</div>
+-->
 
 <div class="container">
 <table class="head_area" cellpadding="0" cellspacing="0" border="0" width="100%">
@@ -138,6 +139,7 @@
     <div class="tocItem"><a href="#usage">Usage</a></div>
     <div class="tocItem"><a href="#details">Details</a></div>
     <div class="tocItem"><a href="#input">Input</a></div>
+    <div class="tocItem"><a href="#directives">File Directives</a></div>
     <div class="tocItem"><a href="#output">Output</a></div>
     <div class="tocItem"><a href="#examples">Examples</a></div>
 
@@ -191,7 +193,7 @@ uptime</pre>
 
 <p>Then submit to the batch system:</p>
 
-<pre class="term"><b>[biowulf]$</b> swarm -f file.swarm --verbose 1
+<pre class="term"><b>[biowulf]$</b> swarm --verbose 1 file.swarm
 4 commands run in 4 subjobs, each command requiring 1.5 gb and 1 thread
 12345</pre>
 
@@ -235,85 +237,85 @@ swarm_12345_0.e  swarm_12345_1.e  swarm_12345_2.e  swarm_12345_3.e</pre>
 <div class="heading"><a name="usage"></a>Usage</div>
 <a href="/apps/swarm.html" style="font-size:12px">back to top</a><br />
 <pre class="term">
-Usage: swarm [swarm options] [sbatch options]
+Usage: swarm [swarm options] [sbatch options] swarmfile
 
-  <a href="#input"><b>-f,--file</b></a> [file]       name of file with list of command lines to execute,
-                         with a single command line per subjob
+Basic options:
 
-  <a href="#gandt"><b>-g,--gb-per-process</b></a>    gb per process (can be fractions of GB, e.g. 3.5)
-  [float]
-
-  <a href="#gandt"><b>-t,</b></a>                    threads per process (can be an integer or the word
-  <a href="#gandt"><b>--threads-per-process</b></a>  auto).  This option is only valid for multi-
-  [int]/"auto"           threaded swarms (-p 1).
-
-  <a href="#p"><b>-p,</b></a>                    processes per subjob (default = 1).  This option is
-  <a href="#p"><b>--processes-per-subjob</b></a> only valid for single-threaded swarms (-t 1).
-  [int]                  
-                      
-  --noht                 don't use hyperthreading, equivalent to slurm option
-                         --threads-per-core=1
-
-  <a href="#bundling"><b>-b,--bundle</b></a> [int]      bundle more than one command line per subjob and run
-                         sequentially.  This automatically multiplies the time needed per subjob.
-
-  --usecsh               use tcsh as the shell instead of bash
-  --err-exit             exit the subjob immediately on first non-zero exit status
-
-  <a href="#module"><b>--module</b></a>               provide a list of environment modules to load
-                         prior to execution, comma-delimited
-  --no-comment           don't ignore text following comment character #
-  --comment-char [chr]   use something other than # as the comment character
-
-  --merge-output         combine STDOUT and STDERR into a single file per subjob (.o)
-  --logdir               directory to which .o and .e files are to be written
-                         (default is current working directory)
-
-  --maxrunning  [int]    limit the number of simultaenously running subjobs
+  <a href="#gandt"><b>-g,--gb-per-process</b></a> [float]						       
+			    gb per process (can be fractions of GB, e.g. 3.5)
+  <a href="#gandt"><b>-t,--threads-per-process</b></a> [int]/"auto" 				       
+			    threads per process (can be an integer or the word
+			    auto).  This option is only valid for
+			    multi-threaded swarms (-p 1)
+  <a href="#p"><b>-p,--processes-per-subjob</b></a> [int]					       
+			    processes per subjob (default = 1), this option is
+			    only valid for single-threaded swarms (-t 1)
+  <a href="#bundling"><b>-b,--bundle</b></a> [int]	    bundle more than one command line per subjob and
+			    run sequentially (this automatically multiplies the
+			    time needed per subjob)
+  --noht		    don't use hyperthreading, equivalent to slurm
+			    option --threads-per-core=1
+  --usecsh		    use tcsh as the shell instead of bash
+  --err-exit		    exit the subjob immediately on first non-zero exit
+			    status
+  <a href="#module"><b>-m,--module</b></a> [str]	    provide a list of environment modules to load prior
+			    to execution (comma delimited)
+  --no-comment		    don't ignore text following comment character #
+  -c,--comment-char [char]  use something other than # as the comment character
+  --maxrunning [int]	    limit the number of simultaenously running subjobs
+  --merge-output	    combine STDOUT and STDERR into a single file per
+			    subjob (.o)
+  --logdir [dir]	    directory to which .o and .e files are to be
+			    written (default is current working directory)
+  --noout		    completely throw away STDOUT
+  --noerr		    completely throw away STDERR
 
 Development options:
 
-  --help                 print this help message
-  --keep-scripts         don't remove temporary swarm scripts
-  --no-scripts           don't create temporary swarm scripts (with --debug
-                         or --devel)
-  --debug                don't actually run 
-  <a href="#devel"><b>--devel</b></a>                combine --debug and --no-scripts, and be very chatty
-  <a href="#devel"><b>--verbose</b></a> [int]        can range from 0 to 6, with 6 the most verbose
-  --silent               don't give any feedback, just jobid
+  --no-scripts		    don't create temporary swarm scripts (with --debug
+			    or --devel)
+  --no-run		    don't actually run
+  --debug		    don't actually run
+  <a href="#devel"><b>--devel</b></a>		    combine --debug and --no-scripts, and be very
+			    chatty
+  <a href="#devel"><b>-v,--verbose</b></a> [int]	    can range from 0 to 6, with 6 the most verbose
+  --silent		    don't give any feedback, just jobid
+  -h,--help		    print this help message
+  -V,--version		    print version and exit
 
 sbatch options:
 
-  --job-name [str]       set the name of the job
-  <a href="#dependency"><b>--dependency</b></a> [str]     set up dependency (i.e. run swarm before or after)
-  <a href="#time"><b>--time</b></a> [str]           change the walltime for each subjob (default is
-                         02:00:00, or 2 hours).  If  a  swarm  is  bundled,
-                         then the time is multiplied by the bundle factor.
-  <a href="/docs/userguide.html#licenses"><b>--license</b></a> [str]        obtain software licenses (e.g. --license=matlab)
-  <a href="/docs/userguide.html#partitions"><b>--partition</b></a> [str]      change the partition (default is norm)
-  <a href="#lscratch"><b>--gres</b></a> [str]           set generic resources for swarm
-  --qos [str]            set quality of service for swarm
+  -J,--job-name [str]	    set the name of the job
+  <a href="#dependency"><b>--dependency</b></a> [str]	    set up dependency (i.e. run swarm before or after)
+  <a href="#time"><b>--time</b></a> [str]		    change the walltime for each subjob (default is
+			    04:00:00, or 4 hours)
+  <a href="/docs/userguide.html#licenses"><b>-L,--licenses</b></a> [str]	    obtain software licenses (e.g. --licenses=matlab)
+  <a href="/docs/userguide.html#partitions"><b>--partition</b></a> [str]	    change the partition (default is norm)
+  <a href="#lscratch"><b>--gres</b></a> [str]		    set generic resources for swarm
+  --qos [str]		    set quality of service for swarm
+  --reservation [str]	    select a slurm reservation
+  --exclusive		    allocate a single node per subjob, same as -t auto
+  <a href="#sbatch"><b>--sbatch</b></a> [str]	    add sbatch-specific options to swarm; these options
+			    will be added last, which means that swarm options
+			    for allocation of cpus and memory take precedence
 
-Other sbatch options
-
-  <a href="#sbatch"><b>--sbatch</b></a> [string]      add sbatch-specific options to swarm.  These options
-                         will be added last, which means that swarm options
-                         for allocation of cpus and memory take precedence.
-
-Environment variables
+Environment variables:
 
   The following environment variables will affect how sbatch allocates
   resources:
 
-  SBATCH_JOB_NAME        Same as --job-name
-  SBATCH_PARTITION       Same as --partition
-  SBATCH_QOS             Same as --qos
-  SBATCH_TIMELIMIT       Same as --time
-  SBATCH_EXCLUSIVE       Same as --exclusive
+  SBATCH_JOB_NAME           Same as --job-name
+  SBATCH_TIMELIMIT          Same as --time
+  SBATCH_PARTITION          Same as --partition
+  SBATCH_QOS                Same as --qos
+  SBATCH_RESERVATION        Same as --reservation
+  SBATCH_EXCLUSIVE          Same as --exclusive
 
   The following environment variables are set within a swarm:
 
-  SWARM_PROC_ID          can be 0 or 1</pre>
+  SWARM_PROC_ID          can be 0 or 1
+
+For more information, type "man swarm".</pre>
 
 <!-- ======================================================================================================== -->
 <!-- Details                                                                                                    -->
@@ -381,7 +383,7 @@ for more information on <b>-p</b>.
 
 <h3>The swarmfile</h3>
 
-<p>The only required input for swarm is a swarmfile, as designated by the -f or --file option.  Each line in 
+<p>The only required argument for swarm is a swarmfile.  Each line in 
 the swarmfile is run as a single command.  For example, the swarmfile <b><em>file.swarm</em></b></p>
 
 <pre class="term"><b>[biowulf]$</b> cat file.swarm
@@ -392,7 +394,7 @@ uptime</pre>
 
 <p>when submitted like this</p>
 
-<pre class="term"><b>[biowulf]$</b> swarm -f file.swarm</pre>
+<pre class="term"><b>[biowulf]$</b> swarm file.swarm</pre>
 
 <p>will create a swarm of 4 subjobs, with each subjob running the single command "uptime".</p>
 
@@ -403,11 +405,10 @@ are very short (e.g. a few seconds) or when there are many thousands or millions
 these circumstances, it makes more sense to <em><b>bundle</b></em> the swarm.  For example, a swarmfile of 10,000
 commands when run with a bundle value of 40 will generate 250 subjobs (10000/40 = 250):</p>
 
-<pre class="term"><b>[biowulf]$</b> swarm --devel -f x -b 40
+<pre class="term"><b>[biowulf]$</b> swarm --devel -b 40 file.swarm
 10000 commands run in 250 subjobs, each requiring 1 gb and 1 thread, running 40 commands serially per subjob</pre>
 
-<p><b>NOTE</b>: If a swarmfile results in more than 1000 subjobs, swarm will <b>automatically bundle the commands</b>.
-In previous versions of swarm, this was enabled with <b>--autobundle</b>; this is now the default.</p>
+<p><b>NOTE</b>: If a swarmfile results in more than 1000 subjobs, swarm will <b>automatically bundle the commands</b>.</p>
 
 <p><b>ALSO</b>: The time needed per subjob will be automatically multiplied by the bundle factor.  If the total time
 per subjob exceeds the maximum walltime of the partition, an error will be given and the swarm will not be submitted.</p>
@@ -426,7 +427,7 @@ hostname    # this gives the host name</pre>
 <p>However, there are some applications that require a <b><em>#</em></b> character in the input:</p>
 
 <pre class="term"><b>[biowulf]$</b> cat odd.file.swarm
-bogus_app -n 365#AX -w -another-flag=nonsense > output</pre>
+bogus_app -n 365#AX -w -another-flag=nonsense &gt; output</pre>
 
 <p>The option <b>--no-comment</b> can be given to avoid removal of text following the <b><em>#</em></b> character.
 Alternatively, another comment character can be designated using the <b>--comment-char</b> option.</p>
@@ -442,7 +443,7 @@ hostname ; date ; sleep 200 ; uptime
 hostname ; date ; sleep 200 ; uptime
 hostname ; date ; sleep 200 ; uptime
 
-<b>[biowulf]$</b> swarm -f file.swarm</pre>
+<b>[biowulf]$</b> swarm file.swarm</pre>
 
 <p>will create 4 subjobs, each running independently on a single cpu.  Each subjob will run "hostname", followed
 by "date", then "sleep 200", then "uptime", all in order.</p>
@@ -454,10 +455,10 @@ a single command list, and conditional statements can be given.  For example, if
 commands in a newly created random temporary directory, you could use this:</p>
 
 <pre class="term"><b>[biowulf]$</b> cat file.swarm
-export d=/data/user/${RANDOM} ; mkdir -p $d ; if [[ -d $d ]] ; then cd $d &amp;&amp; pwd ; else echo "FAIL" >&amp;2 ; fi
-export d=/data/user/${RANDOM} ; mkdir -p $d ; if [[ -d $d ]] ; then cd $d &amp;&amp; pwd ; else echo "FAIL" >&amp;2 ; fi
-export d=/data/user/${RANDOM} ; mkdir -p $d ; if [[ -d $d ]] ; then cd $d &amp;&amp; pwd ; else echo "FAIL" >&amp;2 ; fi
-export d=/data/user/${RANDOM} ; mkdir -p $d ; if [[ -d $d ]] ; then cd $d &amp;&amp; pwd ; else echo "FAIL" >&amp;2 ; fi</pre>
+export d=/data/user/${RANDOM} ; mkdir -p $d ; if [[ -d $d ]] ; then cd $d &amp;&amp; pwd ; else echo "FAIL" &gt;&amp;2 ; fi
+export d=/data/user/${RANDOM} ; mkdir -p $d ; if [[ -d $d ]] ; then cd $d &amp;&amp; pwd ; else echo "FAIL" &gt;&amp;2 ; fi
+export d=/data/user/${RANDOM} ; mkdir -p $d ; if [[ -d $d ]] ; then cd $d &amp;&amp; pwd ; else echo "FAIL" &gt;&amp;2 ; fi
+export d=/data/user/${RANDOM} ; mkdir -p $d ; if [[ -d $d ]] ; then cd $d &amp;&amp; pwd ; else echo "FAIL" &gt;&amp;2 ; fi</pre>
 
 <p><b>NOTE</b>: By default, command lists are interpreted as bash commands.  If a swarmfile contains tcsh- or csh-specific
 commands, swarm may fail unless <b>--usecsh</b> is included.</p>
@@ -487,7 +488,59 @@ echo ${KMER} | jellyfish query /lscratch/$SLURM_JOB_ID/39sHMC_Tumor_genomic_0 > 
 <p><a href="modules.html">Environment modules</a> can be loaded for an entire swarm using the <b>--module</b>
 option.  The </p> 
 
-<pre class="term">swarm -f file.swarm --module python,tophat,ucsc,samtools,vcftools -g 4 -t 8</pre>
+<pre class="term">swarm --module python,tophat,ucsc,samtools,vcftools -g 4 -t 8 file.swarm</pre>
+
+<h3><a name="directives"></a>Swarmfile Directives</h3>
+
+<p>All swarm options can be incorporated into the swarmfile using swarmfile directives. Options preceded by <b><tt>#SWARM</tt></b> in the swarmfile (flush against the left side) will be evaluated the same as command line options.</p>
+
+<p>For example, if the contents of swarmfile is as follows:</p>
+
+<pre class="term"><b>[biowulf]$</b> cat file.swarm
+#SWARM -t 4 -g 20 --time 40
+command arg1
+command arg2
+command arg3
+command arg4</pre>
+
+<p>and is submitted like so:</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm file.swarm</pre>
+
+<p>then each subjob will request 4 cpus, 20 GB of RAM and 40 minutes of walltime.</p>
+
+<p>Multiple lines of swarmfile directives can be inserted, like so:</p>
+
+<pre class="term"><b>[biowulf]$</b> cat file.swarm
+#SWARM --threads-per-process 8
+#SWARM --gb-per-process 8
+#SWARM --sbatch '--mail-type=FAIL --export=var=100,nctype=12 --chdir=/data/user/test'
+#SWARM --logdir /data/user/swarmlogs
+command
+command
+command
+command</pre>
+
+<p>The precedence for options is handled in the same way as sbatch, but with options provided with the <b><tt>--sbatch</tt></b> option last:</p>
+
+<pre>    command line &gt; environment variables &gt; swarmfile directives &gt; --sbatch options </pre>
+
+<p>Thus, if the swarmfile has:</p>
+
+<pre class="term"><b>[biowulf]$</b> cat file.swarm
+#SWARM -t 4 -g 20 --time 40 --partition norm
+command arg1
+command arg2
+command arg3
+command arg4</pre>
+
+<p>and is submitted like so:</p>
+
+<pre class="term"><b>[biowulf]$</b> SBATCH_PARTITION=quick swarm -g 10 --time=10 file.swarm</pre>
+
+<p>then each subjob will request 4 cpus, 10 GB of RAM and 10 minutes of walltime.  The amount of memory and walltime requested with command line options and the partition chosen with the <b><tt>SBATCH_PARTITION</tt></b> environment variable supersedes the amount requested with swarmfile directives.</p>
+
+<p><b>NOTE:</b> All lines with correctly formatted <b><tt>#SWARM</tt></b> directives will be removed even if <b>--no-comment</b> or a non-default <b>--comment-char</b> is given.</p>
 
 <!-- ======================================================================================================== -->
 <!-- Output                                                                                                   -->
@@ -530,7 +583,7 @@ programAOK_21381_1.o  programAOK_21381_3.o  programAOK_21381_5.o  programAOK_213
 for STDOUT.  For swarm, that means the content of the .e files are written to the .o file.  Keep in mind that
 interweaving of content will occur.</p>
 
-<pre class="term"><b>[biowulf]$</b> swarm -f file.swarm --merge-output
+<pre class="term"><b>[biowulf]$</b> swarm --merge-output file.swarm
 ...
 <b>[biowulf]$</b> ls
 swarm_50158339_0.o   swarm_50158339_1.o  swarm_50158339_4.o  swarm_50158339_7.o
@@ -541,23 +594,23 @@ swarm_50158339_11.o  swarm_50158339_3.o  swarm_50158339_6.o  swarm_50158339_9.o<
 <p>By default, the STDOUT and STDERR files are written to the same directory from which the swarm
 was submitted.  To redirect the files to a different directory, use <b>--logdir</b>:</p>
 
-<pre class="term">swarm -f files.swarm --logdir /path/to/another/directory</pre>
+<pre class="term">swarm --logdir /path/to/another/directory file.swarm</pre>
 
 <h3>Redirecting output</h3>
 
 <P>Input/output redirects (and everything in the swarmfile) should be bash compatible.  For example,</p>
 <pre class="term"><b>[biowulf]$</b> cat bash_file.swarm
-program1 -o -f -a -n 1 > output1.txt 2>&1
-program1 -o -f -a -n 2 > output2.txt 2>&1
-<b>[biowulf]$</b> swarm -f bash_file.swarm</pre>
+program1 -o -f -a -n 1 &gt; output1.txt 2&gt;&amp;1
+program1 -o -f -a -n 2 &gt; output2.txt 2&gt;&amp;1
+<b>[biowulf]$</b> swarm bash_file.swarm</pre>
 
 <p>csh-style redirects like '<b>program &gt;&amp;; output</b>' will not work correctly unless
 the <b>--usecsh</b> option is included.  For example,</p>
 
 <pre class="term"><b>[biowulf]$</b> cat csh_file.swarm
-program1 -o -f -a -n 1 >& output1.txt
-program1 -o -f -a -n 2 >& output2.txt
-<b>[biowulf]$</b> swarm <b>--usecsh</b> -f csh_file.swarm</pre>
+program1 -o -f -a -n 1 &gt;&amp; output1.txt
+program1 -o -f -a -n 2 &gt;&amp; output2.txt
+<b>[biowulf]$</b> swarm <b>--usecsh</b> csh_file.swarm</pre>
 
 <p>Be aware of programs that write directly to a file using a fixed filename.
 A file will be overwritten and garbled if multiple processes are writing to the same file.
@@ -595,12 +648,12 @@ the <b>EXAMPLES</b> section for some ideas.</p>
   commands, then use swarm to submit them to the batch queue:
 </td></tr></table>
 
-<pre class="term"><b>[biowulf]$</b> cat &gt; cmdfile
+<pre class="term"><b>[biowulf]$</b> cat &gt; file.swarm
 date
 hostname
 ls -l
 ^D
-<b>[biowulf]$</b> swarm -f cmdfile</pre>
+<b>[biowulf]$</b> swarm file.swarm</pre>
 
 <p>Use <b>sjobs</b> to monitor the status of your request; an
 "R" in the "St"atus column indicates your job is running.
@@ -640,7 +693,7 @@ bundles of 40 commands each, producing 64 command bundles. Swarm will then submi
 64 command bundles, rather than the 2560 commands individually, as a single swarm job.
 This would result in a swarm of 64 (2560/40) subjobs.</p>
 
-<pre class="term"><b>[biowulf]$</b> swarm -f cmdfile -b 40</pre>
+<pre class="term"><b>[biowulf]$</b> swarm -b 40 file.swarm</pre>
 
 <p>Note that commands in a bundle will run sequentially on the assigned node.
 
@@ -657,20 +710,20 @@ run fewer subjobs per node than the number of cores available
 on a node.  For example, if the commands in a swarmfile need up to 40 GB of
 memory each using 8 threads, running swarm with --devel shows what might happen:</p>
 
-<pre class="term"><b>[biowulf]$</b> swarm -f swarmfile -g 40 -t 8 --devel
+<pre class="term"><b>[biowulf]$</b> swarm -g 40 -t 8 --devel file.swarm
 14 commands run in 14 subjobs, each requiring 40 gb and 8 threads</pre>
 
 <p>If a command requires to use as many cpus on a node as possible, then the option <b>-t auto</b>
 should be added.  This causes each subjob in the swarmfile to allocate an entire node exclusively to the subjob, allowing
 the subjob to use all available cpus on the node.</p>
 
-<p class="alert">The default partition <b>norm</b> has nodes with a maximum of 248GB memory.  If <b>-g</b> exceeds 248GB, swarm will give a warning message:</p>
+<p class="alert">The default partition <b>norm</b> has nodes with a maximum of 248GB memory.  If <b>-g</b> exceeds 373GB, swarm will give a warning message:</p>
 
-<pre class="term"><b>[biowulf]$</b> swarm -f swarmfile -g 250
-ERROR: -g 250 requires --partition largemem</pre>
+<pre class="term"><b>[biowulf]$</b> swarm -g 400 file.swarm
+ERROR: -g 400 requires --partition largemem</pre>
 
-<p>To allocate more than 248GB of memory per command, include <b>--partition largmem</b>:</p>
-<pre class="term"><b>[biowulf]$</b> swarm -f swarmfile -g 500 --partition largemem</pre>
+<p>To allocate more than 373GB of memory per command, include <b>--partition largmem</b>:</p>
+<pre class="term"><b>[biowulf]$</b> swarm -g 500 --partition largemem file.swarm</pre>
 
 <p>For more information about partitions, please see <a href="/docs/userguide.html#partitions">https://hpc.nih.gov/docs/userguide.html#partitions</a></p>
 
@@ -686,7 +739,7 @@ ERROR: -g 250 requires --partition largemem</pre>
 cpus allocated, because the slurm batch system allocates no less than a single core (or two cpus) per subjob.  This effect
 can be seen using the <b>jobload</b> command for a 4-command swarm:</p>
 
-<pre class="term"><b>[biowulf]$</b> swarm -f swarmfile
+<pre class="term"><b>[biowulf]$</b> swarm file.swarm
 219433
 <b>[biowulf]$</b>$ jobload -u user
          JOBID         TIME   NODES   CPUS  THREADS   LOAD             MEMORY
@@ -704,7 +757,7 @@ USER SUMMARY
 
 <p>In order to use all the cpus allocated to a single-threaded swarm, the option <b>-p</b> will set the number
 of commands run per subjob.  Including <b>-p 2</b>, half as many subjobs are created, each using twice as many cpus and twice as much memory:</p>
-<pre class="term"><b>[biowulf]$</b> swarm -f swarmfile -p 2
+<pre class="term"><b>[biowulf]$</b> swarm -p 2 file.swarm
 219434
 <b>[biowulf]$</b>$ jobload -u user
          JOBID         TIME   NODES   CPUS  THREADS   LOAD             MEMORY
@@ -725,12 +778,11 @@ when packed onto hypercores.  Please test your application to see if it actually
 <p>Keep in mind:</p>
 <ul>
 <li><b>-p</b> is only available to single-threaded swarms (i.e. <b>-t 1</b>).</li>
-<li>The default file output format is different using <b>-p</b>.  The file names end with
-an extra suffix indicating the cpu from the subjob:</li>
+<li>The default file output format is different using <b>-p</b>.  The file names end with an extra suffix indicating the cpu from the subjob:</li>
 </ul>
 
 <pre class="term">
-<b>[biowulf]$</b>$ swarm -f ../file.swarm -p 2
+<b>[biowulf]$</b>$ swarm -p 2 ../file.swarm
 14 commands run in 7 subjobs, each command requiring 1.5 gb and 1 thread, packing 2 processes per subjob
 221574
 <b>[biowulf]$</b>$ ls
@@ -779,7 +831,7 @@ On the other hand, if your swarm subjobs have a very short walltime, then their 
 it is best practice to set a walltime using the <b>--time</b> option that reflects the estimated execution time of the subjobs.
 For example, if the command lines in a swarm are expected to require no more than half an hour to complete, the swarm command should be:</p>
 
-<pre class="term"><b>[biowulf]$</b> swarm -f swarmfile --time 00:30:00</pre>
+<pre class="term"><b>[biowulf]$</b> swarm --time 00:30:00 file.swarm</pre>
 
 <p>Because a subjob is typically running a single command from the swarmfile, the value of <b>--time</b> can be considered
 the amount of time to run a single command.  When a swarm is bundled, the value for <b>--time</b> is then
@@ -787,7 +839,7 @@ multiplied by the bundle factor.  For example, if
 a swarm that normally creates 64 commands is bundled to run 4 commands serially, the value of <b>--time</b> is
 multiplied by 4:</p>
 
-<pre class="term"><b>[biowulf]$</b> swarm -f swarmfile <b>--time 00:30:00 -b 4</b> --devel
+<pre class="term"><b>[biowulf]$</b> swarm <b>--time 00:30:00 -b 4</b> --devel file.swarm
 64 commands run in 16 subjobs, each command requiring 1.5 gb and 1 thread, running 4 processes serially per subjob
 sbatch --array=0-15 --job-name=swarm <b>--time=2:00:00</b> --cpus-per-task=2 --partition=norm --mem=1536</pre>
 
@@ -826,7 +878,7 @@ the entire swarm (10002) is completed.
 
 <pre class="term"><b>[biowulf]$</b> sbatch first.sh
 10001
-<b>[biowulf]$</b> swarm -f swarmfile.txt --dependency afterany:10001
+<b>[biowulf]$</b> swarm --dependency afterany:10001 file.swarm
 10002
 <b>[biowulf]$</b> sbatch --dependency=afterany:10002 last.sh
 10003</pre>
@@ -840,7 +892,7 @@ the master script can be reused for different inputs:
 #!/bin/bash
 jobid1=$(sbatch first.sh)
 echo $jobid1
-jobid2=$(swarm -f swarmfile.txt --dependency afterany:$jobid1)
+jobid2=$(swarm --dependency afterany:$jobid1 file.swarm)
 echo $jobid2
 jobid3=$(sbatch --dependency=afterany:$jobid2 last.sh)
 echo $jobid3</pre>
@@ -916,7 +968,7 @@ instance run1, run2), and in the swarmfile cd to the unique output
 directory before running the program: (cd using either an absolute path
 beginning with "/" or a relative path from your home directory). Lines with
 leading "#" are considered comments and ignored.</p>
-<pre class="term"><b>[biowulf]$</b> cat &gt; batchcmds
+<pre class="term"><b>[biowulf]$</b> cat &gt; file.swarm
 # Run ped program using different directory
 # for each run
 cd pedsystem/run1; ../ped
@@ -925,7 +977,7 @@ cd pedsystem/run3; ../ped
 cd pedsystem/run4; ../ped
 ...
 
-<b>[biowulf]$</b> swarm -f batchcmds</pre>
+<b>[biowulf]$</b> swarm file.swarm</pre>
 
 <center><hr width="500" /></center>
 <a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
@@ -941,11 +993,11 @@ example, collating the results of several commands into a single output and then
 results.  If run interactively, it would look like this:</p>
 
 <pre class="term">
-<b>[biowulf]$</b> cmdA < inp.1 > out.1
-<b>[biowulf]$</b> cmdA < inp.2 > out.2
-<b>[biowulf]$</b> cmdA < inp.3 > out.3
-<b>[biowulf]$</b> cmdA < inp.4 > out.4
-<b>[biowulf]$</b> cmdB -i out.1 -i out.2 -i out.3 -i out.4 > final_result
+<b>[biowulf]$</b> cmdA &lt; inp.1 &gt; out.1
+<b>[biowulf]$</b> cmdA &lt; inp.2 &gt; out.2
+<b>[biowulf]$</b> cmdA &lt; inp.3 &gt; out.3
+<b>[biowulf]$</b> cmdA &lt; inp.4 &gt; out.4
+<b>[biowulf]$</b> cmdB -i out.1 -i out.2 -i out.3 -i out.4 &gt; final_result
 </pre>
 
 <p>It would be more efficient if the four <b>cmdA</b> commands could run asynchronously (in parallel), and then
@@ -953,9 +1005,9 @@ the last <b>cmdB</b> command would wait until they were all done and then run, a
 swarm command.  This can be achieved using process substitution with this one-liner in a swarmfile:</p>
 
 <pre class="term">
-( cmdA < inp.1 > out.1 & cmdA < inp.2 > out.2 & \
-  cmdA < inp.3 > out.3 & cmdA < inp.4 > out.4 & wait ) ; \
-  cmdB -i out.1 -i out.2 -i out.3 -i out.4 > final_result
+( cmdA &lt; inp.1 &gt; out.1 &amp; cmdA &lt; inp.2 &gt; out.2 &amp; \
+  cmdA &lt; inp.3 &gt; out.3 &amp; cmdA &lt; inp.4 &gt; out.4 &amp; wait ) ; \
+  cmdB -i out.1 -i out.2 -i out.3 -i out.4 &gt; final_result
 </pre> 
 
 <p>Here, the <b>cmdA</b> commands are all run asynchronously in four background processes, and the <b>wait</b> command
@@ -976,7 +1028,7 @@ environment modules</a>.  Running commands via swarm complicates the issue, beca
 must be loaded prior to every line in the swarmfile.  Instead, you can use the <b>--module</b>
 option to load a list of modules:</p>
 
-<pre class="term"><b>[biowulf]$</b> swarm -f testfile --module ucsc,matlab,python/2.7.1</pre>
+<pre class="term"><b>[biowulf]$</b> swarm --module ucsc,matlab,python/2.7 file.swarm</pre>
 
 <p>Here, the environment is set to use the UCSC executables, Matlab, and an older, non-default
 version of Python.</p>
@@ -992,7 +1044,7 @@ version of Python.</p>
 <p><a href="http://hpc.nih.gov/docs/userguide.html#local">Local scratch disk space is NOT automatically available under Slurm</a>.  Instead, local scratch disk space
 is allocated using <b>--gres</b>.  Here is an example of how to allocate 200GB of local scratch disk space for <u>each swarm command</u>:</p>
 
-<pre class="term"><b>[biowulf$</b> swarm -f swarmfile --gres=lscratch:200</pre>
+<pre class="term"><b>[biowulf$</b> swarm --gres=lscratch:200 file.swarm</pre>
 
 <p>Including <b>--gres=lscratch:<i>N</i></b>, where <b><i>N</i></b> is the number of GB required, will create a subdirectory on the node
 corresponding to the jobid, e.g.:</p>
@@ -1033,7 +1085,7 @@ normal.</li>
 can be used to set the variables prior to running.  In this example, we need to set the BOWTIE_INDEXES environment variable
 to the correct path for all subjobs in the swarm:</P>
 
-<pre class="term"><b>[biowulf]$</b> swarm -f swarmfile --sbatch "--export=BOWTIE_INDEXES=/fdb/igenomes/Mus_musculus/UCSC/mm9/Sequence/BowtieIndex/"</pre>
+<pre class="term"><b>[biowulf]$</b> swarm --sbatch "--export=BOWTIE_INDEXES=/fdb/igenomes/Mus_musculus/UCSC/mm9/Sequence/BowtieIndex/" file.swarm</pre>
 
 <p class="alert"><b>NOTE:</b> Environment variables set with the <b>--sbatch "--export="</b> option are defined
 <b>PRIOR</b> to the job being submitted.  This prevents setting environment variables using Slurm-generated environment
@@ -1041,7 +1093,7 @@ variables, such as $SLURM_JOB_ID or $SLURM_MEM_PER_NODE.</p>
 
 <p>However, if each command line in the swarm requires a unique set of environment variables, this must be done in the swarmfile.  For example, setting TMPDIR to a unique subdirectory of /lscratch/$SLURM_JOB_ID:</p>
 
-<pre class="term"><b>[biowulf]$</b> cat swarmfile
+<pre class="term"><b>[biowulf]$</b> cat file.swarm 
 export TMPDIR=/lscratch/$SLURM_JOB_ID/xyz1; mkdir $TMPDIR; cmdxyz -x 1 -y 1 -z 1
 export TMPDIR=/lscratch/$SLURM_JOB_ID/xyz2; mkdir $TMPDIR; cmdxyz -x 2 -y 2 -z 2
 export TMPDIR=/lscratch/$SLURM_JOB_ID/xyz3; mkdir $TMPDIR; cmdxyz -x 3 -y 3 -z 3
@@ -1049,7 +1101,7 @@ export TMPDIR=/lscratch/$SLURM_JOB_ID/xyz4; mkdir $TMPDIR; cmdxyz -x 4 -y 4 -z 4
 
 <P>Further, if individual commands within each command line require unique environment variables, this can be done by prefacing the command itself with the variable set:</P>
 
-<pre class="term"><b>[biowulf]$</b> cat swarmfile
+<pre class="term"><b>[biowulf]$</b> cat file.swarm
 MYENV=1 command ; MYENV=2 command ; MYENV=3 command
 MYENV=4 command ; MYENV=5 command ; MYENV=6 command</pre>
 
@@ -1066,7 +1118,7 @@ MYENV=4 command ; MYENV=5 command ; MYENV=6 command</pre>
 However, they must be passed with a single <b>--sbatch</b> option, surrounded
 by quotation marks.  In this example some extra sbatch options are added.</p>
 
-<pre class="term"><b>[biowulf]$</b> swarm -f testfile --sbatch "--mail-type=FAIL --export=var=100,nctype=12 --workdir=/data/user/test"</pre>
+<pre class="term"><b>[biowulf]$</b> swarm --sbatch "--mail-type=FAIL --export=var=100,nctype=12 --chdir=/data/user/test" file.swarm</pre>
 
 <p>In this case,
   <ul>
@@ -1075,7 +1127,7 @@ by quotation marks.  In this example some extra sbatch options are added.</p>
 <p class="alert">Unless the ARRAY_TASKS option is specified, mail notifications on job BEGIN, END and FAIL apply to a job array as a whole rather than generating individual email messages for each task in the job array.  See <a href="/docs/userguide.html#email">userguide.html#email</a> for more information about email notifications.</p>
     </li>
     <li><b>--export=var=100,nctype=12</b>: sets two environment variables <b><em>var</em></b> and <b><em>nctype</em></b> to 100 and 12 prior to running</li>
-    <li><b>--workdir=/data/user/test</b>: relocate to that directory prior to running any commands</li>
+    <li><b>--chdir=/data/user/test</b>: relocate to that directory prior to running any commands</li>
   </ul>
 </p>
 
@@ -1098,13 +1150,13 @@ to see what would happen before it's too late.  In this case, the <b>--devel</b>
 will display a good deal of information.  This example shows a <b>huge</b> number of
 commands autobundled to run 346 command lines serially per core.</p>
 
-<pre class="term"><b>[biowulf]$</b> swarm -f file.swarm --devel
+<pre class="term"><b>[biowulf]$</b> swarm --devel file.swarm
 345029 commands run in 998 subjobs, each requiring 1 gb and 1 thread, running 346 commands serially per subjob</pre>
 
 <p><b>--verbose</b> accepts a number between 0 (the same as <b>--silent</b>) and 6.  Increasing the verbosity level with <b>--verbose</b> and including <b>--devel</b> will give a visual representation
 of the swarm, along with lots of information about the swarm:</p>
 
-<pre class="term"><b>[biowulf]$</b> swarm --devel --verbose 5 --file file.swarm -g 5 -p 4 -b 4
+<pre class="term"><b>[biowulf]$</b> swarm --devel --verbose 5 -g 5 -p 4 -b 4 file.swarm
 basedir = /spin1/swarm/user
 script dir = /spin1/swarm/user/cF2_0V7N
 ------------------------------------------------------------
@@ -1124,7 +1176,7 @@ SWARM
 32 commands run in 2 subjobs, each command requiring 5 gb and 1 thread, packing 4 processes per subjob, running 4 processes serially per subjob
 sbatch --array=0-1 --job-name=swarm --output=/dev/null --error=/dev/null --cpus-per-task=4 --mem=20480 /spin1/swarm/user/cF2_0V7N.batch</pre>
 
-<p>This shows a swarm of 32 commands (show as "cmd 0" ==> "cmd 31") within 2 subjobs.  Each command requires 5 gb of memory,
+<p>This shows a swarm of 32 commands (show as "cmd 0" ==&gt; "cmd 31") within 2 subjobs.  Each command requires 5 gb of memory,
 and the commands are bundled to run 4 commands sequentially on the cpus allocated.</p>
 
 <center><hr width="500" /></center>
@@ -1137,7 +1189,7 @@ and the commands are bundled to run 4 commands sequentially on the cpus allocate
 <div class="heading"><A name="generate">Generating a swarm script</a></div>
 <a href="/apps/swarm.html" style="font-size:12px">back to top</a><br />
 <P>
-Users will typically want to write a script to create a large swarm file. This script can be written in any scripting language, such as bash, perl, or the language of your choice. Some examples are given below to get you started.
+Users will typically want to write a script to create a large swarmfile. This script can be written in any scripting language, such as bash, perl, or the language of your choice. Some examples are given below to get you started.
 <P>
 <b>Example 1: processing all files in a directory</b><br>
 Suppose you have 800 image files in a directory. You want to set up a swarm job to run an FSL command (e.g. 'mcflirt') on each one of these files.
@@ -1148,7 +1200,7 @@ cd /data/user/mydir
 touch swarm.cmd
 for file in `ls`
 do
-echo "mcflirt -in $file -out $file.mcf1 -mats -plots -refvol 90 -rmsrel -rmsabs" >> swarm.cmd
+echo "mcflirt -in $file -out $file.mcf1 -mats -plots -refvol 90 -rmsrel -rmsabs" &gt;&gt; swarm.cmd
 done</pre>
 
 <p>Execute this file with</p>
@@ -1174,7 +1226,7 @@ system("split -l 10000 ../gi.list");
 my @files = &lt;/$dir/seqs/*&gt;;
 
 # create the swarmfile -- you will need to load the blast/2.2.26 module first
-open (SWARM, "> swarm.cmd");
+open (SWARM, "&gt; swarm.cmd");
 foreach $file (@files) {
   print SWARM "cd ${dir}/seqs; fastacmd -p F -d /fdb/blastdb/nt -i $file -o $file.fas\n";
 }
@@ -1185,7 +1237,7 @@ print "Submitting swarm jobs\n";
 
 <P>
 Once the swarm jobs are complete, you could if desired combine all the sequences into a single file with
-<pre class="term"><b>[biowulf]$</b> cat x*.fas > myseqs.fas</pre>
+<pre class="term"><b>[biowulf]$</b> cat x*.fas &gt; myseqs.fas</pre>
 <P>
 
 <!-- ======================================================================================================== -->
@@ -1198,6 +1250,7 @@ Once the swarm jobs are complete, you could if desired combine all the sequences
 <p>Monitoring a swarm is handled the same way<a href="http://hpc.nih.gov/docs/userguide.html#monitor">as any
 other batch job on the cluster</a>, using
 <b>sjobs</b>,
+<b>dashboard_cli jobs</b>,
 <b>squeue</b>,
 <b>jobload</b> and
 <b>sacct</b>.

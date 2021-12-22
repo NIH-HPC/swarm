@@ -1,10 +1,10 @@
-.TH swarm "1" "Apr 2017" "Linux" "Biowulf Cluster Tools"
+.TH swarm "1" "Dec 2021" "Linux" "Biowulf Cluster Tools"
 
 .SH "NAME"
 swarm \- submit a swarm of commands to cluster
 
 .SH "SYNOPSIS"
-.B swarm -f swarmfile
+.B swarm
 [
 .B -b #
 ] [
@@ -19,6 +19,7 @@ swarm \- submit a swarm of commands to cluster
 .B --sbatch 
 [ "sbatch-options" ]
 ]
+.B swarmfile
 
 .SH "DESCRIPTION"
 .I Swarm
@@ -51,9 +52,19 @@ two or more command lines into each subjob to be run sequentially per cpu.
 
 .SH "OPTIONS"
 
+.I Swarm
+can accept a multitude of options from the command line.  It will also accept options from within the
+.B swarmfile
+itself when preceded with "#SWARM" at the top of the file. See
+.B SWARMFILE DIRECTIVES
+below for more information.
+.PP
+
 .TP
 .B -f,--file swarmfile
-name of file with list of command lines to execute.  By default, each command line is evaluated as a subjob.
+DEPRECATED: name of file with list of command lines to execute.  By default, each command line is evaluated as a subjob.  This option has been deprecated, as
+.I swarm
+takes a single argument as the swarmfile as well, and will be removed in the future.
 
 .TP
 .B -g,--gb-per-process [ float ]
@@ -152,7 +163,9 @@ don't actually run
 
 .TP
 .B --devel
+.RS
 combine --debug and --no-scripts, and be very chatty
+.RE
 
 .TP
 .B --verbose [ int ]
@@ -212,17 +225,66 @@ If there is confusion as to what is passed, include the --devel option to see ex
 print a helpful usage message
 .RE
 
+.B --version
+.RS
+print swarm version and exit
+.RS
+
 .SH "ENVIRONMENT VARIABLES"
 
 The following environment variables will affect how sbatch allocates resources:
 
-.RS
-  SBATCH_JOB_NAME        Same as --job-name
-  SBATCH_PARTITION       Same as --partition
-  SBATCH_QOS             Same as --qos
-  SBATCH_TIMELIMIT       Same as --time
-  SBATCH_EXCLUSIVE       Same as --exclusive
-.RE
+.nf
+      SBATCH_JOB_NAME        Same as --job-name
+      SBATCH_PARTITION       Same as --partition
+      SBATCH_QOS             Same as --qos
+      SBATCH_TIMELIMIT       Same as --time
+      SBATCH_EXCLUSIVE       Same as --exclusive
+.fi
+
+.SH "SWARMFILE DIRECTIVES"
+Options preceded by #SWARM in the swarmfile (flush against the left side) will be evaluated the same as command line options.  The precedence for options is handled in the same way as sbatch:
+.PP
+.nf
+      command line > environment variables > swarmfile directives
+.fi
+.PP
+For example, if the contents of
+.B swarmfile
+is as follows:
+
+.nf
+      #SWARM -t 4 -g 20 --gres lscratch:20
+      command1 arg arg arg
+      command2 arg arg arg
+      command3 arg arg arg
+      ...
+.fi
+
+and is submitted like so:
+
+.nf
+      $ swarm -g 10 --time 120 swarmfile
+.fi
+
+then each subjob will request 4 cpus, 10 GB of RAM, 20 GB of local scratch space, and 120 minutes of walltime.  The amount of memory requested with a command line option (-g 10) supersedes the amount requested in the swarmfile (-g 20), and so takes precedence.
+.PP
+Multiple lines of swarmfile directives can be inserted, like so:
+
+.nf
+      #SWARM --threads-per-process 8
+      #SWARM --gb-per-process 8
+      #SWARM --sbatch '--mail-type=FAIL --export=var=100,nctype=12 --workdir=/data/user/test'
+      #SWARM --logdir /data/user/swarmlogs
+      command
+      command
+      command
+      command
+      ...
+.fi
+.PP
+.B NOTE:
+All lines with correctly formatted #SWARM directives will be removed even if --no-comment or a non-default --comment-char is given.
 
 .SH "OUTPUT"
 STDOUT and STDERR output from processes executed under
@@ -258,7 +320,7 @@ to submit them to the batch queue:
       ls -l
       ^D
 
-      $ swarm -f cmdfile
+      $ swarm cmdfile
 .fi
 .PP
 Use
@@ -304,7 +366,7 @@ and ignored.
       cd pedsystem/run4; ../ped
        ...
 
-      $ swarm -f batchcmds
+      $ swarm batchcmds
 .fi
 .PP
 By default swarm executes one command line per subjob, with each subjob allocated a single core.
@@ -314,7 +376,7 @@ there will be 16 subjob submitted, compared to 80 subjob
 without bundling the commands.
 .PP
 .nf
-      $ swarm -f cmdfile -b 5
+      $ swarm -b 5 cmdfile
 .fi
 .PP
 Many applications require specific environment settings prior to execution.  For interactive sessions,
@@ -324,7 +386,7 @@ environment using the modules for tophat v2.0.6 and samtools v0.1.17, then these
 included in the swarm command.  Modules are separated commas, no spaces allowed.
 .PP
 .nf
-      $ swarm -f cmdfile --module tophat/2.0.6,samtools/0.1.17 -g 4 -t 4  
+      $ swarm --module tophat/2.0.6,samtools/0.1.17 -g 4 -t 4 cmdfile
 .fi
 .PP
 .SH "SBATCH OPTIONS"
@@ -337,7 +399,7 @@ In this example the "--time" option is given to increase the walltime for the su
 default 4 hours to 12 hours:
 .PP
 .nf
-      $ swarm -f swarmcmds --sbatch "--time=12:00:00"
+      $ swarm swarmcmds --sbatch "--time=12:00:00" swarmcmds
 
 .fi
 For additional examples of --sbatch options for swarm, please see

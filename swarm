@@ -28,7 +28,7 @@
 # ===========================================================================
 
 # This script is an adaptation of the swarm script for use with SLURM.
-use Getopt::Long qw(:config no_ignore_case);
+use Getopt::Long qw(GetOptionsFromString :config no_ignore_case);
 Getopt::Long::Configure("bundling"); # allows option bundling
 use POSIX qw(strftime floor ceil);
 use File::Temp qw/tempfile tempdir/;
@@ -39,10 +39,14 @@ use File::Path qw(make_path);
 use lib "/usr/local/slurm/lib/perl5/site_perl/5.24.3/x86_64-linux-thread-multi-ld";
 use Slurm;
 use FileHandle;
+use Text::Wrap;
+use Sys::Hostname;
+
 use strict;
 
-use Sys::Hostname;
 dieWithError("Don't run on helix!  Run on the biowulf cluster!") if (hostname() =~ /helix/);
+
+#use Data::Dump qw/pp/;
 
 $SIG{HUP}  = \&catch_sig;
 $SIG{INT}  = \&catch_sig;
@@ -53,11 +57,14 @@ $SIG{STOP} = \&catch_sig;
 my $PAR;
 my $SWARM;
 setDefaults();
+privilegedUser();
 
 my %OPT;
-my %SLURMOPT;
+my %SLURMOPT1;
+my %SLURMOPT2;
 my $SBATCHOPT;
-getCommandLineOptions();
+setOptions();
+
 validatePartition();
 parseCommands();
 avoidSbatchCommands();
@@ -70,16 +77,27 @@ sleep(2) unless $OPT{debug}; # sleep 2 seconds to prevent weirdness
 submitSlurm();
 createSymlink() unless $OPT{'no-scripts'};
 writeLog() unless $OPT{'no-log'};
-#call_newwall();
 
 #===============================================================================
 sub setDefaults
 {
-  $PAR->{version} = '21.08.0';                                  # Version
-  $PAR->{b} = 1; # bundle value of 1
-  $PAR->{user} = (getpwuid($>))[0]; # who is this?
-  chomp($PAR->{host} = `/bin/hostname`); # where am I?
-  $PAR->{pwd} = $ENV{'PWD'}; # what directory is this?
+  $PAR->{programname} = 'swarm';                                # Program name is swarm, duh
+  $PAR->{version} = '21.12.0';                                  # Version
+  $PAR->{b} = 1;                                                # Default bundle value of 1
+  $PAR->{user} = (getpwuid($>))[0];                             # Who is running swarm?
+  chomp($PAR->{host} = `/bin/hostname`);                        # On what host is swarm being run?
+  $PAR->{pwd} = $ENV{'PWD'};                                    # what directory is this?
+  $PAR->{shell} = "/bin/bash";                                  # default shell of command scripts
+  $PAR->{date} = strftime("%b %d %Y %T", (localtime)[0 .. 5]);  # default datestamp formatting
+  $PAR->{'comment-char'} = '#';                                 # All content beginning with this character is deleted
+  $PAR->{logfile} = "/usr/local/logs/swarm.log";                # The logfile which will be updated
+  $PAR->{tempdir_index} = '/usr/local/logs/swarm_tempdir.idx';  # Keep index of tempdirs
+  $PAR->{maxarraysize} = 1000;                                  # Limits number of subjobs per swarm
+  $PAR->{maxmemsize} = 3000;                                    # Absolute maximum memory of all possible nodes available, in GB
+  @{$PAR->{disallowed_partitions}} = ("huygens","interactive"); # Disallow these partitions
+  $PAR->{largemem_threshold} = 373;                             # Jobs requiring this many GB or less can't run on largemem
+  $PAR->{helpwidth} = 80;                                       # Maximum width of the help page as printed with --help or -h
+
 
 # Create the basedir where the batch script and command scripts will be written
   $PAR->{basedir} = "/spin1/swarm/$PAR->{user}";
@@ -89,48 +107,134 @@ sub setDefaults
     chmod 02750,$PAR->{basedir};
   }
 
-# Other defaults
-  $PAR->{shell} = "/bin/bash";
-  $PAR->{date} = strftime("%b %d %Y %T", (localtime)[0 .. 5]);
-  $PAR->{commentChar} = '#';
-
-# The logfile which will be updated
-  $PAR->{logfile} = "/usr/local/logs/swarm.log";
-
-# Keep index of tempdirs
-  $PAR->{tempdir_index} = '/usr/local/logs/swarm_tempdir.idx';
-
-# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
-# There is no need to keep track of MaxSubmit because swarm will now submit jobarrays.  Each swarm
-# is a single job, so it either submits, or doesn't submit.  The value of interest is MaxArraySize, 
-# which limits the number of subjobs per swarm, er, job.
-# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
-  $PAR->{maxarraysize} = 1000;
-
-# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
-# Currently we have nodes with up to 3000 GB of RAM memory
-# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
-  $PAR->{maxmemsize} = 3000;
-
-# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
-# In addition, we will not be concerned with QOS, as this will be handled downstream by slurm itself.
-# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
-
-# Make sure sbatch is accessible
-  my $sbatch_check = `which sbatch 2>/dev/null`;
-  dieWithError("Can't find sbatch.  Is slurm in your path?") unless $sbatch_check;
+  dieWithError("Can't find sbatch.  Is slurm in your path?") unless (`which sbatch 2>/dev/null`); # Make sure sbatch is accessible
 
 # Get configuration for partitions
   my $slurm = Slurm::new();
   my $x = $slurm->load_partitions();
   foreach my $i (@{$x->{partition_array}}) {
-# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
-# Don't allow interactive or huygens partitions
-    next if (($i->{name} eq 'huygens') || ($i->{name} eq 'interactive'));
-# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+    next if (grep(/^$i->{name}$/,@{$PAR->{disallowed_partitions}}));
     $PAR->{slurm_partitions}{$i->{name}}{default_time} = $i->{default_time};
     $PAR->{slurm_partitions}{$i->{name}}{max_time} = $i->{max_time};
   }
+
+# Options data structure
+#
+# * d = description that is displayed by --help
+# * o = array reference of options shown to user; if o doesn't exist, it is assumed the option is the same as entry key
+# * t = type, either 's', 'i', 'f', or none
+# * e = explanatory type for the --help display
+# * E = environment variable associated with option
+# * h = hidden from --help display
+# * G = group id
+# * O = order id
+# * D = division id
+
+  $PAR->{options} = [
+# Basic
+    { 'f'            => {d=>"DEPRECATED: name of file with list of command lines to execute, with a single command line per subjob",o=>['f','file'],t =>'s',e =>'[file]',G=>'Basic',D=>1},},
+    { 'g'            => {d=>"gb per process (can be fractions of GB, e.g. 3.5)",o=>['g','gb-per-process'],t=>'f',e=>'[float]',G=>'Basic',D=>1}, },
+    { 't'            => {d=>"threads per process (can be an integer or the word auto).  This option is only valid for multi-threaded swarms (-p 1)",o=>['t','threads-per-process'],t =>'i',e=>'[int]/"auto"',G=>'Basic',D=>1},},
+    { 'p'            => {d=>"processes per subjob (default = 1), this option is only valid for single-threaded swarms (-t 1)",o=>['p','processes-per-subjob'],t=>'i',e=>'[int]',G=>'Basic',D=>1},},
+    { 'b'            => {d=>"bundle more than one command line per subjob and run sequentially (this automatically multiplies the time needed per subjob)",o=>['b','bundle'],t=>'i',e =>'[int]',G=>'Basic',D=>1},},
+    { 'noht'         => {d=>"don't use hyperthreading, equivalent to slurm option --threads-per-core=1",G=>'Basic',D=>1},},
+    { 'usecsh'       => {d=>"use tcsh as the shell instead of bash",G=>'Basic',D=>1},},
+    { 'err-exit'     => {d=>"exit the subjob immediately on first non-zero exit status", G=>'Basic',D=>1},},
+    { 'module'       => {d=>"provide a list of environment modules to load prior to execution (comma delimited)",o=>['m','module'],t=>'s',e=>'[str]',G=>'Basic',D=>1},},
+    { 'no-comment'   => {d=>"don't ignore text following comment character $PAR->{'comment-char'}",G=>'Basic',D=>1},},
+    { 'comment-char' => {d=>"use something other than $PAR->{'comment-char'} as the comment character",o=>['c','comment-char'],t=>'s',e=>'[char]',G=>'Basic',D=>1},},
+    { 'maxrunning'   => {d=>"limit the number of simultaenously running subjobs",t=>'i',e=>'[int]',G=>'Basic',D=>1},},
+    { 'merge-output' => {d=>"combine STDOUT and STDERR into a single file per subjob (.o)",G=>'Basic',D=>1},},
+    { 'logdir'       => {d=>"directory to which .o and .e files are to be written (default is current working directory)",t=>'s',e=>'[dir]',G=>'Basic',D=>1},},
+    { 'noout'        => {d=>"completely throw away STDOUT",G=>'Basic',D=>1},},
+    { 'noerr'        => {d=>"completely throw away STDERR",G=>'Basic',D=>1},},
+# Development
+    { 'no-scripts'   => {d=>"don't create temporary swarm scripts (with --debug or --devel)",G=>'Development',D=>1},},
+    { 'no-run'       => {d=>"don't actually run",G=>'Development',D=>1},},
+    { 'debug'        => {d=>"don't actually run",G=>'Development',D=>1},},
+    { 'devel'        => {d=>"combine --debug and --no-scripts, and be very chatty",G=>'Development',D=>1},},
+    { 'verbose'      => {d=>"can range from 0 to 6, with 6 the most verbose",o =>['v','verbose'],t=>'i',e=>'[int]',G=>'Development',D=>1},},
+    { 'silent'       => {d=>"don't give any feedback, just jobid",G=>'Development',D=>1},},
+    { 'h'            => {d=>"print this help message",o=>['h','help'],G=>'Development',D=>1},},
+    { 'version'      => {d=>"print version and exit",o=>['V','version'],G=>'Development',D=>1},},
+# Advanced
+#    { 'evaluate'     => {d=>"only keep commands that evaluate as true (EXPERIMENTAL)",G=>'Advanced',D=>1},},
+# sbatch
+    { 'job-name'     => {d=>"set the name of the job", o => ['J','job-name'],t=>'s',e=>'[str]',E=>'SBATCH_JOB_NAME',G=>'sbatch',D=>3},},
+    { 'dependency'   => {d=>"set up dependency (i.e. run swarm before or after)",t=>'s',e=>'[str]',G=>'sbatch',D=>3},},
+    { 'time'         => {d=>"change the walltime for each subjob (default is 04:00:00, or 4 hours)",t=>'s',e=>'[str]',E=>'SBATCH_TIMELIMIT',G=>'sbatch',D=>3},},
+    { 'licenses'     => {d=>"obtain software licenses (e.g. --licenses=matlab)",o=>['L','licenses'],t=>'s',e=>'[str]',G=>'sbatch',D=>3},},
+    { 'partition'    => {d=>"change the partition (default is norm)",t=>'s',e=>'[str]',E=>'SBATCH_PARTITION',G=>'sbatch',D=>3},},
+    { 'gres'         => {d=>"set generic resources for swarm",t=>'s',e=>'[str]',G=>'sbatch',D=>3},},
+    { 'qos'          => {d=>"set quality of service for swarm",t=>'s',e=>'[str]',E=>'SBATCH_QOS',G=>'sbatch',D=>3},},
+    { 'reservation'  => {d=>"select a slurm reservation",t=>'s',e=>'[str]',E=>'SBATCH_RESERVATION',G=>'sbatch',D=>3},},
+    { 'exclusive'    => {d=>"allocate a single node per subjob, same as -t auto",E=>'SBATCH_EXCLUSIVE',G=>'sbatch',D=>2},},
+    { 'sbatch'       => {d=>"add sbatch-specific options to swarm; these options will be added last, which means that swarm options for allocation of cpus and memory take precedence",t=>'s',e=>'[str]',G=>'sbatch',D=>4},},
+  ];
+}
+#==============================================================================
+sub printOptions
+{
+  $Text::Wrap::columns = $PAR->{helpwidth};
+
+  print "Usage: swarm [swarm options] [sbatch options] swarmfile\n";
+
+  my $pG;
+  foreach my $x (@{$PAR->{options}}) {
+    my ($k) = (keys %{$x});
+    next if ((defined $x->{$k}{G}) && ($x->{$k}{G} eq 'Hidden') && (!$PAR->{privilegedUser}));
+    my ($f,$a);
+    my @option_strings = (defined $x->{$k}{o}) ? @{$x->{$k}{o}} : ($k);
+    my @n;
+    foreach my $s (@option_strings) {
+      if (length($s) == 1) { push @n,"-${s}"; }
+      else { push @n,"--${s}"; }
+    }
+    my $opt_list=join(",",@n);
+    my $opt_example = (defined $x->{$k}{e}) ? $x->{$k}{e} : "";
+    my @text = split(/ /,$x->{$k}{d});
+
+# Print option group title
+    if (defined $x->{$k}{G}) {
+      if ((not defined $pG) || ($pG ne $x->{$k}{G})) {
+        $pG = $x->{$k}{G};
+        print "\n$x->{$k}{G} options:\n\n";
+      }
+    }
+
+# Print option and example
+    if (length("$opt_list $opt_example") > 25) {
+      my $n = $PAR->{helpwidth}-4;
+      $f = sprintf("  %-${n}s ","$opt_list $opt_example");
+    }
+    else {
+      $f = sprintf("  %-25s ","$opt_list $opt_example");
+    }
+    $a = sprintf("  %-25s ",'');
+    print wrap($f,$a,@text);
+    print "\n";
+  }
+
+# Print input environment variables
+  print "\nEnvironment variables:\n\n";
+
+  print "  The following environment variables will affect how sbatch allocates\n";
+  print "  resources:\n\n";
+
+  foreach my $x (@{$PAR->{options}}) {
+    my ($k) = (keys %{$x});
+    next if ((defined $x->{$k}{G}) && ($x->{$k}{G} eq 'Hidden') && (!$PAR->{privilegedUser}));
+    if (defined $x->{$k}{E}) {
+      printf("  %-24s  Same as --%s\n",$x->{$k}{E},$k);
+    }
+  }
+
+  print "\n  The following environment variables are set within a swarm:\n\n";
+  print "  SWARM_PROC_ID          can be 0 or 1\n";
+  print "\nFor more information, type \"man swarm\".\n";
+  print "\nLast modification date: 08 Dec 21 (David Hoover)\n";
+
+  exit;
 }
 #==============================================================================
 sub distributeCommands
@@ -186,6 +290,7 @@ sub distributeCommands
 #==============================================================================
 sub report
 {
+  print "\n" if ($OPT{devel});
 # Report where the command files are written
   print "Command files written to $PAR->{tempdir}\n" if (($OPT{verbose} > 1) && (!$OPT{'no-scripts'}));
   my $len1 = length($#{$SWARM->{CMDLISTS}});
@@ -195,12 +300,12 @@ sub report
   print "Loading modules $OPT{module}\n" if (($OPT{verbose} > 2) && ($OPT{module}));
 
 # Report what modules will be loaded
-  print "Using comment character $OPT{commentChar}\n" if (($OPT{verbose} > 2) && ($OPT{commentChar}));
+  print "Using comment character $OPT{'comment-char'}\n" if (($OPT{verbose} > 2) && ($OPT{'comment-char'}));
 
 # update cpus-per-task and mem for single-threaded swarms
   if (defined $OPT{p}) {
-    $SLURMOPT{binary}{"cpus-per-task"} = $OPT{p};
-    $SLURMOPT{binary}{"mem"} = $SLURMOPT{binary}{"mem"}*$OPT{p};
+    $SLURMOPT2{"cpus-per-task"} = $OPT{p};
+    $SLURMOPT2{"mem"} = $SLURMOPT2{"mem"}*$OPT{p};
   }
 
 # Calculate total number of cpus allocated
@@ -232,9 +337,9 @@ sub report
         $sj,
         $num_cmds_in_subjob,
         write_s_if_needed($num_cmds_in_subjob),
-        $SLURMOPT{binary}{"cpus-per-task"},
-        write_s_if_needed($SLURMOPT{binary}{"cpus-per-task"}),
-        ($SLURMOPT{binary}{"mem"}/1024),
+        $SLURMOPT2{"cpus-per-task"},
+        write_s_if_needed($SLURMOPT2{"cpus-per-task"}),
+        ($SLURMOPT2{"mem"}/1024),
       );
     }
     if ($OPT{verbose} > 4) {
@@ -267,7 +372,7 @@ sub report
     }
     if ((not defined $OPT{t}) || ($OPT{t} ne 'auto')) {
 # allocating by core, not by cpu
-      my $cpus = $SLURMOPT{binary}{"cpus-per-task"};
+      my $cpus = $SLURMOPT2{"cpus-per-task"};
       ($cpus%2) && $cpus++;
       $cpus *= $PAR->{subjobs};
       my $cores = $cpus/2;
@@ -282,6 +387,7 @@ sub report
     print "\n";
   }
 
+  print "\n" if ($OPT{devel});
 }
 #==============================================================================
 sub write_s_if_needed
@@ -394,7 +500,7 @@ sub writeBatchScript
   (my $stupid_logdir = $OPT{logdir})=~s/"/\\"/g;
   $stupid_logdir=~s/`/\\`/g;
   $stupid_logdir=~s/\$/\\\$/g;
-  (my $stupid_job_name = $PAR->{"job-name"})=~s/"/\\"/g;;
+  (my $stupid_job_name = $PAR->{'job-name'})=~s/"/\\"/g;;
   $stupid_job_name=~s/`/\\`/g;
   $stupid_job_name=~s/\$/\\\$/g;
 
@@ -405,7 +511,7 @@ sub writeBatchScript
       ###$fileContents .= "[[ -s \${d}/cmd.\${z}_$tag ]] && ( /bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${z}_$tag && /bin/echo '$ce_bot' && $PAR->{shell} \${d}/cmd.\${z}_$tag ";
       $fileContents .= "[[ -s \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i ]] && ( /bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i && /bin/echo '$ce_bot' && SWARM_PROC_ID=$i $PAR->{shell} \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i ) ";
 # Determine output/error redirects
-      if ($OPT{"merge-output"}) {
+      if ($OPT{'merge-output'}) {
         $fileContents .= "1> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.o\" 2> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.o\" ";
       }
       else {
@@ -448,11 +554,11 @@ sub submitSlurm
   (my $stupid_logdir = $OPT{logdir})=~s/"/\\"/g;
   $stupid_logdir=~s/`/\\`/g;
   $stupid_logdir=~s/\$/\\\$/g;
-  (my $stupid_job_name = $PAR->{"job-name"})=~s/"/\\"/g;
+  (my $stupid_job_name = $PAR->{'job-name'})=~s/"/\\"/g;
   $stupid_job_name=~s/`/\\`/g;
   $stupid_job_name=~s/\$/\\\$/g;
 
-  $PAR->{sbatch_options} .= " --job-name=\"".$stupid_job_name."\"" unless ($SLURMOPT{binary}{"job-name"});
+  $PAR->{sbatch_options} .= " --job-name=\"".$stupid_job_name."\"" unless ($SLURMOPT2{'job-name'});
 
 # output and error handled in the batch script
   if ($OPT{p}) {
@@ -460,7 +566,7 @@ sub submitSlurm
     $PAR->{sbatch_options} .= " --error=/dev/null";
   }
   else {
-    if ($OPT{"merge-output"}) {
+    if ($OPT{'merge-output'}) {
       $PAR->{sbatch_options} .= " --output=\"".$stupid_logdir."/".$stupid_job_name."_\%A_\%a.o\"";
     }
     else {
@@ -480,25 +586,25 @@ sub submitSlurm
   }
 
 # slurm options
-  foreach my $i (sort keys %{$SLURMOPT{unary}}) {
-    $PAR->{sbatch_options} .= " --$i" if ($SLURMOPT{unary}{$i});
+  foreach my $i (sort keys %SLURMOPT1) {
+    $PAR->{sbatch_options} .= " --$i" if ($SLURMOPT1{$i});
   }
-  foreach my $i (sort keys %{$SLURMOPT{binary}}) {
+  foreach my $i (sort keys %SLURMOPT2) {
     if ($i eq 'job-name') {
-      (my $s = $SLURMOPT{binary}{$i})=~s/"/\\"/g;
+      (my $s = $SLURMOPT2{$i})=~s/"/\\"/g;
       $s=~s/`/\\`/g;
       $s=~s/\$/\\\$/g;
-      $PAR->{sbatch_options} .= " --${i}=\"$s\"" if ($SLURMOPT{binary}{$i});
+      $PAR->{sbatch_options} .= " --${i}=\"$s\"" if ($SLURMOPT2{$i});
     }
     else {
-      $PAR->{sbatch_options} .= " --${i}=$SLURMOPT{binary}{$i}" if ($SLURMOPT{binary}{$i});
+      $PAR->{sbatch_options} .= " --${i}=$SLURMOPT2{$i}" if ($SLURMOPT2{$i});
     }
   }
   if ($SBATCHOPT) {
     $PAR->{sbatch_options} .= " ".$SBATCHOPT;
   }
 
-  print "sbatch $PAR->{sbatch_options} $PAR->{batchfile}\n" if ($OPT{verbose} > 1);
+  print "sbatch $PAR->{sbatch_options} $PAR->{batchfile}\n\n" if ($OPT{verbose} > 1);
   unless ($OPT{'no-run'}) {
     if (!-d $OPT{logdir}) {
       make_path($OPT{logdir}) || dieWithError("can't create logdir $OPT{logdir}");
@@ -506,13 +612,9 @@ sub submitSlurm
     elsif (not writeable($OPT{logdir})) {
       dieWithError("can't write to logdir $OPT{logdir}");
     }
-#    my $slurm_response;
-#    print "sbatch $PAR->{sbatch_options} $PAR->{batchfile}\n";
-#    exit;
     my $slurm_response = `sbatch $PAR->{sbatch_options} $PAR->{batchfile}`;
     print $slurm_response;
     if ($slurm_response=~/^(\d+)$/) {
-    #if ($slurm_response=~/Submitted batch job (\d+)/) {
       $PAR->{jobid} = $1;
     }
     else {
@@ -549,15 +651,17 @@ sub createSymlink
 sub parseCommands
 {
   open(COMMANDFILE, "$PAR->{Commandfile}") || dieWithError("Can't read $PAR->{Commandfile}: $!");
-  my @COMMANDS = evaluateCommands(mergeLineContinuations(<COMMANDFILE>));
+  #my @COMMANDS = evaluateCommands(mergeLineContinuations(<COMMANDFILE>));
+  my @COMMANDS = mergeLineContinuations(<COMMANDFILE>);
   close COMMANDFILE;
   foreach (@COMMANDS) {
     chomp;
+    s/#SWARM.*//g; # remove #SWARM directives
     s/\r//g;         # remove carriage returns
     next if /^\s*$/; # ignore blank lines
-    if (!$OPT{nocomment}) {
-      next if /^\s*$PAR->{commentChar}/; # remove comment lines
-      s/$PAR->{commentChar}.*//g; # remove comment lines
+    if (!$OPT{'no-comment'}) {
+      next if /^\s*$PAR->{'comment-char'}/; # remove comment lines
+      s/$PAR->{'comment-char'}.*//g; # remove comment lines
     }
     s/[\s;]+$//;     # don't allow final semicolons or spaces
     push @{$SWARM->{COMMANDS}},$_;
@@ -569,43 +673,43 @@ sub parseCommands
   }
 }
 #==============================================================================
-sub evaluateCommands
-{
-# evaluate test conditions if present
-  my @tmp = @_;
-  return @tmp unless $OPT{evaluate};
-  my @filtered;
-  foreach (@tmp) {
-    if (m/^(.*?)\s*#EVAL(.*)$/) {
-      my $line = $1;
-      my (undef,$fn) = tempfile('tmpXXXXXXXX',OPEN => 0,DIR=>'/tmp',SUFFIX=>'.sw');
-      my $eval = $2;
-      open FILE, ">$fn";
-      if ($PAR->{shell} eq '/bin/bash') {
-        print FILE "if [ $eval ] ; then echo 1 ; else echo 2 ; fi\n";
-      }
-      elsif ($PAR->{shell} eq '/bin/tcsh') {
-        print FILE "if ( $eval ) then\necho 1\nelse\necho 2\nendif\n";
-      }
-      close FILE;
-      chomp(my $ret = `$PAR->{shell} $fn 2>&1`);
-      unlink $fn;
-      if ($ret == 1) {
-        push @filtered,"$line\n";
-      }
-      elsif ($ret == 2) {
-# drop the command
-      }
-      else {
-        dieWithError("commandline evaluation failure:\n$ret");
-      }
-    }
-    else {
-      push @filtered,$_;
-    }
-  }
-  return @filtered;
-}
+#sub evaluateCommands
+#{
+## evaluate test conditions if present
+#  my @tmp = @_;
+#  return @tmp unless $OPT{evaluate};
+#  my @filtered;
+#  foreach (@tmp) {
+#    if (m/^(.*?)\s*#EVAL(.*)$/) {
+#      my $line = $1;
+#      my (undef,$fn) = tempfile('tmpXXXXXXXX',OPEN => 0,DIR=>'/tmp',SUFFIX=>'.sw');
+#      my $eval = $2;
+#      open FILE, ">$fn";
+#      if ($PAR->{shell} eq '/bin/bash') {
+#        print FILE "if [ $eval ] ; then echo 1 ; else echo 2 ; fi\n";
+#      }
+#      elsif ($PAR->{shell} eq '/bin/tcsh') {
+#        print FILE "if ( $eval ) then\necho 1\nelse\necho 2\nendif\n";
+#      }
+#      close FILE;
+#      chomp(my $ret = `$PAR->{shell} $fn 2>&1`);
+#      unlink $fn;
+#      if ($ret == 1) {
+#        push @filtered,"$line\n";
+#      }
+#      elsif ($ret == 2) {
+## drop the command
+#      }
+#      else {
+#        dieWithError("commandline evaluation failure:\n$ret");
+#      }
+#    }
+#    else {
+#      push @filtered,$_;
+#    }
+#  }
+#  return @filtered;
+#}
 #==============================================================================
 sub mergeLineContinuations
 # If a swarmfile has line continuation markers (one or more spaces, followed
@@ -669,7 +773,7 @@ sub avoidSbatchCommands
   }
 }
 #===============================================================================
-sub getCommandLineOptions
+sub setOptions
 {   
 # capture command line 
     
@@ -685,108 +789,48 @@ sub getCommandLineOptions
     $PAR->{commandLine} .= " $arg"; 
   }
 
-  GetOptions(
+# Create temporary hashref ($D) of options, along with array of options for GetOptions and GetOptionsFromString
+  my ($D,@OPTIONS) = makeOptionsArray();
+  getCommandLineOptions($D,@OPTIONS); # Commandline options
+  getEnvironmentOptions(); # Enviroment options
+  getFileDirectives($D,@OPTIONS); # Swarmfile directives
 
-# standard swarm options
-    "f=s"               => \$OPT{f},
-    "file=s"            => \$OPT{f},
-    "b=i"               => \$OPT{b},
-    "bundle=i"          => \$OPT{b},
-    "autobundle"        => \$OPT{autobundle},
-    "g=f"               => \$OPT{g},
-    "gb-per-process=f"  => \$OPT{g},
-    "t=s"               => \$OPT{t},
-    "threads-per-process=s" => \$OPT{t},
-    "p=i"               => \$OPT{p},      # run 2 commands per core for single threaded bundled swarms 
-    "processes-per-subjob=i"  => \$OPT{p},      # run 2 commands per core for single threaded bundled swarms 
-    "usecsh"            => \$OPT{usecsh},    # use tcsh shell instead of bash
-    "comment-char=s"    => \$OPT{commentChar}, # comment character
-    "no-comment"        => \$OPT{nocomment}, # no comment character
-    "evaluate"          => \$OPT{evaluate}, # only keep commands that evaluate as true
-    "noht"              => \$OPT{noht},     # no hyperthreading 
-    'm=s'               => \$OPT{module},  # modules are comma delimited 
-    'module=s'          => \$OPT{module},  # modules are comma delimited 
-    'err-exit'          => \$OPT{errexit}, # include -e in the shell (requires bash)
+# Determine job-name
+  if ($SLURMOPT2{'job-name'}) {
+    $PAR->{'job-name'} = $SLURMOPT2{'job-name'};
+  }
+  else {
+    $PAR->{'job-name'} = "swarm";
+  }
 
-# special stuff, handle with care
-    "noout"             => \$OPT{noout},#  completely throw away STDOUT
-    "noerr"             => \$OPT{noerr},#  completely throw away STDERR
-    "logdir=s"          => \$OPT{logdir},# directory to which .o and .e files are written
-    "merge-output"      => \$OPT{"merge-output"},# merge stdout and stderr into .o
+# Special for exclusivity
+  $SLURMOPT2{"ntasks-per-node"} = 1 if ($SLURMOPT1{exclusive});
 
-# interactive stuff
-    "h"                 => \$OPT{h},
-    "help"              => \$OPT{h},
-    "no-scripts"        => \$OPT{'no-scripts'}, # don't print scripts (requires debug}
-    "debug"             => \$OPT{debug},     # --verbose=1, --no-run
-    "devel"             => \$OPT{devel},     # --verbose=2, --no-run, --no-scripts
-    "v=i"               => \$OPT{verbose},   # verbosity level, default = 1
-    "verbose=i"         => \$OPT{verbose},   # verbosity level, default = 1
-    "silent"            => \$OPT{silent},   # verbosity level = 0
-
-# hidden options
-    "no-run"            => \$OPT{'no-run'},  # don't actually run
-    "no-log"            => \$OPT{'no-log'},  # don't actually write to logfile
-    "logfile=s"         => \$OPT{logfile},   # alternate logfile
-    "maxarraysize=i"    => \$OPT{maxarraysize}, # for testing 
-    "maxrunning=i"      => \$OPT{maxrunning}, # limit the number of running jobs, for testing 
-
-# sbatch options (specific)
-    "hint=s"            => \$SLURMOPT{binary}{hint},
-    "dependency=s"      => \$SLURMOPT{binary}{dependency},
-    "partition=s"       => \$SLURMOPT{binary}{partition},
-    "reservation=s"     => \$SLURMOPT{binary}{reservation},
-    "time=s"            => \$SLURMOPT{binary}{time},
-    "exclusive"         => \$SLURMOPT{unary}{exclusive},
-    "L=s"               => \$SLURMOPT{binary}{licenses},
-    "licenses=s"        => \$SLURMOPT{binary}{licenses},
-    "J=s"               => \$SLURMOPT{binary}{"job-name"},
-    "job-name=s"        => \$SLURMOPT{binary}{"job-name"},
-    "gres=s"            => \$SLURMOPT{binary}{gres},
-    "qos=s"             => \$SLURMOPT{binary}{qos},
- 
-# sbatch option (general)
-    "sbatch=s"          => \$SBATCHOPT, # a catch all for all other sbatch options
-
-# last change
-    "version"           => \$OPT{version},
-
-  ) || exit 1;
-
-  print_options() if $OPT{h};
-
-  if ($OPT{version}) { print "swarm $PAR->{version}\n"; exit; }
-
-  if ($OPT{autobundle}) { print STDERR "WARNING: --autobundle has been deprecated\n"; }
-
-# Default partition
-  if (not defined $SLURMOPT{binary}{partition}) {
-    if (defined $ENV{SBATCH_PARTITION}) {
-      $SLURMOPT{binary}{partition} = $ENV{SBATCH_PARTITION};
-    }
-    elsif (defined $SBATCHOPT) {
+# Set partition from somewhere
+  if (not defined $SLURMOPT2{partition}) {
+    if (defined $SBATCHOPT) {
       if ($SBATCHOPT=~/(^\-\-partition\s*=?\s*)(\w+)/) {
-        $SLURMOPT{binary}{partition} = $2;
+        $SLURMOPT2{partition} = $2;
         $SBATCHOPT=~s/${1}${2}//g;
       }
       elsif ($SBATCHOPT=~/(^\-p\s*=?\s*)(\w+)/) {
-        $SLURMOPT{binary}{partition} = $2;
+        $SLURMOPT2{partition} = $2;
         $SBATCHOPT=~s/${1}${2}//g;
       }
       elsif ($SBATCHOPT=~/( \-\-partition\s*=?\s*)(\w+)/) {
-        $SLURMOPT{binary}{partition} = $2;
+        $SLURMOPT2{partition} = $2;
         $SBATCHOPT=~s/${1}${2}//g;
       }
       elsif ($SBATCHOPT=~/( \-p\s*=?\s*)(\w+)/) {
-        $SLURMOPT{binary}{partition} = $2;
+        $SLURMOPT2{partition} = $2;
         $SBATCHOPT=~s/${1}${2}//g;
       }
       else {
-        $SLURMOPT{binary}{partition} = "norm";
+        $SLURMOPT2{partition} = "norm";
       }
     }
     else {
-      $SLURMOPT{binary}{partition} = "norm";
+      $SLURMOPT2{partition} = "norm";
     }
   }
 
@@ -810,18 +854,13 @@ sub getCommandLineOptions
     $OPT{'no-log'} = 1;
     $OPT{debug} = 1;
     $OPT{verbose} = 3 unless (defined $OPT{verbose});
+    print "\n" if ($OPT{verbose} > 4);
   }
   elsif ($OPT{debug}) {
     $OPT{'no-scripts'} = 1;
     $OPT{verbose} = 2;
     $OPT{'no-run'} = 1;
     $OPT{'no-log'} = 1;
-  }
-
-# $OPT{'no-log'} override
-  if ((defined $OPT{logfile}) && ($OPT{logfile} ne $PAR->{logfile})) {
-    undef $OPT{'no-log'};
-    $PAR->{logfile} = $OPT{logfile};
   }
 
 # Default verbosity
@@ -843,22 +882,20 @@ sub getCommandLineOptions
 # set cpus-per-task or ntasks-per-node
   if ($OPT{t}) {
     if ($OPT{t} eq "auto") {
-      $SLURMOPT{binary}{"cpus-per-task"} = 32;
+      undef $SLURMOPT2{"cpus-per-task"};
+      $SLURMOPT1{"exclusive"}=1;
     }
     else {
 # Don't be stupid
       dieWithError("-t must be either a number or \"auto\"") if !($OPT{t}=~/^\d+$/ || $OPT{t} eq "auto");
       dieWithError("-t must be either a number >=1") if ($OPT{t} < 1);
-      $SLURMOPT{binary}{"cpus-per-task"} = $OPT{t};
+      $SLURMOPT2{"cpus-per-task"} = $OPT{t};
     }
   }
   else {
     $OPT{t} = 1;
-    $SLURMOPT{binary}{"cpus-per-task"} = 1;
+    $SLURMOPT2{"cpus-per-task"} = 1;
   }
-
-# And of course because we allocate per core, rather than per cpu, we need to adjust cpus-per-task
-  #$SLURMOPT{binary}{"cpus-per-task"} = 2 if ($SLURMOPT{binary}{"cpus-per-task"} == 1);
 
 # pack only allowed for single threaded swarms 
   if ($OPT{t} && $OPT{p}) {
@@ -871,88 +908,44 @@ sub getCommandLineOptions
   dieWithError("-p can't be more than 2.") if ($OPT{p} > 2);
 
 # Don't allow hyperthreading, which implies no packing
-  $SLURMOPT{binary}{"threads-per-core"} = 1 if ($OPT{noht});
-
-# Set qos
-  if ($ENV{SBATCH_QOS} && (not defined $SLURMOPT{binary}{qos})) {
-     $SLURMOPT{binary}{qos} = $ENV{SBATCH_QOS};
-  }
-
-# Special for exclusivity
-  if ($SLURMOPT{unary}{exclusive}) {
-    $SLURMOPT{binary}{"ntasks-per-node"} = 1;
-  }
-  elsif ($ENV{SBATCH_EXCLUSIVE}) {
-    $SLURMOPT{unary}{exclusive}=1;
-    $SLURMOPT{binary}{"ntasks-per-node"} = 1;
-  }
+  $SLURMOPT2{"threads-per-core"} = 1 if ($OPT{noht});
 
   if (defined $OPT{g}) { # assign to --mem, converted to MB
     dieWithError("-g must be between 0.1 and ".$PAR->{maxmemsize}) if (($OPT{g} <= 0.1) || ($OPT{g} > $PAR->{maxmemsize}));
-    if (($OPT{g} > 373) && ($SLURMOPT{binary}{partition} ne "largemem")) {
+    if (($OPT{g} > $PAR->{largemem_threshold}) && ($SLURMOPT2{partition} ne "largemem")) {
       dieWithError("-g $OPT{g} requires --partition largemem");
     }
   }
   else {
     $OPT{g} = 1.5;
   }
-  $SLURMOPT{binary}{"mem"} = ceil($OPT{g}*1024); 
+  if (($OPT{g} <= $PAR->{largemem_threshold}) && ($SLURMOPT2{partition} eq "largemem")) {
+    dieWithError("-g <= $PAR->{largemem_threshold} must not run on the largemem partition");
+  }
+
+  $SLURMOPT2{"mem"} = ceil($OPT{g}*1024); 
 
 # After getopts, argv should be -1 for this script.
   dieWithError("excess commandline arguments (@ARGV). See $PAR->{programname} --help") if ($#ARGV > -1 || $#ARGV < -1);
-
-# Also, swarm MUST be called with -f option
-  dieWithError("must specify '-f cmdfile'  See $PAR->{programname} --help") if !$OPT{f};
 
   $PAR->{Commandfile} = $OPT{f};
 
 # Swarmfile must be a file
   dieWithError("where is swarmfile?") if (! -f $OPT{f});
 
-# The swarmfile must not exceed 100MB in size.
-  #dieWithError("swarmfile must not exceed 100MB in size") if ((stat($OPT{f}))[7] > (100*1024*1024));
-
-# Check validity of $OPT{force}
-#  if (@{$OPT{force}}) {
-#    dieWithError("must specify processes per node (--force [nt] [ntasks-per-node])") if (${$OPT{force}}[1] !~/^\d+$/);
-#  } 
-
 # choose shell to run under
   $PAR->{shell} = ($OPT{usecsh}) ? "/bin/tcsh" : "/bin/bash";
 
 # modify shell if wanted
-  $PAR->{shell} .= " -e" if ($OPT{errexit});
+  $PAR->{shell} .= " -e" if ($OPT{'err-exit'});
 
-# set commentChar
-  $PAR->{commentChar} = substr($OPT{commentChar},0,1) if $OPT{commentChar};
-
-# rewrite resource list
-#  if (defined $OPT{R}) {
-#    my @tmp;
-#    foreach my $i (split /,/,$OPT{R}) { 
-#      if ($i eq 'gpfs') { $PAR->{gpfs}=1; } # set gpfs resource
-#      elsif ($i eq 'gpu2050') { $PAR->{gpu2050}=1; } # set gpu resource
-#      else { push @tmp,$i; }
-#    }
-#    $OPT{R} = join ',',@tmp;
-#  }
+# set 'comment-char'
+  $PAR->{'comment-char'} = substr($OPT{'comment-char'},0,1) if $OPT{'comment-char'};
 
 # Convert module from comma-delimited list to space-delimited list
   if ($OPT{module}) {
     my @tmp = split /,/,$OPT{module};
     $OPT{module} = join " ",@tmp;
-  }
-
-# Determine job-name
-  if ($SLURMOPT{binary}{'job-name'}) {
-    $PAR->{"job-name"} = $SLURMOPT{binary}{'job-name'};
-  }
-  elsif ($ENV{SBATCH_JOB_NAME}) {
-    $SLURMOPT{binary}{'job-name'} = $ENV{SBATCH_JOB_NAME};
-    $PAR->{"job-name"} = $SLURMOPT{binary}{'job-name'};
-  }
-  else {
-    $PAR->{"job-name"} = "swarm";
   }
 
 # Make sure that the logdir can be written to
@@ -963,114 +956,17 @@ sub getCommandLineOptions
     $OPT{logdir} = $PAR->{pwd};
   }
 
-# Set time
-  if (defined $ENV{SBATCH_TIMELIMIT}) {
-    $SLURMOPT{binary}{time}=$ENV{SBATCH_TIMELIMIT};
-  }
-
-# Override default maxarraysize if needed
-  $PAR->{maxarraysize} = $OPT{maxarraysize} if $OPT{maxarraysize};
-
 # Be reasonable
   if ((defined $OPT{maxrunning}) && ($OPT{maxrunning} < 1)) {
     undef $OPT{maxrunning};
   }
 
 # noout and noerr are incompatible with merge-output
-  if ($OPT{"merge-output"}) {
+  if ($OPT{'merge-output'}) {
     if ($OPT{noout} || $OPT{noerr}) {
       dieWithError("--noout and --noerr are incompatible with --merge-output");
     }
   }
-}
-#==============================================================================
-sub print_options
-{
-  print <<EOF;
-Usage: swarm [swarm options] [sbatch options]
-
-  -f,--file [file]       name of file with list of command lines to execute,
-                         with a single command line per subjob
-
-  -g,--gb-per-process    gb per process (can be fractions of GB, e.g. 3.5)
-  [float]
-
-  -t,                    threads per process (can be an integer or the word
-  --threads-per-process  auto).  This option is only valid for multi-
-  [int]/"auto"           threaded swarms (-p 1).
-
-  -p,                    processes per subjob (default = 1).  This option is
-  --processes-per-subjob only valid for single-threaded swarms (-t 1).
-  [int]                  
-                      
-  --noht                 don't use hyperthreading, equivalent to slurm option
-                         --threads-per-core=1
-
-  -b,--bundle [int]      bundle more than one command line per subjob and run
-                         sequentially (this automatically multiplies the time
-                         needed per subjob)
-
-  --usecsh               use tcsh as the shell instead of bash
-  --err-exit             exit the subjob immediately on first non-zero exit status
-
-  -m, --module           provide a list of environment modules to load
-                         prior to execution (comma delimited)
-
-  --no-comment           don't ignore text following comment character $PAR->{commentChar}
-  -c, --comment-char [chr]  
-                         use something other than $PAR->{commentChar} as the comment character
-
-  --merge-output         combine STDOUT and STDERR into a single file per subjob (.o)
-  --logdir               directory to which .o and .e files are to be written
-                         (default is current working directory)
-
-  --maxrunning [int]     limit the number of simultaenously running subjobs
-
-Development options:
-
-  -h, --help             print this help message
-  --no-scripts           don't create temporary swarm scripts (with --debug
-                         or --devel)
-  --debug                don't actually run 
-  --devel                combine --debug and --no-scripts, and be very chatty
-  -v, --verbose [int]    can range from 0 to 4, with 4 the most verbose
-  --silent               don't give any feedback, just jobid
-
-sbatch options:
-
-  -J, --job-name [str]   set the name of the job
-  --dependency [str]     set up dependency (i.e. run swarm before or after)
-  --time [str]           change the walltime for each subjob (default is
-                         04:00:00, or 4 hours)
-  -L,--licenses [str]    obtain software licenses (e.g. --licenses=matlab)
-  --partition [str]      change the partition (default is norm)
-  --gres [str]           set generic resources for swarm
-  --qos [str]            set quality of service for swarm
-
-Other sbatch options
-
-  --sbatch [string]      add sbatch-specific options to swarm.  These options
-                         will be added last, which means that swarm options
-                         for allocation of cpus and memory take precedence.
-
-Environment variables
-
-  The following environment variables will affect how sbatch allocates
-  resources:
-
-  SBATCH_JOB_NAME        Same as --job-name
-  SBATCH_PARTITION       Same as --partition
-  SBATCH_QOS             Same as --qos
-  SBATCH_TIMELIMIT       Same as --time
-  SBATCH_EXCLUSIVE       Same as --exclusive
-
-  The following environment variables are set within a swarm:
-
-  SWARM_PROC_ID          can be 0 or 1
-
-  Last modification date: NNNNN_DATESTAMP_NNNNN (David Hoover)
-EOF
-  exit;
 }
 #==============================================================================
 sub dieWithError
@@ -1115,8 +1011,8 @@ sub validatePartition
 # Don't let the use choose an unknown or invalid partition
 {
   my @names = (sort keys %{$PAR->{slurm_partitions}});
-  foreach my $part (split /,/,$SLURMOPT{binary}{partition}) {
-    dieWithError("Unknown partition '$part'!") unless (grep /^$part$/,@names);
+  foreach my $part (split /,/,$SLURMOPT2{partition}) {
+    dieWithError("Unknown or disallowed partition '$part'!") unless (grep /^$part$/,@names);
     dieWithError("Partition '$part' is only valid for multinode jobs") if (($part eq 'ibddr') && !$PAR->{multinode});
     dieWithError("Partition '$part' is only valid for multinode jobs") if (($part eq 'ibfdr') && !$PAR->{multinode});
     dieWithError("Partition '$part' is only valid for multinode jobs") if (($part eq 'ibqdr') && !$PAR->{multinode});
@@ -1127,15 +1023,15 @@ sub adjustTime
 # The timelimit must be changed to account for bundling and/or folding
 {
 # Don't bother if partition is unlimited
-  if ($SLURMOPT{binary}{partition} eq "unlimited") {
-    undef $SLURMOPT{binary}{time};
+  if ($SLURMOPT2{partition} eq "unlimited") {
+    undef $SLURMOPT2{time};
     return;
   }
 
 # Account for multiple partitions
   $PAR->{default_time} = 999999999999; # really long time
   $PAR->{max_time} = 999999999999; # really long time
-  foreach my $part (split /,/,$SLURMOPT{binary}{partition}) {
+  foreach my $part (split /,/,$SLURMOPT2{partition}) {
     my $part_found;
     foreach my $name (sort keys %{$PAR->{slurm_partitions}}) {
       if ($name eq $part ) {
@@ -1147,12 +1043,12 @@ sub adjustTime
         $PAR->{max_time} = $t if ($t < $PAR->{max_time});
       }
     }
-    ($part_found) || dieWithError("undefined time limit for $SLURMOPT{binary}{partition} partition!");
+    ($part_found) || dieWithError("undefined time limit for $SLURMOPT2{partition} partition!");
   }
 
 # Find requested_time from user
-  if (defined $SLURMOPT{binary}{time}) {
-    $PAR->{requested_time} = clock_to_seconds($SLURMOPT{binary}{time});
+  if (defined $SLURMOPT2{time}) {
+    $PAR->{requested_time} = clock_to_seconds($SLURMOPT2{time});
   }
   else {
     $PAR->{requested_time} = $PAR->{default_time};
@@ -1177,7 +1073,7 @@ sub adjustTime
   dieWithError("Total time for bundled commands is greater than partition walltime limit.\nTry lowering the time per command (--time=".seconds_to_clock($PAR->{requested_time})."), lowering the bundle factor\n(if not autobundled), picking another partition, or splitting up the swarmfile.") if ($max_adjusted_time > $PAR->{max_time});
 
 # Set time to the maximum amount
-  $SLURMOPT{binary}{time} = seconds_to_clock($max_adjusted_time);
+  $SLURMOPT2{time} = seconds_to_clock($max_adjusted_time);
 }
 #==============================================================================
 sub seconds_to_clock
@@ -1255,3 +1151,111 @@ sub append_to_tempdir_index
   chmod 0666, $PAR->{tempdir_index};
 }
 #==============================================================================
+sub getCommandLineOptions
+{
+  my ($D,@O) = @_;
+
+# Get options from the command line and update temporary hashref
+  GetOptions(@O) || exit 1;
+
+# Update global hashes with values
+  foreach my $k (sort keys %{$D->{1}}) { $OPT{$k}       = $D->{1}{$k} if ((defined $D->{1}{$k}) && (not defined $OPT{$k})); }
+  foreach my $k (sort keys %{$D->{2}}) { $SLURMOPT1{$k} = $D->{2}{$k} if ((defined $D->{2}{$k}) && (not defined $SLURMOPT1{$k})); } 
+  foreach my $k (sort keys %{$D->{3}}) { $SLURMOPT2{$k} = $D->{3}{$k} if ((defined $D->{3}{$k}) && (not defined $SLURMOPT2{$k})); } 
+  $SBATCHOPT = $D->{4}{sbatch} if ((defined $D->{4}{sbatch}) && (not defined $SBATCHOPT));
+
+# Wipe out temporary values
+  foreach my $n (keys %{$D}) { foreach my $k (keys %{$D->{$n}}) { undef $D->{$n}{$k}; } }
+
+# Take actions immediately
+  printOptions() if $OPT{h};
+  if ($OPT{version}) { print "swarm $PAR->{version}\n"; exit; }
+
+# Assume first non-option argument is swarmfile -- radical change
+  if (($#ARGV==0) && (defined $ARGV[0]) && (not defined $OPT{f})) {
+    $OPT{f} = $ARGV[0];
+    shift(@ARGV);
+  }
+
+  dieWithError("must specify '-f cmdfile'  See $PAR->{programname} --help") if !$OPT{f};
+}
+#==============================================================================
+sub getEnvironmentOptions
+{
+# Set options based on environment variables
+  foreach my $x (@{$PAR->{options}}) {
+    foreach my $k (keys %{$x}) {
+      if ($x->{$k}{D} == 1) {
+        $OPT{$k} = $ENV{$x->{$k}{E}} if ((defined $x->{$k}{E}) && (defined $ENV{$x->{$k}{E}}) && (not defined $OPT{$k}));
+      }
+      if ($x->{$k}{D} == 2) {
+        $SLURMOPT1{$k} = $ENV{$x->{$k}{E}} if ((defined $x->{$k}{E}) && (defined $ENV{$x->{$k}{E}}) && (not defined $SLURMOPT1{$k}));
+      }
+      if ($x->{$k}{D} == 3) {
+        $SLURMOPT2{$k} = $ENV{$x->{$k}{E}} if ((defined $x->{$k}{E}) && (defined $ENV{$x->{$k}{E}}) && (not defined $SLURMOPT2{$k}));
+      }
+    }
+  }
+}
+#==============================================================================
+sub getFileDirectives
+{
+# Get swarmfile directives ( added 2021-12-06 )
+  my ($D,@O) = @_;
+  my $Y;
+  if (open FILE, "<$OPT{f}") {
+    while (<FILE>) {
+      if (m/^#SWARM\s+(.*)$/) {
+        $Y .= $1." ";
+      }
+    }
+    close FILE;
+  }
+  else {
+    die("Can't read $OPT{f}");
+  }
+
+  if ($Y) {
+    $Y =~ s/\s+/ /g;  # multiple spaces to single spaces
+    $Y =~ s/^\s+//;   # remove preceding spaces
+    $Y =~ s/\s+$//;   # remove trailing spaces
+    GetOptionsFromString($Y,@O);
+
+# Fold swarmfile directives into original options
+    foreach my $k (sort keys %{$D->{1}}) { $OPT{$k}       = $D->{1}{$k} if ((defined $D->{1}{$k}) && (not defined $OPT{$k})); }
+    foreach my $k (sort keys %{$D->{2}}) { $SLURMOPT1{$k} = $D->{2}{$k} if ((defined $D->{2}{$k}) && (not defined $SLURMOPT1{$k})); } 
+    foreach my $k (sort keys %{$D->{3}}) { $SLURMOPT2{$k} = $D->{3}{$k} if ((defined $D->{3}{$k}) && (not defined $SLURMOPT2{$k})); } 
+    $SBATCHOPT = $D->{4}{sbatch} if ((defined $D->{4}{sbatch}) && (not defined $SBATCHOPT));
+    foreach my $n (keys %{$D}) { foreach my $k (keys %{$D->{$n}}) { undef $D->{$n}{$k}; } }
+  }
+}
+#==============================================================================
+sub makeOptionsArray
+{
+  my ($D,@Z);
+  foreach my $x (@{$PAR->{options}}) {
+    my ($k) = (keys %{$x});
+    my @option_strings = (defined $x->{$k}{o}) ? @{$x->{$k}{o}} : ($k);
+    foreach my $o (@option_strings) {
+      if ($x->{$k}{t}) {
+        push @Z,("$o=$x->{$k}{t}" => \$D->{$x->{$k}{D}}{$k});
+      }
+      else {
+        push @Z,($o => \$D->{$x->{$k}{D}}{$k});
+      }
+    }
+  }
+ 
+  return ($D,@Z);
+}
+#==============================================================================
+sub privilegedUser
+{
+# Allow root, webcpu, helixmon, and all staff members to have access to all quotas
+  if (($< == 0) || ($< == 8296) || ($< == 30854)) { $PAR->{privilegedUser} = 1; return; }
+  my $u = getpwuid($<);
+  $PAR->{privilegedUser} = 1 if (grep /^$u$/,(split / /,(getgrnam("staff"))[3]));
+  return;
+}
+#==============================================================================
+
