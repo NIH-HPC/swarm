@@ -75,6 +75,7 @@ writeLog() unless $OPT{'no-log'};
 #===============================================================================
 sub setDefaults
 {
+  $PAR->{version} = '21.08.0';                                  # Version
   $PAR->{b} = 1; # bundle value of 1
   $PAR->{user} = (getpwuid($>))[0]; # who is this?
   chomp($PAR->{host} = `/bin/hostname`); # where am I?
@@ -747,9 +748,14 @@ sub getCommandLineOptions
 # sbatch option (general)
     "sbatch=s"          => \$SBATCHOPT, # a catch all for all other sbatch options
 
+# last change
+    "version"           => \$OPT{version},
+
   ) || exit 1;
 
   print_options() if $OPT{h};
+
+  if ($OPT{version}) { print "swarm $PAR->{version}\n"; exit; }
 
   if ($OPT{autobundle}) { print STDERR "WARNING: --autobundle has been deprecated\n"; }
 
