@@ -82,7 +82,7 @@ writeLog() unless $OPT{'no-log'};
 sub setDefaults
 {
   $PAR->{programname} = 'swarm';                                # Program name is swarm, duh
-  $PAR->{version} = '21.12.0';                                  # Version
+  $PAR->{version} = '21.12.1';                                  # Version
   $PAR->{b} = 1;                                                # Default bundle value of 1
   $PAR->{user} = (getpwuid($>))[0];                             # Who is running swarm?
   chomp($PAR->{host} = `/bin/hostname`);                        # On what host is swarm being run?
@@ -159,6 +159,8 @@ sub setDefaults
     { 'version'      => {d=>"print version and exit",o=>['V','version'],G=>'Development',D=>1},},
 # Advanced
 #    { 'evaluate'     => {d=>"only keep commands that evaluate as true (EXPERIMENTAL)",G=>'Advanced',D=>1},},
+# Hidden
+    #{ 'logfile'      => {d=>"use alternate logfile",o=>['logfile'],G=>'Hidden',D=>1},},
 # sbatch
     { 'job-name'     => {d=>"set the name of the job", o => ['J','job-name'],t=>'s',e=>'[str]',E=>'SBATCH_JOB_NAME',G=>'sbatch',D=>3},},
     { 'dependency'   => {d=>"set up dependency (i.e. run swarm before or after)",t=>'s',e=>'[str]',G=>'sbatch',D=>3},},
@@ -967,6 +969,14 @@ sub setOptions
       dieWithError("--noout and --noerr are incompatible with --merge-output");
     }
   }
+
+# Validate time
+  if (defined $SLURMOPT2{"time"}) {
+    my $x = clock_to_seconds($SLURMOPT2{"time"});
+    if ((!$x) || ($x !~/^\d+$/)) {
+      dieWithError("--time ".$SLURMOPT2{"time"}." is invalid");
+    }
+  }
 }
 #==============================================================================
 sub dieWithError
@@ -1024,7 +1034,7 @@ sub adjustTime
 {
 # Don't bother if partition is unlimited
   if ($SLURMOPT2{partition} eq "unlimited") {
-    undef $SLURMOPT2{time};
+    undef $SLURMOPT2{"time"};
     return;
   }
 
@@ -1047,8 +1057,8 @@ sub adjustTime
   }
 
 # Find requested_time from user
-  if (defined $SLURMOPT2{time}) {
-    $PAR->{requested_time} = clock_to_seconds($SLURMOPT2{time});
+  if (defined $SLURMOPT2{"time"}) {
+    $PAR->{requested_time} = clock_to_seconds($SLURMOPT2{"time"});
   }
   else {
     $PAR->{requested_time} = $PAR->{default_time};
@@ -1073,7 +1083,7 @@ sub adjustTime
   dieWithError("Total time for bundled commands is greater than partition walltime limit.\nTry lowering the time per command (--time=".seconds_to_clock($PAR->{requested_time})."), lowering the bundle factor\n(if not autobundled), picking another partition, or splitting up the swarmfile.") if ($max_adjusted_time > $PAR->{max_time});
 
 # Set time to the maximum amount
-  $SLURMOPT2{time} = seconds_to_clock($max_adjusted_time);
+  $SLURMOPT2{"time"} = seconds_to_clock($max_adjusted_time);
 }
 #==============================================================================
 sub seconds_to_clock
@@ -1105,27 +1115,27 @@ sub clock_to_seconds
 {
   my($clock) = @_;
 # days-hours:minutes:seconds
-  if ($clock=~/(\d+)-(\d+):(\d+):(\d+)/) {
+  if ($clock=~/^(\d+)-(\d+):(\d+):(\d+)$/) {
     return ($1*86400)+($2*3600)+($3*60)+$4;
   }
 # days-hours:minutes
-  elsif ($clock=~/(\d+)-(\d+):(\d+)/) {
+  elsif ($clock=~/^(\d+)-(\d+):(\d+)$/) {
     return ($1*86400)+($2*3600)+($3*60);
   }
 # days-hours
-  elsif ($clock=~/(\d+)-(\d+)/) {
+  elsif ($clock=~/^(\d+)-(\d+)$/) {
     return ($1*86400)+($2*3600);
   }
 # hours:minutes:seconds
-  elsif ($clock=~/(\d+):(\d+):(\d+)/) {
+  elsif ($clock=~/^(\d+):(\d+):(\d+)$/) {
     return ($1*3600)+($2*60)+$3;
   }
 # minutes:seconds
-  elsif ($clock=~/(\d+):(\d+)/) {
+  elsif ($clock=~/^(\d+):(\d+)$/) {
     return ($1*60)+$2;
   }
 # minutes
-  elsif ($clock=~/(\d+)/) {
+  elsif ($clock=~/^(\d+)$/) {
     return ($1*60);
   }
 }
@@ -1177,7 +1187,9 @@ sub getCommandLineOptions
     shift(@ARGV);
   }
 
-  dieWithError("must specify '-f cmdfile'  See $PAR->{programname} --help") if !$OPT{f};
+  dieWithError("swarmfile not specified, see $PAR->{programname} --help") if (not defined $OPT{f});
+  dieWithError("swarmfile '$OPT{f}' doesn't exist, see $PAR->{programname} --help") if (! -f $OPT{f});
+  dieWithError("swarmfile '$OPT{f}' can't be read, see $PAR->{programname} --help") if (! -r $OPT{f});
 }
 #==============================================================================
 sub getEnvironmentOptions

@@ -57,6 +57,7 @@ cat <<testcases > testcases.list
 --time 1:00
 --time 1:00:00
 --time 10:00:00
+--time --devel
 --license matlab
 --partition nimh
 --qos bogus
@@ -150,12 +151,13 @@ while read line ; do
   cat <<eof > t$(printf %03d $n).sh
 #!/bin/bash
 a=2 ; while [ \$a -gt 0 ]; do echo 1 ; ((a--)); done > \$0.\$\$
-$swarm -f \$0.\$\$ --devel -v 2 --logfile swarm_on_slurm.log \\
+$swarm \$0.\$\$ --devel -v 2 \\
   $line
 ec=\$?
 rm \$0.\$\$
 exit \$ec
 eof
+#$swarm -f \$0.\$\$ --devel -v 2 --logfile swarm_on_slurm.log \\
 
 # Run the test case
   __test_swarm t$(printf %03d $n).sh
