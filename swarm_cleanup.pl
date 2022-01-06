@@ -58,6 +58,9 @@ eval {
   $PAR{message} .= sprintf "Swarm directories deleted: %d\n",$PAR{tally}{inactive}{deleted}+$PAR{tally}{unknown}{deleted};
   $PAR{message} .= "======================================================================\n";
 
+# Remove empty swarm directories
+  system("/usr/bin/find /spin1/swarm -maxdepth 1 -mindepth 1 -type d -empty -exec rmdir {} \;");
+
   print_tally();
 
   unless ($OPT{'dry-run'}) {
