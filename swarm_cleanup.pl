@@ -59,7 +59,7 @@ eval {
   $PAR{message} .= "======================================================================\n";
 
 # Remove empty swarm directories
-  system("/usr/bin/find /spin1/swarm -maxdepth 1 -mindepth 1 -type d -empty -exec rmdir {} \;");
+  system('/usr/bin/find /spin1/swarm -maxdepth 1 -mindepth 1 -type d -empty -exec /usr/bin/rmdir {} \;');
 
   print_tally();
 
