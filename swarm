@@ -82,7 +82,7 @@ writeLog() unless $OPT{'no-log'};
 sub setDefaults
 {
   $PAR->{programname} = 'swarm';                                # Program name is swarm, duh
-  $PAR->{version} = '21.12.1';                                  # Version
+  $PAR->{version} = '21.12.2';                                  # Version
   $PAR->{b} = 1;                                                # Default bundle value of 1
   $PAR->{user} = (getpwuid($>))[0];                             # Who is running swarm?
   chomp($PAR->{host} = `/bin/hostname`);                        # On what host is swarm being run?
@@ -134,7 +134,7 @@ sub setDefaults
 # Basic
     { 'f'            => {d=>"DEPRECATED: name of file with list of command lines to execute, with a single command line per subjob",o=>['f','file'],t =>'s',e =>'[file]',G=>'Basic',D=>1},},
     { 'g'            => {d=>"gb per process (can be fractions of GB, e.g. 3.5)",o=>['g','gb-per-process'],t=>'f',e=>'[float]',G=>'Basic',D=>1}, },
-    { 't'            => {d=>"threads per process (can be an integer or the word auto).  This option is only valid for multi-threaded swarms (-p 1)",o=>['t','threads-per-process'],t =>'i',e=>'[int]/"auto"',G=>'Basic',D=>1},},
+    { 't'            => {d=>"threads per process (can be an integer or the word auto).  This option is only valid for multi-threaded swarms (-p 1)",o=>['t','threads-per-process'],t =>'s',e=>'[int]/"auto"',G=>'Basic',D=>1},},
     { 'p'            => {d=>"processes per subjob (default = 1), this option is only valid for single-threaded swarms (-t 1)",o=>['p','processes-per-subjob'],t=>'i',e=>'[int]',G=>'Basic',D=>1},},
     { 'b'            => {d=>"bundle more than one command line per subjob and run sequentially (this automatically multiplies the time needed per subjob)",o=>['b','bundle'],t=>'i',e =>'[int]',G=>'Basic',D=>1},},
     { 'noht'         => {d=>"don't use hyperthreading, equivalent to slurm option --threads-per-core=1",G=>'Basic',D=>1},},
