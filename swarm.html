@@ -808,7 +808,7 @@ export TAG=${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}_${SWARM_PROC_ID} &amp;&a
 export TAG=${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}_${SWARM_PROC_ID} &amp;&amp; mkdir /lscratch/${SLURM_JOB_ID}/${TAG} &amp;&amp; touch /lscratch/${SLURM_JOB_ID}/${TAG}/foo.{0..4} &amp;&amp; tar czf /data/user/${TAG}.tgz /lscratch/${SLURM_JOB_ID}/${TAG}/foo.*
 </pre>
 
-<p>In this case, while the files created within each distinct<b><tt>/lscratch/${SLURM_JOB_ID}/${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}_${SWARM_PROC_ID}</tt></b> directory are identical to all
+<p>In this case, while the files created within each distinct <b><tt>/lscratch/${SLURM_JOB_ID}/${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}_${SWARM_PROC_ID}</tt></b> directory are identical to all
 the other swarm subjobs, the final tarball is unique:</p>
 
 <pre class="term">
