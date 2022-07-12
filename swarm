@@ -82,7 +82,7 @@ writeLog() unless $OPT{'no-log'};
 sub setDefaults
 {
   $PAR->{programname} = 'swarm';                                # Program name is swarm, duh
-  $PAR->{version} = '21.12.2';                                  # Version
+  $PAR->{version} = '22.7.12';                                  # Version
   $PAR->{b} = 1;                                                # Default bundle value of 1
   $PAR->{user} = (getpwuid($>))[0];                             # Who is running swarm?
   chomp($PAR->{host} = `/bin/hostname`);                        # On what host is swarm being run?
@@ -283,9 +283,13 @@ sub distributeCommands
     $num_cmds_in_subjob += scalar(@{${$SWARM->{CMDLISTS}}[$sj][1]}) if (defined ${$SWARM->{CMDLISTS}}[$sj][1]);
     $max = $num_cmds_in_subjob if ($num_cmds_in_subjob > $max);
   }
+  my $b_old = $OPT{b};
   $OPT{b} = $max;
   $PAR->{b} = $max;
   $PAR->{b} /= $OPT{p} if ($OPT{p});
+  my $b_new = $PAR->{b}; 
+
+  print "\nBundle factor was changed from $b_old to $b_new" if (($b_old != $b_new) && ($OPT{verbose} > 0));
 
   $PAR->{subjobs} = scalar(@{$SWARM->{CMDLISTS}});
 }
