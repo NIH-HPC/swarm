@@ -82,7 +82,7 @@ writeLog() unless $OPT{'no-log'};
 sub setDefaults
 {
   $PAR->{programname} = 'swarm';                                # Program name is swarm, duh
-  $PAR->{version} = '22.7.12';                                  # Version
+  $PAR->{version} = '23.2.1';                                   # Version
   $PAR->{b} = 1;                                                # Default bundle value of 1
   $PAR->{user} = (getpwuid($>))[0];                             # Who is running swarm?
   chomp($PAR->{host} = `/bin/hostname`);                        # On what host is swarm being run?
