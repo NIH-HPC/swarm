@@ -269,6 +269,8 @@ Basic options:
 			    written (default is current working directory)
   --noout		    completely throw away STDOUT
   --noerr		    completely throw away STDERR
+  <a href="#time"><b>--time-per-command</b></a> [str]  time per command (same as --time)
+  <a href="#time"><b>--time-per-subjob</b></a> [str]   time per subjob, regardless of -b or -p
 
 Development options:
 
@@ -833,7 +835,7 @@ For example, if the command lines in a swarm are expected to require no more tha
 
 <pre class="term"><b>[biowulf]$</b> swarm --time 00:30:00 file.swarm</pre>
 
-<p>Because a subjob is typically running a single command from the swarmfile, the value of <b>--time</b> can be considered
+<p>Because a subjob is expected to be running a single command from the swarmfile, the value of <b>--time</b> can be considered
 the amount of time to run a single command.  When a swarm is bundled, the value for <b>--time</b> is then
 multiplied by the bundle factor.  For example, if
 a swarm that normally creates 64 commands is bundled to run 4 commands serially, the value of <b>--time</b> is
@@ -851,8 +853,18 @@ ERROR: Total time for bundled commands is greater than partition walltime limit.
 Try lowering the time per command (--time=04:00:00), lowering the bundle factor
 (if not autobundled), picking another partition, or splitting up the swarmfile.</pre>
 
-
 <p>See the <a href="/docs/userguide.html#wall"> Biowulf User Guide for a discussion of walltime limits</a>.</p>
+
+<p>There are two additional options for setting the time of a swarm.  <b>--time-per-command</b> is identical to <b>--time</b>, and 
+merely serves as a more obvious explanation of time allocation.</p>
+
+<p><b>--time-per-subjob</b> overrides the time adjustments applied when <a href="#bundling">bundling</a> or <a href="#p">packing</a> commands.
+This option can be used when a single command takes less than 1 minute to complete and there are a high number of commands bundled per
+subjob:</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm <b>--time-per-subjob 00:30:00 -b 4</b> --devel file.swarm
+64 commands run in 16 subjobs, each command requiring 1.5 gb and 1 thread, running 4 processes serially per subjob
+sbatch --array=0-15 --job-name=swarm <b>--time=30:00</b> --cpus-per-task=2 --partition=norm --mem=1536</pre>
 
 <center><hr width="500" /></center>
 <a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>

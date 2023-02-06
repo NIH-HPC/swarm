@@ -148,6 +148,8 @@ sub setDefaults
     { 'logdir'       => {d=>"directory to which .o and .e files are to be written (default is current working directory)",t=>'s',e=>'[dir]',G=>'Basic',D=>1},},
     { 'noout'        => {d=>"completely throw away STDOUT",G=>'Basic',D=>1},},
     { 'noerr'        => {d=>"completely throw away STDERR",G=>'Basic',D=>1},},
+    { 'time-per-command' => {d=>"time per command (same as --time)",t=>'s',e=>'[str]',G=>'Basic',D=>1},},
+    { 'time-per-subjob'  => {d=>"time per subjob, regardless of -b or -p",t=>'s',e=>'[str]',G=>'Basic',D=>1},},
 # Development
     { 'no-scripts'   => {d=>"don't create temporary swarm scripts (with --debug or --devel)",G=>'Development',D=>1},},
     { 'no-run'       => {d=>"don't actually run",G=>'Development',D=>1},},
@@ -234,7 +236,7 @@ sub printOptions
   print "\n  The following environment variables are set within a swarm:\n\n";
   print "  SWARM_PROC_ID          can be 0 or 1\n";
   print "\nFor more information, type \"man swarm\".\n";
-  print "\nLast modification date: 08 Dec 21 (David Hoover)\n";
+  print "\nLast modification date: 06 Feb 23 (David Hoover)\n";
 
   exit;
 }
@@ -974,6 +976,13 @@ sub setOptions
     }
   }
 
+  if (defined $OPT{"time-per-command"}) {
+    $SLURMOPT2{"time"} = $OPT{"time-per-command"};
+  }
+  elsif (defined $OPT{"time-per-subjob"}) {
+    $SLURMOPT2{"time"} = $OPT{"time-per-subjob"};
+  }
+
 # Validate time
   if (defined $SLURMOPT2{"time"}) {
     my $x = clock_to_seconds($SLURMOPT2{"time"});
@@ -1078,8 +1087,15 @@ sub adjustTime
         $max_cmds_in_subjob = $z;
       }
     }
-    my $adjusted_time = $PAR->{requested_time} * $max_cmds_in_subjob;
-    $max_adjusted_time = $adjusted_time if ($max_adjusted_time < $adjusted_time);
+    my $adjusted_time = undef;
+    if ($OPT{"time-per-subjob"}) {
+      $adjusted_time = $PAR->{requested_time};
+      $max_adjusted_time = $adjusted_time;
+    }
+    else {
+      $adjusted_time = $PAR->{requested_time} * $max_cmds_in_subjob;
+      $max_adjusted_time = $adjusted_time if ($max_adjusted_time < $adjusted_time);
+    }
     push @{$SWARM->{SUBJOB_TIME}},$adjusted_time;
   }
 

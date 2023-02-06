@@ -189,6 +189,15 @@ change the walltime for each subjob (default is 04:00:00, or 4 hours).  If a swa
 time is multiplied by the bundle factor.
 
 .TP
+.B --time-per-command [ string ]
+time per command (this is identical to --time)
+
+.TP
+.B --time-per-subjob [ string ]
+time per subjob, regardless of -b or -p.  If a swarm is bundled or packed, no adjustment is made to
+this value.
+
+.TP
 .B --partition [ string ]
 change the partition (default is norm)
 
