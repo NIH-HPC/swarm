@@ -82,7 +82,7 @@ writeLog() unless $OPT{'no-log'};
 sub setDefaults
 {
   $PAR->{programname} = 'swarm';                                # Program name is swarm, duh
-  $PAR->{version} = '23.2.1';                                   # Version
+  $PAR->{version} = '23.6.1';                                   # Version
   $PAR->{b} = 1;                                                # Default bundle value of 1
   $PAR->{user} = (getpwuid($>))[0];                             # Who is running swarm?
   chomp($PAR->{host} = `/bin/hostname`);                        # On what host is swarm being run?
@@ -97,6 +97,7 @@ sub setDefaults
   @{$PAR->{disallowed_partitions}} = ("huygens","interactive"); # Disallow these partitions
   $PAR->{largemem_threshold} = 373;                             # Jobs requiring this many GB or less can't run on largemem
   $PAR->{helpwidth} = 80;                                       # Maximum width of the help page as printed with --help or -h
+  $PAR->{default_partition} = "norm";
 
 
 # Create the basedir where the batch script and command scripts will be written
@@ -168,7 +169,7 @@ sub setDefaults
     { 'dependency'   => {d=>"set up dependency (i.e. run swarm before or after)",t=>'s',e=>'[str]',G=>'sbatch',D=>3},},
     { 'time'         => {d=>"change the walltime for each subjob (default is 04:00:00, or 4 hours)",t=>'s',e=>'[str]',E=>'SBATCH_TIMELIMIT',G=>'sbatch',D=>3},},
     { 'licenses'     => {d=>"obtain software licenses (e.g. --licenses=matlab)",o=>['L','licenses'],t=>'s',e=>'[str]',G=>'sbatch',D=>3},},
-    { 'partition'    => {d=>"change the partition (default is norm)",t=>'s',e=>'[str]',E=>'SBATCH_PARTITION',G=>'sbatch',D=>3},},
+    { 'partition'    => {d=>"change the partition (default is $PAR->{default_partition})",t=>'s',e=>'[str]',E=>'SBATCH_PARTITION',G=>'sbatch',D=>3},},
     { 'gres'         => {d=>"set generic resources for swarm",t=>'s',e=>'[str]',G=>'sbatch',D=>3},},
     { 'qos'          => {d=>"set quality of service for swarm",t=>'s',e=>'[str]',E=>'SBATCH_QOS',G=>'sbatch',D=>3},},
     { 'reservation'  => {d=>"select a slurm reservation",t=>'s',e=>'[str]',E=>'SBATCH_RESERVATION',G=>'sbatch',D=>3},},
@@ -236,7 +237,7 @@ sub printOptions
   print "\n  The following environment variables are set within a swarm:\n\n";
   print "  SWARM_PROC_ID          can be 0 or 1\n";
   print "\nFor more information, type \"man swarm\".\n";
-  print "\nLast modification date: 06 Feb 23 (David Hoover)\n";
+  print "\nLast modification date: 07 Jun 23 (David Hoover)\n";
 
   exit;
 }
@@ -834,11 +835,11 @@ sub setOptions
         $SBATCHOPT=~s/${1}${2}//g;
       }
       else {
-        $SLURMOPT2{partition} = "norm";
+        $SLURMOPT2{partition} = $PAR->{default_partition};
       }
     }
     else {
-      $SLURMOPT2{partition} = "norm";
+      $SLURMOPT2{partition} = $PAR->{default_partition};
     }
   }
 
