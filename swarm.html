@@ -18,16 +18,16 @@
     <div class="tocItem"><a href="#examples">Examples</a></div>
 
      <div class="tocItem" style="margin-left:20px"><a href="#stdin">STDIN/STDOUT</a></div>
+      <div class="tocItem" style="margin-left:20px"><a href="#fixed">Fixed output path</a></div>
+      <div class="tocItem" style="margin-left:20px"><a href="#mixed">Mixed asynchronous and serial commands</a></div>
+      <div class="tocItem" style="margin-left:20px"><a href="#environment">Setting environment variables</a></div>
+      <div class="tocItem" style="margin-left:20px"><a href="#lscratch">Using local scratch</a></div>
       <div class="tocItem" style="margin-left:20px"><a href="#bundling">-b, --bundle</a></div>
       <div class="tocItem" style="margin-left:20px"><A href="#gandt">-g and -t (memory and threads)</a></div>
       <div class="tocItem" style="margin-left:20px"><a href="#p">-p, --processes-per-subjob</a></div>
       <div class="tocItem" style="margin-left:20px"><A href="#time">--time</a></div>
       <div class="tocItem" style="margin-left:20px"><a href="#dependency">--dependency</a></div>
-      <div class="tocItem" style="margin-left:20px"><a href="#fixed">Fixed output path</a></div>
-      <div class="tocItem" style="margin-left:20px"><a href="#mixed">Mixed asynchronous and serial commands</a></div>
       <div class="tocItem" style="margin-left:20px"><a href="#module">--module</a></div>
-      <div class="tocItem" style="margin-left:20px"><a href="#environment">Setting environment variables</a></div>
-      <div class="tocItem" style="margin-left:20px"><a href="#lscratch">--gres (Local scratch disk space)</a></div>
       <div class="tocItem" style="margin-left:20px"><a href="#sbatch">--sbatch</a></div>
       <div class="tocItem" style="margin-left:20px"><a href="#devel">--devel, --verbose</a></div>
 
@@ -926,7 +926,7 @@ version of Python.</p>
 <!-- lscratch -->
 <!-- ------------------------------------------------------------------------------------- -->
 
-<p><a name="lscratch"></a><b>Using --gres option</b></p>
+<p><a name="lscratch"></a><b>Using local scratch</b></p>
 <p><a href="http://hpc.nih.gov/docs/userguide.html#local">Local scratch disk space is NOT automatically available under Slurm</a>.  Instead, local scratch disk space
 is allocated using <b>--gres</b>.  Here is an example of how to allocate 200GB of local scratch disk space for <u>each swarm command</u>:</p>
 
@@ -940,6 +940,16 @@ corresponding to the jobid, e.g.:</p>
 <p>This local scratch directory can be accessed dynamically using the <b>$SLURM_JOB_ID</b> environment variable:</p>
 
 <pre class="term"><b>/lscratch/$SLURM_JOB_ID/</b></pre>
+
+<p>/lscratch/$SLURM_JOB_ID is a <b>temporary work directory</b>.  Each swarm subjob should do most if not all of its work in this temporary work directory.  This means that any input data should be copied the /lscratch before running any commands, and the output should be copied back to the original location after completion.</p>
+
+<p>Here is a generic example of how to use /lscratch in a swarm:</p>
+
+<pre class="term"><b>[biowulf]$</b> cat file.swarm 
+TWD=/lscratch/$SLURM_JOB_ID; cp input1 $TWD; cmd -i $TWD/input1 -o $TWD/output1; cp $TWD/output1 .
+TWD=/lscratch/$SLURM_JOB_ID; cp input2 $TWD; cmd -i $TWD/input2 -o $TWD/output2; cp $TWD/output2 .
+TWD=/lscratch/$SLURM_JOB_ID; cp input3 $TWD; cmd -i $TWD/input3 -o $TWD/output3; cp $TWD/output3 .
+TWD=/lscratch/$SLURM_JOB_ID; cp input4 $TWD; cmd -i $TWD/input4 -o $TWD/output4; cp $TWD/output4 .</pre>
 
 <p>Local scratch space is allocated <b>per subjob</b>.  By default, that means each command or command list (single line in
 swarmfile) is allocated its own independent local scratch space.  <b>HOWEVER</b>, there are two situations where some
