@@ -42,7 +42,9 @@
   the Biowulf cluster. Some programs do not scale well or can't use distributed memory.
   Other programs may be 'embarrassingly parallel', in that many independent jobs need to be
   run. These programs are well suited to running 'swarms of jobs'.
-  The swarm script simplifies these computational problems.
+  The swarm script simplifies these computational problems.<br /><br />
+  Note that swarm is <b><em>NOT</em></b> a workflow manager.  It is merely a convenience
+  wrapper for the Slurm <b><code>sbatch --array</code></b> command.
 </td></tr></table>
 
 <p>Swarm reads a list of command lines (termed "commands" or "processes") from a swarm command file (termed the "swarmfile"), then automatically
@@ -284,7 +286,7 @@ commands when run with a bundle value of 40 will generate 250 subjobs (10000/40 
 <pre class="term"><b>[biowulf]$</b> swarm --devel -b 40 file.swarm
 10000 commands run in 250 subjobs, each requiring 1 gb and 1 thread, running 40 commands serially per subjob</pre>
 
-<p><b>NOTE</b>: If a swarmfile results in more than 1000 subjobs, swarm will <b>automatically bundle the commands</b>.</p>
+<p><b>NOTE</b>: If a swarmfile results in more than 1000 subjobs, swarm will <b>automatically autobundle the commands</b>.</p>
 
 <p><b>ALSO</b>: The time needed per subjob will be automatically multiplied by the bundle factor.  If the total time
 per subjob exceeds the maximum walltime of the partition, an error will be given and the swarm will not be submitted.</p>
@@ -562,6 +564,10 @@ vary:</p>
 <!-- ------------------------------------------------------------------------------------- -->
 
 <p><a name="bundling"></a><b>Bundling large numbers of commands</b></p>
+
+<p class="alert">By default any swarmfile with &gt; 1000 commands will be <b>autobundled</b>
+unless it is deliberately bundled with the <b>-b</b> flag.</p>
+
 <p>If you have over 1000 commands, especially if each one runs for a short
 time, you should 'bundle' your jobs with the <b>-b</b> flag. For example, if the 
 swarmfile contains 2560 commands, the following swarm command will group them into
