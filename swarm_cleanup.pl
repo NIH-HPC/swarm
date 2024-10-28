@@ -28,11 +28,18 @@ my %OPT;
 my %PAR;
 my %ERR;
 
+$PAR{swarm_base} = "/spin1/swarm";
+$PAR{swarm_log} = "/usr/local/logs/swarm.log";
+$PAR{swarm_log_archives} = "/usr/local/logs/swarm_log_archives";
+$PAR{tempdir_index} = "/usr/local/logs/swarm_tempdir.idx"; # index for swarms
 $PAR{delete_index} = "/usr/local/logs/swarm_cleanup.idx"; # index of deleted swarm directories
 $PAR{logfile} = "/usr/local/logs/swarm_cleanup.log"; # logfile
 $PAR{CONFIG} = Config::IniFiles->new( -file => "/usr/local/etc/my.cnf" );
 $PAR{slurm_cnf_group} = "dashboardSlurm"; # the group name for the slurm connection in /usr/local/etc/my.cnf, probably slave
 $PAR{'delete-age'} = 7; # how many days past finishing should we delete the directory?
+$PAR{sbatch_log} = "/usr/local/logs/sbatch.log";
+$PAR{sbatch_log_archives} = "/usr/local/logs/sbatch_log_archives";
+$PAR{my_cnf} = "/usr/local/etc/my.cnf";
 
 getOptions();
 
@@ -59,7 +66,7 @@ eval {
   $PAR{message} .= "======================================================================\n";
 
 # Remove empty swarm directories
-  system('/usr/bin/find /spin1/swarm -maxdepth 1 -mindepth 1 -type d -empty -exec /usr/bin/rmdir {} \;');
+  system("/usr/bin/find $PAR{swarm_base} -maxdepth 1 -mindepth 1 -type d -empty -exec /usr/bin/rmdir {} \;");
 
   print_tally();
 
@@ -126,7 +133,7 @@ sub run_cleanup
       if ($PAR{arrays}->{$j}) {                                       # array for jobid is known
 # array is active
         if ($PAR{arrays}->{$j}{active}) {
-          if ((-d "/spin1/swarm/$PAR{swarms}->{$t}{user}/$t") && (-d "/spin1/swarm/$PAR{swarms}->{$t}{user}/$PAR{swarms}->{$t}{jobid}")) {
+          if ((-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t") && (-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$PAR{swarms}->{$t}{jobid}")) {
             print "$t $j ACTIVE   $PAR{swarms}->{$t}{user}\n" if ($OPT{verbose} > 2);
             $PAR{tally}{active}{found}++;
           }
@@ -137,13 +144,14 @@ sub run_cleanup
 # array is inactive
         else {
           print "$t $j INACTIVE $PAR{swarms}->{$t}{user}\n" if ($OPT{verbose} > 2);
-          if ((-d "/spin1/swarm/$PAR{swarms}->{$t}{user}/$t") && (-d "/spin1/swarm/$PAR{swarms}->{$t}{user}/$PAR{swarms}->{$t}{jobid}")) {
+          if ((-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t") && (-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$PAR{swarms}->{$t}{jobid}")) {
             if ($PAR{swarms}->{$t}{finish_time} < $PAR{delete_cutoff}) {
-              system("rm -rf /spin1/swarm/$PAR{swarms}->{$t}{user}/$t") unless ($OPT{'dry-run'});
-              system("rm -rf /spin1/swarm/$PAR{swarms}->{$t}{user}/$PAR{swarms}->{$t}{jobid}") unless ($OPT{'dry-run'});
+# remove the files and tempdir
+              system("rm -rf $PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t") unless ($OPT{'dry-run'});
+              system("rm -rf $PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$PAR{swarms}->{$t}{jobid}") unless ($OPT{'dry-run'});
               $PAR{tally}{inactive}{deleted}++;
               $PAR{tally}{inactive}{found}++;
-              if (($OPT{'dry-run'}) || ((!-d "/spin1/swarm/$PAR{swarms}->{$t}{user}/$t") && (!-d "/spin1/swarm/$PAR{swarms}->{$t}{user}/$PAR{swarms}->{$t}{jobid}"))) {
+              if (($OPT{'dry-run'}) || ((!-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t") && (!-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$PAR{swarms}->{$t}{jobid}"))) {
                 print DELETED "$PAR{swarms}->{$t}{create_time},$PAR{swarms}->{$t}{finish_time},".time().",$PAR{swarms}->{$t}{user},$t,$PAR{swarms}->{$t}{jobid}\n";
               }
             }
@@ -165,12 +173,13 @@ sub run_cleanup
 # array was never run, no jobid
     else {
       print "$t    UNKNOWN  $PAR{swarms}->{$t}{user}\n" if ($OPT{verbose} > 2);
-      if (-d "/spin1/swarm/$PAR{swarms}->{$t}{user}/$t") {
+      if (-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t") {
         if ($PAR{swarms}->{$t}{create_time} < $PAR{delete_cutoff}) {
           $PAR{tally}{unknown}{deleted}++;
           $PAR{tally}{unknown}{found}++;
-          system("rm -rf /spin1/swarm/$PAR{swarms}->{$t}{user}/$t") unless ($OPT{'dry-run'});
-          if (($OPT{'dry-run'}) || (!-d "/spin1/swarm/$PAR{swarms}->{$t}{user}/$t")) {
+# remove the files and tempdir
+          system("rm -rf $PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t") unless ($OPT{'dry-run'});
+          if (($OPT{'dry-run'}) || (!-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t")) {
             print DELETED "$PAR{swarms}->{$t}{create_time},0,".time().",$PAR{swarms}->{$t}{user},$t,0\n";
           }
         }
@@ -244,7 +253,7 @@ sub printOptions
 
 Usage: $0 [ options ]
 
-  Delete old swarms from /spin1/swarm
+  Delete old swarms from $PAR{swarm_base}
 
 Options:
 
@@ -263,7 +272,7 @@ Options:
 
 Description:
 
-  Delete old swarms from /spin1/swarm 
+  Delete old swarms from $PAR{swarm_base} 
 
 Logfile key:
 
@@ -287,7 +296,7 @@ EOF
 #==================================================================================================
 sub parse_swarm_index
 {
-  my $f = "/usr/local/logs/swarm_tempdir.idx";
+  my $f = $PAR{tempdir_index};
   if (open INDEXFILE, "<$f") {
     print "reading $f\n" if ($OPT{verbose} > 2);
     while (<INDEXFILE>) {
@@ -308,10 +317,10 @@ sub parse_swarm_index
 sub parse_swarm_logs
 {
   my @files;
-  chomp(my $x = `/bin/find /usr/local/logs/swarm_log_archives -type f -mtime -$PAR{max_days_ago}`);
+  chomp(my $x = `/bin/find $PAR{swarm_log_archives} -type f -mtime -$PAR{max_days_ago}`);
   @files = split /\n/,$x;
   @files = sort @files; 
-  push @files,"/usr/local/logs/swarm.log";
+  push @files,$PAR{swarm_log};
   LOG: foreach my $f (@files) {
     if (open LOGFILE, "<$f") {
       print "reading $f\n" if ($OPT{verbose} > 2);
@@ -339,17 +348,17 @@ sub parse_swarm_logs
 sub parse_sbatch_logs
 {
   my @files;
-  chomp(my $x = `/bin/find /usr/local/logs/sbatch_log_archives -type f -mtime -$PAR{max_days_ago}`);
+  chomp(my $x = `/bin/find $PAR{sbatch_log_archives} -type f -mtime -$PAR{max_days_ago}`);
   @files = split /\n/,$x;
   @files = sort @files;
-  push @files,"/usr/local/logs/sbatch.log";
+  push @files,$PAR{sbatch_log};
   LOG: foreach my $f (@files) {
     if (open LOGFILE, "<$f") {
       print "reading $f\n" if ($OPT{verbose} > 2);
       LINE: while (<LOGFILE>) {
         my $line = $_;
 
-#20180220 13:43:23 cn3167 SUBM[61905830]: clarkmg /data/clarkmg/ica_dualreg sbatch --array=0-0 --output=/data/clarkmg/ica_dualreg/model1_48_dualreg_split_output0016/scripts+logs/drD_%A_%a.o --error=/data/clarkmg/ica_dualreg/model1_48_dualreg_split_output0016/scripts+logs/drD_%A_%a.e --cpus-per-task=1 --dependency=afterany:61905773 --job-name=drD --mem=4096 --partition=norm --time=02:00:00 /spin1/swarm/clarkmg/mThglAnXQp/swarm.batch
+#20180220 13:43:23 cn3167 SUBM[61905830]: clarkmg /data/clarkmg/ica_dualreg sbatch --array=0-0 --output=/data/clarkmg/ica_dualreg/model1_48_dualreg_split_output0016/scripts+logs/drD_%A_%a.o --error=/data/clarkmg/ica_dualreg/model1_48_dualreg_split_output0016/scripts+logs/drD_%A_%a.e --cpus-per-task=1 --dependency=afterany:61905773 --job-name=drD --mem=4096 --partition=norm --time=02:00:00 $PAR{swarm_base}/clarkmg/mThglAnXQp/swarm.batch
 
         if ($line=~/^(\d{4})(\d{2})(\d{2}) (\d\d:\d\d:\d\d)\s\w+\sSUBM\[(\d+)\]:\s(\w+)\s+.+array=0-(\d+)\s.+\/spin1\/swarm\/\w+\/(\w+)\/swarm\.batch/) {
           my ($time,$jobid,$user,$num,$t) = (str2time("$1-$2-$3T$4"),$5,$6,$7,$8);
@@ -398,7 +407,7 @@ sub try_connecting
   my $dbh_tag = shift;
   my $try=10; 
   while ($try) {
-    $PAR{$dbh_tag} = DBI->connect("DBI:mysql:;mysql_read_default_group=$dbh_tag;mysql_read_default_file=/usr/local/etc/my.cnf;mysql_connect_timeout=10",undef,undef,{RaiseError=>0,PrintError=>0,AutoCommit=>0});
+    $PAR{$dbh_tag} = DBI->connect("DBI:mysql:;mysql_read_default_group=$dbh_tag;mysql_read_default_file=$PAR{my_cnf};mysql_connect_timeout=10",undef,undef,{RaiseError=>0,PrintError=>0,AutoCommit=>0});
     last if $PAR{$dbh_tag};
     print_to_logfile("Can't connect to mysql ($dbh_tag) -- $try more tries");
     sleep 60;
@@ -421,8 +430,8 @@ sub try_connecting
 sub printSwarmUsage
 {
   my $cat = HPCNIH::Staff::MySQL::Catalog->new(catalog=>"quota_spin1");
-  my $x = $cat->get_current(entity=>"/spin1/swarm");
-  my $y = $x->{'/spin1/swarm'};
+  my $x = $cat->get_current(entity=>"$PAR{swarm_base}");
+  my $y = $x->{'$PAR{swarm_base}'};
   my $string = sprintf("/swarm usage: %6.2f GB (%4.1f%%), %7d files (%4.1f%%)\n",
       ( $y->{dusage}/1024/1024 ),
       ( ($y->{dusage}/$y->{dquota})*100 ),
