@@ -286,7 +286,7 @@ Logfile key:
     u:     unknown (swarm not submitted to slurm)
     rss:   current memory usage
 
-Last modification date: 08 Oct 2019 (David Hoover)
+Last modification date: 29 Oct 2024 (David Hoover)
 
     sprintf("f: a=%d i=%d u=%d d: i=%d u=%d rss=%d (%d seconds)", 
 EOF
@@ -430,8 +430,8 @@ sub try_connecting
 sub printSwarmUsage
 {
   my $cat = HPCNIH::Staff::MySQL::Catalog->new(catalog=>"quota_spin1");
-  my $x = $cat->get_current(entity=>"$PAR{swarm_base}");
-  my $y = $x->{'$PAR{swarm_base}'};
+  my $x = $cat->get_current(entity=>$PAR{swarm_base});
+  my $y = $x->{$PAR{swarm_base}};
   my $string = sprintf("/swarm usage: %6.2f GB (%4.1f%%), %7d files (%4.1f%%)\n",
       ( $y->{dusage}/1024/1024 ),
       ( ($y->{dusage}/$y->{dquota})*100 ),
