@@ -31,6 +31,8 @@ my %ERR;
 $PAR{swarm_base} = "/spin1/swarm";
 $PAR{swarm_log} = "/usr/local/logs/swarm.log";
 $PAR{swarm_log_archives} = "/usr/local/logs/swarm_log_archives";
+$PAR{tempdir_base} = $PAR{swarm_base}."/.tempdir";
+$PAR{tempdir_stage} = $PAR{swarm_base}."/.tempdir_stage";
 $PAR{tempdir_index} = "/usr/local/logs/swarm_tempdir.idx"; # index for swarms
 $PAR{delete_index} = "/usr/local/logs/swarm_cleanup.idx"; # index of deleted swarm directories
 $PAR{logfile} = "/usr/local/logs/swarm_cleanup.log"; # logfile
@@ -66,7 +68,7 @@ eval {
   $PAR{message} .= "======================================================================\n";
 
 # Remove empty swarm directories
-  system("/usr/bin/find $PAR{swarm_base} -maxdepth 1 -mindepth 1 -type d -empty -exec /usr/bin/rmdir {} \;");
+  system("/usr/bin/find $PAR{swarm_base} -maxdepth 1 -mindepth 1 -type d -empty -not -path '$PAR{tempdir_base}' -not -path '$PAR{tempdir_stage}' -exec /usr/bin/rmdir {} \;");
 
   print_tally();
 
