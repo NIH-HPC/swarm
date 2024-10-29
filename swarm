@@ -92,6 +92,8 @@ sub setDefaults
   $PAR->{date} = strftime("%b %d %Y %T", (localtime)[0 .. 5]);  # default datestamp formatting
   $PAR->{'comment-char'} = '#';                                 # All content beginning with this character is deleted
   $PAR->{logfile} = "/usr/local/logs/swarm.log";                # The logfile which will be updated
+  $PAR->{swarm_base} = "/spin1/swarm";                          # The base directory where all command scripts live
+  $PAR->{tempdir_base} = $PAR->{swarm_base}."/.tempdir";        # The base directory for the tempdir_index files
   $PAR->{tempdir_index} = '/usr/local/logs/swarm_tempdir.idx';  # Keep index of tempdirs
   $PAR->{maxarraysize} = 1000;                                  # Limits number of subjobs per swarm
   $PAR->{maxmemsize} = 3000;                                    # Absolute maximum memory of all possible nodes available, in GB
@@ -102,7 +104,7 @@ sub setDefaults
 
 
 # Create the basedir where the batch script and command scripts will be written
-  $PAR->{basedir} = "/spin1/swarm/$PAR->{user}";
+  $PAR->{basedir} = "$PAR->{swarm_base}/$PAR->{user}";
   isDirCreateable($PAR->{basedir}) || dieWithError("can't write to $PAR->{basedir}");
   if (!-d $PAR->{basedir}) {
     mkdir $PAR->{basedir} || dieWithError("Can't create swarm script basedir!");
@@ -1179,6 +1181,7 @@ sub append_to_tempdir_index
   my $p = 1;
   $p = 2 if ($OPT{p} == 2);
   my $fileContents = time().",$PAR->{user},$PAR->{tempname},$PAR->{subjobs},$p\n";
+  printToFile("$PAR->{tempdir_base}/$PAR->{tempname}",$fileContents,0640); # top secret
   appendToFile($PAR->{tempdir_index},$fileContents);
   chmod 0666, $PAR->{tempdir_index};
 }
