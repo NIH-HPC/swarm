@@ -32,7 +32,6 @@ $PAR{swarm_base} = "/spin1/swarm";
 $PAR{swarm_log} = "/usr/local/logs/swarm.log";
 $PAR{swarm_log_archives} = "/usr/local/logs/swarm_log_archives";
 $PAR{tempdir_base} = $PAR{swarm_base}."/.tempdir";
-$PAR{tempdir_stage} = $PAR{swarm_base}."/.tempdir_stage";
 $PAR{tempdir_index} = "/usr/local/logs/swarm_tempdir.idx"; # index for swarms
 $PAR{delete_index} = "/usr/local/logs/swarm_cleanup.idx"; # index of deleted swarm directories
 $PAR{logfile} = "/usr/local/logs/swarm_cleanup.log"; # logfile
@@ -68,7 +67,7 @@ eval {
   $PAR{message} .= "======================================================================\n";
 
 # Remove empty swarm directories
-  system('/usr/bin/find '.$PAR{swarm_base}.' -maxdepth 1 -mindepth 1 -type d -empty -not -path '.$PAR{tempdir_base}.' -not -path '.$PAR{tempdir_stage}.' -exec /usr/bin/rmdir {} \;');
+  system('/usr/bin/find '.$PAR{swarm_base}.' -maxdepth 1 -mindepth 1 -type d -empty -not -path '.$PAR{tempdir_base}.' -exec /usr/bin/rmdir {} \;');
 
   print_tally();
 
@@ -299,6 +298,7 @@ EOF
 sub parse_swarm_index
 {
   my $f = $PAR{tempdir_index};
+  consolidate($PAR{tempdir_base},"$f.NEW",3600);
   if (open INDEXFILE, "<$f") {
     print "reading $f\n" if ($OPT{verbose} > 2);
     while (<INDEXFILE>) {
@@ -483,5 +483,43 @@ sub print_to_logfile
     $LOGFILE->flush;
     undef $LOGFILE;
   }
+}
+#==================================================================================================
+sub consolidate
+# Consolidate the contents of individual files older than an certain age in seconds into a 
+# single finalfile
+{
+    my ($source,$finalfile,$age) = @_;
+
+# What time is it?
+    my $now = time();
+
+# Don't do anything unless the directory exists
+    return unless (-d $source);
+
+# Append to the final file
+    open OUT,">>$finalfile";
+
+# Read the files from the source directory
+    opendir DIR, $source;
+    my @files = grep !/^\.\.?$/, readdir DIR;
+
+    foreach $file (@files) {
+        my @stat = stat("$source/$file");
+
+# If the file is more than some number of seconds old, push its contents into the finalfile
+        if (($now - $stat[9]) > $age) {
+            open INP,"$source/$file";
+            foreach $line (<INP>) {
+                print OUT $line;
+            }
+            close INP;
+
+# Delete the source file
+            unlink "$source/$file";
+        }
+    }
+    closedir DIR;
+    close OUT;
 }
 #==================================================================================================
