@@ -68,7 +68,7 @@ eval {
   $PAR{message} .= "======================================================================\n";
 
 # Remove empty swarm directories
-  system("/usr/bin/find $PAR{swarm_base} -maxdepth 1 -mindepth 1 -type d -empty -not -path '$PAR{tempdir_base}' -not -path '$PAR{tempdir_stage}' -exec /usr/bin/rmdir {} \;");
+  system('/usr/bin/find '.$PAR{swarm_base}.' -maxdepth 1 -mindepth 1 -type d -empty -not -path '.$PAR{tempdir_base}.' -not -path '.$PAR{tempdir_stage}.' -exec /usr/bin/rmdir {} \;');
 
   print_tally();
 
