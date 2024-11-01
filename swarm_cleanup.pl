@@ -303,7 +303,7 @@ sub parse_swarm_index
     print "reading $f\n" if ($OPT{verbose} > 2);
     while (<INDEXFILE>) {
       chomp(my $line = $_);
-      LINE: while ($line=~/(\d{10}),([^,]+),(\w{10}),(\d+),([12])/g) { # Hiccups in the write performance of /spin1
+      LINE: while ($line=~/(\d{10}),([^,]+),([^,]+),(\d+),([12])/g) { # Hiccups in the write performance of /spin1
         my ($time,$user,$t) = ($1,$2,$3);
         next LINE if ($time < $PAR{min_submit_time});
         next LINE if (($OPT{user}) && ($user ne $OPT{user}));
@@ -504,13 +504,13 @@ sub consolidate
     opendir DIR, $source;
     my @files = grep !/^\.\.?$/, readdir DIR;
 
-    foreach $file (@files) {
+    foreach my $file (@files) {
         my @stat = stat("$source/$file");
 
 # If the file is more than some number of seconds old, push its contents into the finalfile
         if (($now - $stat[9]) > $age) {
             open INP,"$source/$file";
-            foreach $line (<INP>) {
+            foreach my $line (<INP>) {
                 print OUT $line;
             }
             close INP;
