@@ -289,7 +289,6 @@ Logfile key:
 
 Last modification date: 29 Oct 2024 (David Hoover)
 
-    sprintf("f: a=%d i=%d u=%d d: i=%d u=%d rss=%d (%d seconds)", 
 EOF
   
   exit;
