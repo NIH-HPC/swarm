@@ -98,7 +98,7 @@ sub setDefaults
   $PAR->{maxarraysize} = 1000;                                  # Limits number of subjobs per swarm
   $PAR->{maxmemsize} = 3000;                                    # Absolute maximum memory of all possible nodes available, in GB
   @{$PAR->{disallowed_partitions}} = ("huygens","interactive"); # Disallow these partitions
-  $PAR->{largemem_threshold} = 499;                             # Jobs requiring this many GB or less can't run on largemem
+  $PAR->{largemem_threshold} = 750;                             # Jobs requiring this many GB or less can't run on largemem
   $PAR->{helpwidth} = 80;                                       # Maximum width of the help page as printed with --help or -h
   $PAR->{default_partition} = "norm";
 
