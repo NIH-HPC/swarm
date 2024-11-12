@@ -146,7 +146,7 @@ sub setDefaults
     { 'err-exit'     => {d=>"exit the subjob immediately on first non-zero exit status", G=>'Basic',D=>1},},
     { 'module'       => {d=>"provide a list of environment modules to load prior to execution (comma delimited)",o=>['m','module'],t=>'s',e=>'[str]',G=>'Basic',D=>1},},
     { 'no-comment'   => {d=>"don't ignore text following comment character $PAR->{'comment-char'}",G=>'Basic',D=>1},},
-    { 'comment-char' => {d=>"use something other than $PAR->{'comment-char'} as the comment character",o=>['c','comment-char'],t=>'s',e=>'[char]',G=>'Basic',D=>1},},
+    { 'comment-char' => {d=>"use something other than $PAR->{'comment-char'} as the comment character",o=>['comment-char'],t=>'s',e=>'[char]',G=>'Basic',D=>1},},
     { 'maxrunning'   => {d=>"limit the number of simultaenously running subjobs",t=>'i',e=>'[int]',G=>'Basic',D=>1},},
     { 'merge-output' => {d=>"combine STDOUT and STDERR into a single file per subjob (.o)",G=>'Basic',D=>1},},
     { 'logdir'       => {d=>"directory to which .o and .e files are to be written (default is current working directory)",t=>'s',e=>'[dir]',G=>'Basic',D=>1},},
@@ -879,7 +879,7 @@ sub setOptions
   $OPT{verbose} = 0 if (not defined $OPT{verbose});
 
 # Create a temporary name for the batch script and command script directory.
-  (undef,$PAR->{tempname}) = tempfile('XXXXXXXXXX',OPEN => 0);
+  (undef,$PAR->{tempname}) = tempfile('XXXXXXXXXXXX',OPEN => 0);
   $PAR->{tempdir} = "$PAR->{basedir}/$PAR->{tempname}";
   $PAR->{batchfile} = $PAR->{tempdir}."/swarm.batch";
 
@@ -1182,8 +1182,8 @@ sub append_to_tempdir_index
   $p = 2 if ($OPT{p} == 2);
   my $fileContents = time().",$PAR->{user},$PAR->{tempname},$PAR->{subjobs},$p\n";
   printToFile("$PAR->{tempdir_base}/$PAR->{tempname}",$fileContents,0640); # top secret
-  appendToFile($PAR->{tempdir_index},$fileContents);
-  chmod 0666, $PAR->{tempdir_index};
+#  appendToFile($PAR->{tempdir_index},$fileContents);
+#  chmod 0666, $PAR->{tempdir_index};
 }
 #==============================================================================
 sub getCommandLineOptions

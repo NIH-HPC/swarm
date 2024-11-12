@@ -297,7 +297,7 @@ EOF
 sub parse_swarm_index
 {
   my $f = $PAR{tempdir_index};
-  consolidate($PAR{tempdir_base},"$f.NEW",3600);
+  consolidate($PAR{tempdir_base},"$f",3600);
   if (open INDEXFILE, "<$f") {
     print "reading $f\n" if ($OPT{verbose} > 2);
     while (<INDEXFILE>) {
