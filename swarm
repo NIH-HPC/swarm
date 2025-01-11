@@ -242,7 +242,7 @@ sub printOptions
   print "\n  The following environment variables are set within a swarm:\n\n";
   print "  SWARM_PROC_ID          can be 0 or 1\n";
   print "\nFor more information, type \"man swarm\".\n";
-  print "\nLast modification date: 07 Jun 23 (David Hoover)\n";
+  print "\nLast modification date: 10 Jan 25 (David Hoover)\n";
 
   exit;
 }
