@@ -42,6 +42,7 @@ use Slurm;
 use FileHandle;
 use Text::Wrap;
 use Sys::Hostname;
+use File::stat;
 
 use strict;
 
@@ -101,7 +102,8 @@ sub setDefaults
   $PAR->{largemem_threshold} = 750;                             # Jobs requiring this many GB or less can't run on largemem
   $PAR->{helpwidth} = 80;                                       # Maximum width of the help page as printed with --help or -h
   $PAR->{default_partition} = "norm";
-
+  $PAR->{maxspace} = 1024*1024*500;
+  $PAR->{spaceused} = 0;
 
 # Create the basedir where the batch script and command scripts will be written
   $PAR->{basedir} = "$PAR->{swarm_base}/$PAR->{user}";
@@ -465,6 +467,17 @@ sub printToFile
   }
   else { dieWithError("Can't write to $file\n"); }
   chmod $mode,$file;
+
+# Keep track of total space used
+  push(@{$PAR->{filescreated}},$file);
+  my $stat = stat($file);
+  $PAR->{spaceused} += $stat->size;
+  if ($PAR->{spaceused} > $PAR->{maxspace}) {
+    foreach my $f (@{$PAR->{filescreated}}) {
+      unlink $f;
+    }
+    dieWithError("Too much space used\n");
+  }
 }
 #==============================================================================
 sub appendToFile
