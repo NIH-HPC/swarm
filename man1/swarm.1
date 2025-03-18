@@ -10,7 +10,7 @@ swarm \- submit a swarm of commands to cluster
 ] [
 .B -g #
 ] [
-.B -t # | auto
+.B -t #
 ] [
 .B -p #
 ] [
@@ -69,23 +69,19 @@ takes a single argument as the swarmfile as well, and will be removed in the fut
 .TP
 .B -g,--gb-per-process [ float ]
 Equivalent to the sbatch option
-.B --mem.
+.B --mem except that it applies per command, rather than per node.
 By default swarm assumes each process will require 1.5 gb of memory. Some applications
 require more than 1.5 gb, and so setting -g will restrict both the nodes allocated to the swarm and the number
 of processes per node to accomodate the memory requirement.
 
 .TP
-.B -t,--threads-per-process [ int ] | auto
+.B -t,--threads-per-process [ int ]
 Equivalent to the sbatch option
 .B --cpus-per-task.
 By default swarm assumes each process will run a single thread, meaning one thread per core.
 If a command is multi-threaded, then assigning the -t will set
 .B --cpus-per-task
 to allow the command the proper number of threads.
-If -t auto is used, then the sbatch option
-.B --ntasks-per-node
-will be set to 1, and allow the command to create
-as many threads as there are cpus on the node.
 
 .TP
 .B -p, --processes-per-subjob [int]
@@ -216,10 +212,6 @@ require specific quality of service for each subjob
 .TP
 .B --sbatch [ quoted string ]
 add sbatch-specific options to swarm.  These options will be added last, which means that swarm options
-for allocation of cpus and memory (
-.B --cpus-per-task
-and
-.B --mem
 take precedence.  Make sure that all options are quoted, as the single quoted string is passed directly to the
 .B sbatch
 command.
@@ -248,7 +240,6 @@ The following environment variables will affect how sbatch allocates resources:
       SBATCH_PARTITION       Same as --partition
       SBATCH_QOS             Same as --qos
       SBATCH_TIMELIMIT       Same as --time
-      SBATCH_EXCLUSIVE       Same as --exclusive
 .fi
 
 .SH "SWARMFILE DIRECTIVES"
@@ -403,14 +394,9 @@ Swarm submits clusters of subjobs using Slurm
 via the
 .I sbatch
 command; any valid sbatch command-line option is also valid for swarm when
-passed with the "--sbatch" option..
-In this example the "--time" option is given to increase the walltime for the subjob from the
-default 4 hours to 12 hours:
-.PP
-.nf
-      $ swarm swarmcmds --sbatch "--time=12:00:00" swarmcmds
-
-.fi
+passed with the "--sbatch" option.
+.B NOTE:
+sbatch options --time, --cpus-per-task, --mem, --mem-per-cpu are not allowed with swarm
 For additional examples of --sbatch options for swarm, please see
 .I http://hpc.nih.gov/apps/swarm.html#sbatch.
 .PP
@@ -418,10 +404,6 @@ Keep in mind that sbatch command-line options passed using the --sbatch option a
 .B per-subjob
 while swarm options are applied
 .B per-command
-in the swarmfile.  In cases where --time, --cpus-per-task, and --mem/--mem-per-cpu are passed,
-these will
-.B override per-command
-settings, which may cause anomalous results in the swarm.
 
 .SH "SEE ALSO"
 .BR jobload (1), sbatch (1), scontrol (1), squeue (1), noded (8)

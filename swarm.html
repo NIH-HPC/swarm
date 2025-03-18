@@ -119,14 +119,13 @@ Basic options:
 
   <a href="#gandt"><b>-g,--gb-per-process</b></a> [float]						       
 			    gb per process (can be fractions of GB, e.g. 3.5)
-  <a href="#gandt"><b>-t,--threads-per-process</b></a> [int]/"auto" 				       
-			    threads per process (can be an integer or the word
-			    auto).  This option is only valid for
+  <a href="#gandt"><b>-t,--threads-per-process</b></a> [int] 				       
+			    threads per process (integer).  This option is only valid for
 			    multi-threaded swarms (-p 1)
   <a href="#p"><b>-p,--processes-per-subjob</b></a> [int]					       
 			    processes per subjob (default = 1), this option is
 			    only valid for single-threaded swarms (-t 1)
-  <a href="#bundling"><b>-b,--bundle</b></a> [int]	    bundle more than one command line per subjob and
+  <a href="#bundling"><b>-b,--bundle</b></a> [int]         bundle more than one command line per subjob and
 			    run sequentially (this automatically multiplies the
 			    time needed per subjob)
   --noht		    don't use hyperthreading, equivalent to slurm
@@ -172,7 +171,6 @@ sbatch options:
   <a href="#lscratch"><b>--gres</b></a> [str]		    set generic resources for swarm
   --qos [str]		    set quality of service for swarm
   --reservation [str]	    select a slurm reservation
-  --exclusive		    allocate a single node per subjob, same as -t auto
   <a href="#sbatch"><b>--sbatch</b></a> [str]	    add sbatch-specific options to swarm; these options
 			    will be added last, which means that swarm options
 			    for allocation of cpus and memory take precedence
@@ -187,7 +185,6 @@ Environment variables:
   SBATCH_PARTITION          Same as --partition
   SBATCH_QOS                Same as --qos
   SBATCH_RESERVATION        Same as --reservation
-  SBATCH_EXCLUSIVE          Same as --exclusive
 
   The following environment variables are set within a swarm:
 
@@ -595,10 +592,6 @@ memory each using 8 threads, running swarm with --devel shows what might happen:
 <pre class="term"><b>[biowulf]$</b> swarm -g 40 -t 8 --devel file.swarm
 14 commands run in 14 subjobs, each requiring 40 gb and 8 threads</pre>
 
-<p>If a command requires to use as many cpus on a node as possible, then the option <b>-t auto</b>
-should be added.  This causes each subjob in the swarmfile to allocate an entire node exclusively to the subjob, allowing
-the subjob to use all available cpus on the node.</p>
-
 <p class="alert">The default partition <b>norm</b> has nodes with a maximum of 248GB memory.  If <b>-g</b> exceeds 373GB, swarm will give a warning message:</p>
 
 <pre class="term"><b>[biowulf]$</b> swarm -g 400 file.swarm
@@ -608,6 +601,8 @@ ERROR: -g 400 requires --partition largemem</pre>
 <pre class="term"><b>[biowulf]$</b> swarm -g 500 --partition largemem file.swarm</pre>
 
 <p>For more information about partitions, please see <a href="/docs/userguide.html#partitions">https://hpc.nih.gov/docs/userguide.html#partitions</a></p>
+
+<p class="alert">The sbatch options <b>--exclusive</b> and <b>--mem=0</b> are not allowed with swarm.  The use of these options very often wastes resources.  Instead, users should test their commands and determine the optimum number of threads or amount of memory to use per command.  If these options are required, you will need to submit a batch script using <b>sbatch</b>.</p>
 
 <center><hr width="500" /></center>
 <a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
@@ -1025,9 +1020,10 @@ by quotation marks.  In this example some extra sbatch options are added.</p>
 <p>In this case,
   <ul>
     <li><b>--mail-type=FAIL</b>: causes a single email per swarm to be sent if one subjob fails for some reason</li>
-    <li><b>--mail-type=END,ARRAY_TASKS</b>: causes each subjob to issue an email when the subjob ends for any reason
+    <li><b>--mail-type=END,ARRAY_TASKS</b>: causes each subjob to issue an email when the subjob ends for any reason</li>
+  </ul>
 <p class="alert">Unless the ARRAY_TASKS option is specified, mail notifications on job BEGIN, END and FAIL apply to a job array as a whole rather than generating individual email messages for each task in the job array.  See <a href="/docs/userguide.html#email">userguide.html#email</a> for more information about email notifications.</p>
-    </li>
+  <ul>
     <li><b>--export=var=100,nctype=12</b>: sets two environment variables <b><em>var</em></b> and <b><em>nctype</em></b> to 100 and 12 prior to running</li>
     <li><b>--chdir=/data/user/test</b>: relocate to that directory prior to running any commands</li>
   </ul>

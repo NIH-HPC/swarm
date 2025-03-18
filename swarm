@@ -43,6 +43,7 @@ use FileHandle;
 use Text::Wrap;
 use Sys::Hostname;
 use File::stat;
+use Sys::Syslog;
 
 use strict;
 
@@ -140,7 +141,7 @@ sub setDefaults
 # Basic
     { 'f'            => {d=>"DEPRECATED: name of file with list of command lines to execute, with a single command line per subjob",o=>['f','file'],t =>'s',e =>'[file]',G=>'Basic',D=>1},},
     { 'g'            => {d=>"gb per process (can be fractions of GB, e.g. 3.5)",o=>['g','gb-per-process'],t=>'f',e=>'[float]',G=>'Basic',D=>1}, },
-    { 't'            => {d=>"threads per process (can be an integer or the word auto).  This option is only valid for multi-threaded swarms (-p 1)",o=>['t','threads-per-process'],t =>'s',e=>'[int]/"auto"',G=>'Basic',D=>1},},
+    { 't'            => {d=>"threads per process (integer).  This option is only valid for multi-threaded swarms (-p 1)",o=>['t','threads-per-process'],t =>'i',e=>'[int]',G=>'Basic',D=>1},},
     { 'p'            => {d=>"processes per subjob (default = 1), this option is only valid for single-threaded swarms (-t 1)",o=>['p','processes-per-subjob'],t=>'i',e=>'[int]',G=>'Basic',D=>1},},
     { 'b'            => {d=>"bundle more than one command line per subjob and run sequentially (this automatically multiplies the time needed per subjob)",o=>['b','bundle'],t=>'i',e =>'[int]',G=>'Basic',D=>1},},
     { 'noht'         => {d=>"don't use hyperthreading, equivalent to slurm option --threads-per-core=1",G=>'Basic',D=>1},},
@@ -178,7 +179,6 @@ sub setDefaults
     { 'gres'         => {d=>"set generic resources for swarm",t=>'s',e=>'[str]',G=>'sbatch',D=>3},},
     { 'qos'          => {d=>"set quality of service for swarm",t=>'s',e=>'[str]',E=>'SBATCH_QOS',G=>'sbatch',D=>3},},
     { 'reservation'  => {d=>"select a slurm reservation",t=>'s',e=>'[str]',E=>'SBATCH_RESERVATION',G=>'sbatch',D=>3},},
-    { 'exclusive'    => {d=>"allocate a single node per subjob, same as -t auto",E=>'SBATCH_EXCLUSIVE',G=>'sbatch',D=>2},},
     { 'sbatch'       => {d=>"add sbatch-specific options to swarm; these options will be added last, which means that swarm options for allocation of cpus and memory take precedence",t=>'s',e=>'[str]',G=>'sbatch',D=>4},},
   ];
 }
@@ -242,7 +242,7 @@ sub printOptions
   print "\n  The following environment variables are set within a swarm:\n\n";
   print "  SWARM_PROC_ID          can be 0 or 1\n";
   print "\nFor more information, type \"man swarm\".\n";
-  print "\nLast modification date: 10 Jan 25 (David Hoover)\n";
+  print "\nLast modification date: 18 Mar 25 (David Hoover)\n";
 
   exit;
 }
@@ -384,7 +384,7 @@ sub report
     if ($PAR->{b} > 1) {
       print ", running $PAR->{b} processes serially per subjob";
     }
-    if ((not defined $OPT{t}) || ($OPT{t} ne 'auto')) {
+    if (not defined $OPT{t}) {
 # allocating by core, not by cpu
       my $cpus = $SLURMOPT2{"cpus-per-task"};
       ($cpus%2) && $cpus++;
@@ -626,6 +626,15 @@ sub submitSlurm
     }
   }
   if ($SBATCHOPT) {
+
+# don't allow --exclusive or --mem=0
+    dieWithError("--exclusive and --mem=0 are not allowed with swarm, use -t and -g instead") if ($SBATCHOPT =~/--exclusive|--mem=0/);
+    dieWithError("--time, --cpus-per-task, --mem, --mem-per-cpu are not allowed with swarm") if ($SBATCHOPT =~/--time|--cpus-per-task|--mem/);
+
+    $SBATCHOPT =~s/^\s*//g;
+    $SBATCHOPT =~s/\s*$//g;
+    $SBATCHOPT =~s/\s+/ /g;
+
     $PAR->{sbatch_options} .= " ".$SBATCHOPT;
   }
 
@@ -828,9 +837,6 @@ sub setOptions
     $PAR->{'job-name'} = "swarm";
   }
 
-# Special for exclusivity
-  $SLURMOPT2{"ntasks-per-node"} = 1 if ($SLURMOPT1{exclusive});
-
 # Set partition from somewhere
   if (not defined $SLURMOPT2{partition}) {
     if (defined $SBATCHOPT) {
@@ -906,16 +912,10 @@ sub setOptions
 
 # set cpus-per-task or ntasks-per-node
   if ($OPT{t}) {
-    if ($OPT{t} eq "auto") {
-      undef $SLURMOPT2{"cpus-per-task"};
-      $SLURMOPT1{"exclusive"}=1;
-    }
-    else {
 # Don't be stupid
-      dieWithError("-t must be either a number or \"auto\"") if !($OPT{t}=~/^\d+$/ || $OPT{t} eq "auto");
-      dieWithError("-t must be either a number >=1") if ($OPT{t} < 1);
-      $SLURMOPT2{"cpus-per-task"} = $OPT{t};
-    }
+    dieWithError("-t must be a number") if !($OPT{t}=~/^\d+$/);
+    dieWithError("-t must be a number >=1") if ($OPT{t} < 1);
+    $SLURMOPT2{"cpus-per-task"} = $OPT{t};
   }
   else {
     $OPT{t} = 1;
@@ -1033,8 +1033,13 @@ sub writeLog
           . "job-name="   .$PAR->{'job-name'}      ."; "
           . "command="    .$PAR->{commandLine}     ."\n";
 
-  appendToFile($PAR->{logfile},$fileContents);
-  chmod 0666, $PAR->{logfile};
+# Write contents to syslog, which will get loaded to elastic, and then /usr/local/logs/swarm.log
+  openlog($PAR->{programname}, '', 'local3');
+  syslog('info', "$fileContents");
+  closelog();
+#
+#  appendToFile($PAR->{logfile},$fileContents);
+#  chmod 0666, $PAR->{logfile};
 }
 #==============================================================================
 sub isDirCreateable
