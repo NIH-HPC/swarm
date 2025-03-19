@@ -8,9 +8,9 @@ swarm:
 	ls -l /usr/local/bin/swarm
 
 swarm_cleanup:
-	@echo installing swarm_cleanup.pl
-	install -p -m 0740 -o root -g staff swarm_cleanup.pl /usr/local/sbin
-	ls -l /usr/local/sbin/swarm_cleanup.pl
+	@echo installing swarm_cleanup
+	install -p -m 0740 -o root -g staff swarm_cleanup /usr/local/sbin
+	ls -l /usr/local/sbin/swarm_cleanup
 
 webpages:
 	@echo installing webpages

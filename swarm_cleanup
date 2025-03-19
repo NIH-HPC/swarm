@@ -1,5 +1,32 @@
 #!/usr/local/bin/perl
 
+# ===========================================================================
+#
+#                            PUBLIC DOMAIN NOTICE
+#                     Center for Information Technology (CIT)
+#                        National Institute of Health (NIH)
+#
+#  This software/database is a "United States Government Work" under the
+#  terms of the United States Copyright Act.  It was written as part of
+#  the author's official duties as a United States Government employee and
+#  thus cannot be copyrighted.  This software is freely available
+#  to the public for use.  The Center for Information Technology, The
+#  National Institutes of Health, and the U.S. Government have not placed
+#  any restriction on its use or reproduction.
+#
+#  Although all reasonable efforts have been taken to ensure the accuracy
+#  and reliability of the software and data, CIT, NIH and the U.S.
+#  Government do not and cannot warrant the performance or results that
+#  may be obtained by using this software or data. CIT, NIH and the U.S.
+#  Government disclaim all warranties, express or implied, including
+#  warranties of performance, merchantability or fitness for any particular
+#  purpose.
+#
+#  Please cite the author and the "NIH Biowulf Cluster" in any work or product
+#  based on this material.
+#
+# ===========================================================================
+
 use lib "/usr/local/HPCNIH_perl/lib";
 
 use strict;
@@ -21,6 +48,7 @@ use URI::Escape;
 use JSON;
 use Statistics::Basic qw(:all);
 use HPCNIH::Staff::MySQL::Catalog;
+use Sys::Syslog;
 
 use strict;
 
@@ -28,19 +56,30 @@ my %OPT;
 my %PAR;
 my %ERR;
 
+$PAR{programname} = "swarm_cleanup";
 $PAR{swarm_base} = "/spin1/swarm";
 $PAR{swarm_log} = "/usr/local/logs/swarm.log";
 $PAR{swarm_log_archives} = "/usr/local/logs/swarm_log_archives";
-$PAR{tempdir_base} = $PAR{swarm_base}."/.tempdir";
-$PAR{tempdir_index} = "/usr/local/logs/swarm_tempdir.idx"; # index for swarms
-$PAR{delete_index} = "/usr/local/logs/swarm_cleanup.idx"; # index of deleted swarm directories
-$PAR{logfile} = "/usr/local/logs/swarm_cleanup.log"; # logfile
+$PAR{sbatch_log} = "/usr/local/logs/sbatch.log";
+$PAR{sbatch_log_archives} = "/usr/local/logs/sbatch_log_archives";
 $PAR{CONFIG} = Config::IniFiles->new( -file => "/usr/local/etc/my.cnf" );
 $PAR{slurm_cnf_group} = "dashboardSlurm"; # the group name for the slurm connection in /usr/local/etc/my.cnf, probably slave
 $PAR{'delete-age'} = 7; # how many days past finishing should we delete the directory?
-$PAR{sbatch_log} = "/usr/local/logs/sbatch.log";
-$PAR{sbatch_log_archives} = "/usr/local/logs/sbatch_log_archives";
 $PAR{my_cnf} = "/usr/local/etc/my.cnf";
+
+# Special: phipii partition
+$PAR{swarm_base} = "/phipii/swarm" if (-f "/PHIPII");       # The base directory for phipii partition
+
+# Determine parameters based on the swarm_base value
+$PAR{tempdir_base} = $PAR{swarm_base}."/.tempdir";
+dieWithError("tempdir_base doesn't exist!") unless (-d $PAR{tempdir_base});
+dieWithError("tempdir_base isn't writable!") unless (-w $PAR{tempdir_base});
+$PAR{cleanup_base} = $PAR{swarm_base}."/.cleanup";
+dieWithError("cleanup_base doesn't exist!") unless (-d $PAR{cleanup_base});
+dieWithError("cleanup_base isn't writable!") unless (-w $PAR{cleanup_base});
+
+$PAR{tempdir_index} = $PAR{cleanup_base}."/swarm_tempdir.idx"; # index for swarms
+$PAR{delete_index} = $PAR{cleanup_base}."/swarm_cleanup.idx"; # index of deleted swarm directories
 
 getOptions();
 
@@ -71,7 +110,7 @@ eval {
 
   print_tally();
 
-  unless ($OPT{'dry-run'}) {
+  unless ($OPT{debug}) {
     while ((time()-$PAR{NOW}) <= 360) {
       sleep 10;
     }
@@ -79,7 +118,7 @@ eval {
   }
 
   if ($OPT{emailTo}) {
-    sendEmail(subject=>"swarm_cleanup.log",message=>$PAR{message},emailTo=>$OPT{emailTo},Bcc=>$OPT{Bcc},debug=>$OPT{'dry-run'},provenance=>1);
+    sendEmail(subject=>"swarm_cleanup.log",message=>$PAR{message},emailTo=>$OPT{emailTo},Bcc=>$OPT{Bcc},debug=>$OPT{debug},provenance=>1);
   }
   else {
     print $PAR{message};
@@ -97,7 +136,7 @@ eval {
 if ( $@ ) {
   print STDERR $@;
   if ($OPT{emailTo}) {
-    sendEmail(subject=>"ERROR: $0",message=>$@,emailTo=>"hooverdm",debug=>$OPT{'dry-run'},provenance=>1);
+    sendEmail(subject=>"ERROR: $0",message=>$@,emailTo=>"hooverdm",debug=>$OPT{debug},provenance=>1);
   }
   exit 1;
 }
@@ -108,9 +147,9 @@ sub run_cleanup
 
   $PAR{delete_cutoff} = $PAR{NOW} - (86400*$PAR{"delete-age"});
 
-  $PAR{delete_index} = "swarm_cleanup.idx.dry-run.$PAR{NOW}" if ($OPT{'dry-run'});
+  $PAR{delete_index} = "swarm_cleanup.idx.dry-run.$PAR{NOW}" if ($OPT{debug});
 
-# Get arrays
+# Get arrays from the slurm database
   get_arrays();
   foreach my $j (sort keys %{$PAR{arrays}}) {
     my $x = $PAR{arrays}->{$j};
@@ -120,19 +159,27 @@ sub run_cleanup
   }
   $PAR{max_days_ago} = ceil(($PAR{NOW} - $PAR{min_submit_time})/86400);
 
-# Find swarms from various logs
+# Find swarms from various logs -- populate $PAR{swarms}
   parse_swarm_index();
   parse_swarm_logs();
   parse_sbatch_logs();
   read_delete_index();
 
   open DELETED, ">>$PAR{delete_index}";
+
+# Walk through all known tempfiles
   foreach my $t (sort keys %{$PAR{swarms}}) {
+
+# Don't bother if it is already deleted
     next if ($PAR{deleted}->{$t});
+
+# If the tempfile is a known swarm job
     if ($PAR{swarms}->{$t}{jobid}) {                                  # jobid is known
+
       my $j = $PAR{swarms}->{$t}{jobid};
+
       if ($PAR{arrays}->{$j}) {                                       # array for jobid is known
-# array is active
+# if array is active
         if ($PAR{arrays}->{$j}{active}) {
           if ((-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t") && (-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$PAR{swarms}->{$t}{jobid}")) {
             print "$t $j ACTIVE   $PAR{swarms}->{$t}{user}\n" if ($OPT{verbose} > 2);
@@ -148,11 +195,11 @@ sub run_cleanup
           if ((-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t") && (-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$PAR{swarms}->{$t}{jobid}")) {
             if ($PAR{swarms}->{$t}{finish_time} < $PAR{delete_cutoff}) {
 # remove the files and tempdir
-              system("rm -rf $PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t") unless ($OPT{'dry-run'});
-              system("rm -rf $PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$PAR{swarms}->{$t}{jobid}") unless ($OPT{'dry-run'});
+              system("rm -rf $PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t") unless ($OPT{debug});
+              system("rm -rf $PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$PAR{swarms}->{$t}{jobid}") unless ($OPT{debug});
               $PAR{tally}{inactive}{deleted}++;
               $PAR{tally}{inactive}{found}++;
-              if (($OPT{'dry-run'}) || ((!-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t") && (!-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$PAR{swarms}->{$t}{jobid}"))) {
+              if (($OPT{debug}) || ((!-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t") && (!-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$PAR{swarms}->{$t}{jobid}"))) {
                 print DELETED "$PAR{swarms}->{$t}{create_time},$PAR{swarms}->{$t}{finish_time},".time().",$PAR{swarms}->{$t}{user},$t,$PAR{swarms}->{$t}{jobid}\n";
               }
             }
@@ -179,8 +226,8 @@ sub run_cleanup
           $PAR{tally}{unknown}{deleted}++;
           $PAR{tally}{unknown}{found}++;
 # remove the files and tempdir
-          system("rm -rf $PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t") unless ($OPT{'dry-run'});
-          if (($OPT{'dry-run'}) || (!-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t")) {
+          system("rm -rf $PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t") unless ($OPT{debug});
+          if (($OPT{debug}) || (!-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t")) {
             print DELETED "$PAR{swarms}->{$t}{create_time},0,".time().",$PAR{swarms}->{$t}{user},$t,0\n";
           }
         }
@@ -234,7 +281,6 @@ sub getOptions
     'email=s'=> \$OPT{emailTo},
     'bcc=s' => \$OPT{Bcc},
     'timeout=i' => \$OPT{timeout},
-    'dry-run' => \$OPT{'dry-run'},
   ) || printOptions();
 
   printOptions() if $OPT{help};
@@ -259,7 +305,7 @@ Usage: $0 [ options ]
 Options:
 
   -h, --help           print options list
-  -d, --dry-run        don't actually delete things, run in --dry-run mode
+  -d, --debug          don't actually delete things
   -v, --verbose        increase verbosity level (0,1,2,3)
 
   --delete-age         number of days before deleting swarm (default = $PAR{'delete-age'})
@@ -273,7 +319,7 @@ Options:
 
 Description:
 
-  Delete old swarms from $PAR{swarm_base} 
+  Delete old swarms from swarm_base (current = $PAR{swarm_base})
 
 Logfile key:
 
@@ -287,7 +333,7 @@ Logfile key:
     u:     unknown (swarm not submitted to slurm)
     rss:   current memory usage
 
-Last modification date: 29 Oct 2024 (David Hoover)
+Last modification date: 19 Mar 2025 (David Hoover)
 
 EOF
   
@@ -295,11 +341,11 @@ EOF
 }
 #==================================================================================================
 sub parse_swarm_index
+# Find all swarms created under the tempdir_base directory
 {
-  my $f = $PAR{tempdir_index};
-  consolidate($PAR{tempdir_base},"$f",3600);
-  if (open INDEXFILE, "<$f") {
-    print "reading $f\n" if ($OPT{verbose} > 2);
+  consolidate($PAR{tempdir_base},$PAR{tempdir_index},3600) unless ($OPT{debug});
+  if (open INDEXFILE, "<$PAR{tempdir_index}") {
+    print "reading $PAR{tempdir_index}\n" if ($OPT{verbose} > 2);
     while (<INDEXFILE>) {
       chomp(my $line = $_);
       LINE: while ($line=~/(\d{10}),([^,]+),([^,]+),(\d+),([12])/g) { # Hiccups in the write performance of /spin1
@@ -327,7 +373,25 @@ sub parse_swarm_logs
       print "reading $f\n" if ($OPT{verbose} > 2);
       LINE: while (<LOGFILE>) {
         my $line = $_;
-        if ($line=~/^date=([^;]+);\s.+jobid=([^;]+);\suser=([^;]+);\s.+njobs=([^;]+);\stempname=([^;]+);/) {
+
+# new way, don't bother with swarms created outside the current swarm_base
+        if ($line=~/^date=([^;]+);\s.+jobid=([^;]+);\suser=([^;]+);\s.+njobs=([^;]+);\stempname=([^;]+);\sbase=([^;]+);/) {
+          my ($time,$jobid,$user,$num,$t,$base) = (str2time($1),$2,$3,$4,$5,$6);
+          next LINE if ($time < $PAR{min_submit_time});
+          next LINE if (($OPT{user}) && ($user ne $OPT{user}));
+          next LINE if (($base) && ($base ne $PAR{swarm_base}));
+          $PAR{swarms}->{$t}{base}=$base;
+          $PAR{swarms}->{$t}{tempname}=$t;
+          $PAR{swarms}->{$t}{create_time}=$time;
+          $PAR{swarms}->{$t}{user}=$user;
+          $PAR{swarms}->{$t}{jobid}=$jobid;
+          if (defined $PAR{arrays}->{$jobid}) {
+            $PAR{swarms}->{$t}{active}=$PAR{arrays}->{$jobid}{active};
+            $PAR{swarms}->{$t}{finish_time}=$PAR{arrays}->{$jobid}{finish_time};
+          }
+        }
+# Old way, no swarm_base
+        elsif ($line=~/^date=([^;]+);\s.+jobid=([^;]+);\suser=([^;]+);\s.+njobs=([^;]+);\stempname=([^;]+);/) {
           my ($time,$jobid,$user,$num,$t) = (str2time($1),$2,$3,$4,$5);
           next LINE if ($time < $PAR{min_submit_time});
           next LINE if (($OPT{user}) && ($user ne $OPT{user}));
@@ -361,12 +425,16 @@ sub parse_sbatch_logs
 
 #20180220 13:43:23 cn3167 SUBM[61905830]: clarkmg /data/clarkmg/ica_dualreg sbatch --array=0-0 --output=/data/clarkmg/ica_dualreg/model1_48_dualreg_split_output0016/scripts+logs/drD_%A_%a.o --error=/data/clarkmg/ica_dualreg/model1_48_dualreg_split_output0016/scripts+logs/drD_%A_%a.e --cpus-per-task=1 --dependency=afterany:61905773 --job-name=drD --mem=4096 --partition=norm --time=02:00:00 $PAR{swarm_base}/clarkmg/mThglAnXQp/swarm.batch
 
-        if ($line=~/^(\d{4})(\d{2})(\d{2}) (\d\d:\d\d:\d\d)\s\w+\sSUBM\[(\d+)\]:\s(\w+)\s+.+array=0-(\d+)\s.+\/spin1\/swarm\/\w+\/(\w+)\/swarm\.batch/) {
-          my ($time,$jobid,$user,$num,$t) = (str2time("$1-$2-$3T$4"),$5,$6,$7,$8);
+        #if ($line=~/^(\d{4})(\d{2})(\d{2}) (\d\d:\d\d:\d\d)\s\w+\sSUBM\[(\d+)\]:\s(\w+)\s+.+array=0-(\d+)\s.+(\/spin1\/swarm)\/\w+\/(\w+)\/swarm\.batch/) {
+
+# Only find batch jobs submitted from the swarm_base
+        if ($line=~/^(\d{4})(\d{2})(\d{2}) (\d\d:\d\d:\d\d)\s\w+\sSUBM\[(\d+)\]:\s(\w+)\s+.+array=0-(\d+)\s.+$PAR{swarm_base}\/\w+\/(\w+)\/swarm\.batch/) {
+          my ($time,$jobid,$user,$num,$base,$t) = (str2time("$1-$2-$3T$4"),$5,$6,$7,$8,$9);
 
 # Only find jobs created since min_submit_time -- this takes a few seconds
           next LINE if ($time <= $PAR{min_submit_time});
           next LINE if (($OPT{user}) && ($user ne $OPT{user}));
+          $PAR{swarms}->{$t}{base}=$base;
           $PAR{swarms}->{$t}{tempname}=$t;
           $PAR{swarms}->{$t}{create_time}=$time;
           $PAR{swarms}->{$t}{user}=$user;
@@ -383,6 +451,7 @@ sub parse_sbatch_logs
 }
 #=================================================================================================
 sub get_arrays
+# Find all job arrays from the slurm database
 {
   try_connecting($PAR{slurm_cnf_group});
   my $userfilter = "AND `user` = '$OPT{user}'" if ($OPT{user});
@@ -430,16 +499,21 @@ sub try_connecting
 #=================================================================================================#
 sub printSwarmUsage
 {
-  my $cat = HPCNIH::Staff::MySQL::Catalog->new(catalog=>"quota_spin1");
-  my $x = $cat->get_current(entity=>$PAR{swarm_base});
-  my $y = $x->{$PAR{swarm_base}};
-  my $string = sprintf("/swarm usage: %6.2f GB (%4.1f%%), %7d files (%4.1f%%)\n",
-      ( $y->{dusage}/1024/1024 ),
-      ( ($y->{dusage}/$y->{dquota})*100 ),
-      ( $y->{fusage} ),
-      ( ($y->{fusage}/$y->{fquota})*100 ),
-  );
-  return $string;
+  if (-f "/PHIPII") {
+    return "usage is not yet reportable for /phipii/swarm\n";
+  }
+  else { 
+    my $cat = HPCNIH::Staff::MySQL::Catalog->new(catalog=>"quota_spin1");
+    my $x = $cat->get_current(entity=>$PAR{swarm_base});
+    my $y = $x->{$PAR{swarm_base}};
+    my $string = sprintf("/spin1/swarm usage: %6.2f GB (%4.1f%%), %7d files (%4.1f%%)\n",
+        ( $y->{dusage}/1024/1024 ),
+        ( ($y->{dusage}/$y->{dquota})*100 ),
+        ( $y->{fusage} ),
+        ( ($y->{fusage}/$y->{fquota})*100 ),
+    );
+    return $string;
+  }
 }
 #=================================================================================================
 sub print_tally
@@ -471,16 +545,21 @@ sub _report_rss
 sub print_to_logfile
 {
   my $message = shift;
+  my $date = strftime("%FT%T", (localtime(time))[0 .. 5]);
   if ($OPT{debug}) {
-    my $date = strftime("%FT%T", (localtime(time))[0 .. 5]);
     print "$date\t$message\n";
   }
   else {
-    my $LOGFILE = FileHandle->new($PAR{logfile},">>");
-    my $date = strftime("%FT%T", (localtime(time))[0 .. 5]);
-    print $LOGFILE "$date\t$message\n";
-    $LOGFILE->flush;
-    undef $LOGFILE;
+#    my $LOGFILE = FileHandle->new($PAR{logfile},">>");
+#    my $date = strftime("%FT%T", (localtime(time))[0 .. 5]);
+#    print $LOGFILE "$date\t$message\n";
+#    $LOGFILE->flush;
+#    undef $LOGFILE;
+
+# Write contents to syslog, which will get whooshed to elastic, and then /usr/local/logs/swarm.log
+    openlog($PAR{programname}, '', 'local3');
+    syslog('info', "$date\t$message");
+    closelog();
   }
 }
 #==================================================================================================
@@ -522,3 +601,10 @@ sub consolidate
     close OUT;
 }
 #==================================================================================================
+sub dieWithError
+{
+  my $message = shift;
+  die "ERROR: $message\n";
+}
+#==================================================================================================
+

@@ -16,11 +16,11 @@ Folding was implemented June 21, 2016.
 
 ## Behind the scenes
 
-swarm writes everything in /spin1/swarm, under a user-specific directory:
+swarm writes everything into **swarm_base** (/spin1/swarm by default), under a user-specific directory:
 
 ```
-/spin1/swarm/user/
-├── 4506756 -> /spin1/swarm/user/YMaPNXtqEF
+/spin1/swarm/$USER/
+├── 4506756 -> /spin1/swarm/$USER/YMaPNXtqEF
 └── YMaPNXtqEF
     ├── cmd.0
     ├── cmd.1
@@ -43,7 +43,11 @@ When a swarm job is successfully submitted to slurm, a jobid is obtained, and a 
 
 If a submission fails, then no symlink will be created.
 
-When a user runs swarm in development mode (--devel), no temporary directory or files are created. 
+When a user runs swarm in development mode (--devel), no temporary directory or files are created.
+
+### swarm_base
+
+The parameter **swarm_base** can be changed if necessary.  This value is critical for the `swarm_cleanup` script (see below).
 
 ## Testing
 
@@ -69,12 +73,13 @@ The script **sample.pl** extracts the last 100 or so lines from the swarm logfil
 
 ## Logging
 
-* swarm logs to /usr/local/logs/swarm.log
-* swarm_cleanup.pl logs to /usr/local/logs/swarm_cleanup.log
+* swarm writes log messages to rsyslog
+* rsyslog messages are forwarded to the log collectors, which write to /usr/local/logs/swarm.log
+* swarm_cleanup also logs to rsyslog, which is forwarded to /usr/local/logs/swarm_cleanup.log
 
 ## Index File
 
-An index file /usr/local/logs/swarm_tempdir.idx is updated when a swarm is created.  This file contains the creation timestamp, user, unique tag, number of commands, and P value (either 1 or 2):
+An index file `**swarm_base**/.cleanup/swarm_tempdir.idx` is updated when a swarm is created.  This file contains the creation timestamp, user, unique tag, number of commands, and P value (either 1 or 2):
 
 ```
 1509019983,mmouse,e4gLIFwqhq,1,1
@@ -86,15 +91,15 @@ An index file /usr/local/logs/swarm_tempdir.idx is updated when a swarm is creat
 
 ## Clean up
 
-Because the space in /spin1/swarm is limited, old directories need to be removed.  We want to keep the directories and files around for a while to use in investigations, but not forever.  The leftovers are cleaned up daily by `/usr/local/sbin/swarm_cleanup.pl` in a root cron job on biowulf.
+Because the space in **swarm_base** is limited, old directories need to be removed.  We want to keep the directories and files around for a while to use in investigations, but not forever.  The leftovers are cleaned up daily by `/usr/local/sbin/swarm_cleanup` in a root cron job on biowulf.
 
-Under normal use, swarm_cleanup.pl first identifies all jobarrays from the biowulf_job_table of the slurmacct database (using the replicate slave).  Then it parses the swarm_tempdir.idx, recent swarm.log and sbatch.log files and determines the status and age of all created swarms.  Swarms that are either inactive (they finished in slurm) or are unknown (never submitted to slurm) and are 5 days old are deleted from /spin1/swarm.
+Under normal use, swarm_cleanup first identifies all jobarrays from the biowulf_job_table of the slurmacct database (using the replicate slave).  Then it parses the swarm_tempdir.idx, recent swarm.log and sbatch.log files and determines the status and age of all swarms created in the specified **swarm_base**.  Swarms that are either inactive (they finished in slurm) or are unknown (never submitted to slurm) and are 5 days old are deleted from **swarm_base**.
 
 ```
-swarm_cleanup.pl --delete-age 5
+swarm_cleanup --delete-age 5
 ```
 
-When a swarm tempdir directory is deleted, it is recorded in /usr/local/logs/swarm_cleanup.idx as a comma-delimited list:
+When a swarm tempdir directory is deleted, it is recorded in `**swarm_base**/.cleanup/swarm_cleanup.idx` as a comma-delimited list:
 
 ```
 1569079783,0,1570533216,user1,ztTSHJ6gJ9,0

@@ -76,3 +76,11 @@ Added file directives and made adding options easier by creating a single option
 Also, -f and --f are deprecated.  swarm now accepts 1 argument, the swarm file.
 
 --------
+
+2025-03-19 (version 25.3.1)
+
+Disallowed --exclusive, --mem=0, --time, and --cpus-per-task for --sbatch options
+
+Redirected log messages to rsyslog
+
+Streamlined all content to "swarm_base" (/spin1/swarm by default)
