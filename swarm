@@ -36,7 +36,6 @@ use File::Basename qw/basename/;
 use File::Spec;
 require File::Spec::Unix;
 use File::Path qw(make_path);
-#use lib "/usr/local/slurm/lib/perl5/site_perl/5.24.3/x86_64-linux-thread-multi-ld";
 use lib "/usr/local/slurm/lib64/perl5";
 use Slurm;
 use FileHandle;
@@ -44,12 +43,11 @@ use Text::Wrap;
 use Sys::Hostname;
 use File::stat;
 use Sys::Syslog;
+#use Data::Dump qw/pp/;
 
 use strict;
 
 dieWithError("Don't run on helix!  Run on the biowulf cluster!") if (hostname() =~ /helix/);
-
-#use Data::Dump qw/pp/;
 
 $SIG{HUP}  = \&catch_sig;
 $SIG{INT}  = \&catch_sig;
@@ -85,7 +83,8 @@ writeLog() unless $OPT{'no-log'};
 sub setDefaults
 {
   $PAR->{programname} = 'swarm';                                # Program name is swarm, duh
-  $PAR->{version} = '23.6.1';                                   # Version
+  $PAR->{version} = '25.3.1';                                   # Version
+  $PAR->{swarm_base} = "/spin1/swarm";                          # The base directory where all command scripts live
   $PAR->{b} = 1;                                                # Default bundle value of 1
   $PAR->{user} = (getpwuid($>))[0];                             # Who is running swarm?
   chomp($PAR->{host} = `/bin/hostname`);                        # On what host is swarm being run?
@@ -93,10 +92,6 @@ sub setDefaults
   $PAR->{shell} = "/bin/bash";                                  # default shell of command scripts
   $PAR->{date} = strftime("%b %d %Y %T", (localtime)[0 .. 5]);  # default datestamp formatting
   $PAR->{'comment-char'} = '#';                                 # All content beginning with this character is deleted
-  $PAR->{logfile} = "/usr/local/logs/swarm.log";                # The logfile which will be updated
-  $PAR->{swarm_base} = "/spin1/swarm";                          # The base directory where all command scripts live
-  $PAR->{tempdir_base} = $PAR->{swarm_base}."/.tempdir";        # The base directory for the tempdir_index files
-  $PAR->{tempdir_index} = '/usr/local/logs/swarm_tempdir.idx';  # Keep index of tempdirs
   $PAR->{maxarraysize} = 1000;                                  # Limits number of subjobs per swarm
   $PAR->{maxmemsize} = 3000;                                    # Absolute maximum memory of all possible nodes available, in GB
   @{$PAR->{disallowed_partitions}} = ("huygens","interactive"); # Disallow these partitions
@@ -106,15 +101,24 @@ sub setDefaults
   $PAR->{maxspace} = 1024*1024*500;
   $PAR->{spaceused} = 0;
 
+# Special: phipii partition
+  $PAR->{swarm_base} = "/phipii/swarm" if (-f "/PHIPII");       # The base directory for phipii partition
+
 # Create the basedir where the batch script and command scripts will be written
-  $PAR->{basedir} = "$PAR->{swarm_base}/$PAR->{user}";
+  $PAR->{basedir} = "$PAR->{swarm_base}/$PAR->{user}";          # The base for users
   isDirCreateable($PAR->{basedir}) || dieWithError("can't write to $PAR->{basedir}");
   if (!-d $PAR->{basedir}) {
     mkdir $PAR->{basedir} || dieWithError("Can't create swarm script basedir!");
     chmod 02750,$PAR->{basedir};
   }
 
-  dieWithError("Can't find sbatch.  Is slurm in your path?") unless (`which sbatch 2>/dev/null`); # Make sure sbatch is accessible
+# Make sure the tempdir_base is writeable
+  $PAR->{tempdir_base} = $PAR->{swarm_base}."/.tempdir";        # The base directory for the tempdir_index files
+  dieWithError("tempdir_base doesn't exist!") unless (-d $PAR->{tempdir_base});
+  dieWithError("tempdir_base isn't writable!") unless (-w $PAR->{tempdir_base});
+
+# Make sure sbatch is accessible
+  dieWithError("Can't find sbatch.  Is slurm in your path?") unless (`which sbatch 2>/dev/null`);
 
 # Get configuration for partitions
   my $slurm = Slurm::new();
@@ -638,6 +642,7 @@ sub submitSlurm
     $PAR->{sbatch_options} .= " ".$SBATCHOPT;
   }
 
+# Finally, submit the job already!
   print "sbatch $PAR->{sbatch_options} $PAR->{batchfile}\n\n" if ($OPT{verbose} > 1);
   unless ($OPT{'no-run'}) {
     if (!-d $OPT{logdir}) {
@@ -685,7 +690,6 @@ sub createSymlink
 sub parseCommands
 {
   open(COMMANDFILE, "$PAR->{Commandfile}") || dieWithError("Can't read $PAR->{Commandfile}: $!");
-  #my @COMMANDS = evaluateCommands(mergeLineContinuations(<COMMANDFILE>));
   my @COMMANDS = mergeLineContinuations(<COMMANDFILE>);
   close COMMANDFILE;
   foreach (@COMMANDS) {
@@ -706,44 +710,6 @@ sub parseCommands
     dieWithError("No commands in swarmfile $PAR->{Commandfile}");
   }
 }
-#==============================================================================
-#sub evaluateCommands
-#{
-## evaluate test conditions if present
-#  my @tmp = @_;
-#  return @tmp unless $OPT{evaluate};
-#  my @filtered;
-#  foreach (@tmp) {
-#    if (m/^(.*?)\s*#EVAL(.*)$/) {
-#      my $line = $1;
-#      my (undef,$fn) = tempfile('tmpXXXXXXXX',OPEN => 0,DIR=>'/tmp',SUFFIX=>'.sw');
-#      my $eval = $2;
-#      open FILE, ">$fn";
-#      if ($PAR->{shell} eq '/bin/bash') {
-#        print FILE "if [ $eval ] ; then echo 1 ; else echo 2 ; fi\n";
-#      }
-#      elsif ($PAR->{shell} eq '/bin/tcsh') {
-#        print FILE "if ( $eval ) then\necho 1\nelse\necho 2\nendif\n";
-#      }
-#      close FILE;
-#      chomp(my $ret = `$PAR->{shell} $fn 2>&1`);
-#      unlink $fn;
-#      if ($ret == 1) {
-#        push @filtered,"$line\n";
-#      }
-#      elsif ($ret == 2) {
-## drop the command
-#      }
-#      else {
-#        dieWithError("commandline evaluation failure:\n$ret");
-#      }
-#    }
-#    else {
-#      push @filtered,$_;
-#    }
-#  }
-#  return @filtered;
-#}
 #==============================================================================
 sub mergeLineContinuations
 # If a swarmfile has line continuation markers (one or more spaces, followed
@@ -1030,16 +996,14 @@ sub writeLog
           . "soptions="   .$x                      ."; "
           . "njobs="      .$PAR->{subjobs}         ."; "
           . "tempname="   .$PAR->{tempname}        ."; "
+          . "base="       .$PAR->{swarm_base}      ."; "
           . "job-name="   .$PAR->{'job-name'}      ."; "
           . "command="    .$PAR->{commandLine}     ."\n";
 
-# Write contents to syslog, which will get loaded to elastic, and then /usr/local/logs/swarm.log
+# Write contents to syslog, which will get whooshed to elastic, and then /usr/local/logs/swarm.log
   openlog($PAR->{programname}, '', 'local3');
   syslog('info', "$fileContents");
   closelog();
-#
-#  appendToFile($PAR->{logfile},$fileContents);
-#  chmod 0666, $PAR->{logfile};
 }
 #==============================================================================
 sub isDirCreateable
@@ -1200,8 +1164,6 @@ sub append_to_tempdir_index
   $p = 2 if ($OPT{p} == 2);
   my $fileContents = time().",$PAR->{user},$PAR->{tempname},$PAR->{subjobs},$p\n";
   printToFile("$PAR->{tempdir_base}/$PAR->{tempname}",$fileContents,0640); # top secret
-#  appendToFile($PAR->{tempdir_index},$fileContents);
-#  chmod 0666, $PAR->{tempdir_index};
 }
 #==============================================================================
 sub getCommandLineOptions
