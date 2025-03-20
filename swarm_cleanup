@@ -547,18 +547,13 @@ sub print_to_logfile
   my $message = shift;
   my $date = strftime("%FT%T", (localtime(time))[0 .. 5]);
   if ($OPT{debug}) {
-    print "$date\t$message\n";
+    print "date=$date base=$PAR{swarm_base} $message\n";
   }
   else {
-#    my $LOGFILE = FileHandle->new($PAR{logfile},">>");
-#    my $date = strftime("%FT%T", (localtime(time))[0 .. 5]);
-#    print $LOGFILE "$date\t$message\n";
-#    $LOGFILE->flush;
-#    undef $LOGFILE;
 
-# Write contents to syslog, which will get whooshed to elastic, and then /usr/local/logs/swarm.log
+# Write contents to syslog, which will get whooshed to elastic, and then /usr/local/logs/swarm_cleanup.log
     openlog($PAR{programname}, '', 'local3');
-    syslog('info', "$date\t$message");
+    syslog('info', "date=$date base=$PAR{swarm_base} $message");
     closelog();
   }
 }
