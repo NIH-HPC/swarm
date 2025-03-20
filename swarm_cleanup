@@ -49,6 +49,7 @@ use JSON;
 use Statistics::Basic qw(:all);
 use HPCNIH::Staff::MySQL::Catalog;
 use Sys::Syslog;
+use File::Touch;
 
 use strict;
 
@@ -70,18 +71,33 @@ $PAR{my_cnf} = "/usr/local/etc/my.cnf";
 # Special: phipii partition
 $PAR{swarm_base} = "/phipii/swarm" if (-f "/PHIPII");       # The base directory for phipii partition
 
+getOptions();
+
 # Determine parameters based on the swarm_base value
 $PAR{tempdir_base} = $PAR{swarm_base}."/.tempdir";
-dieWithError("tempdir_base doesn't exist!") unless (-d $PAR{tempdir_base});
-dieWithError("tempdir_base isn't writable!") unless (-w $PAR{tempdir_base});
+if (!-d $PAR{tempdir_base}) {
+  print_to_logfile("mkdir $PAR{tempdir_base}") if ($OPT{debug});
+  print_to_logfile("chmod 03777,$PAR{tempdir_base}") if ($OPT{debug});
+  mkdir $PAR{tempdir_base} || dieWithError("Can't mkdir tempdir_base ($PAR{tempdir_base})!");
+  chmod 03777,$PAR{tempdir_base} || dieWithError("Can't chmod tempdir_base ($PAR{tempdir_base})!");
+}
+dieWithError("tempdir_base ($PAR{tempdir_base}) doesn't exist!") unless (-d $PAR{tempdir_base});
+dieWithError("tempdir_base ($PAR{tempdir_base}) isn't writable!") unless (-w $PAR{tempdir_base});
+
 $PAR{cleanup_base} = $PAR{swarm_base}."/.cleanup";
-dieWithError("cleanup_base doesn't exist!") unless (-d $PAR{cleanup_base});
-dieWithError("cleanup_base isn't writable!") unless (-w $PAR{cleanup_base});
+if (!-d $PAR{cleanup_base}) {
+  print_to_logfile("mkdir $PAR{cleanup_base}") if ($OPT{debug});
+  print_to_logfile("chmod 02750,$PAR{cleanup_base}") if ($OPT{debug});
+  mkdir $PAR{cleanup_base} || dieWithError("Can't mkdir cleanup_base ($PAR{cleanup_base})!");
+  chmod 02750,$PAR{cleanup_base} || dieWithError("Can't chmod cleanup_base ($PAR{cleanup_base})!");
+}
+dieWithError("cleanup_base ($PAR{cleanup_base}) doesn't exist!") unless (-d $PAR{cleanup_base});
+dieWithError("cleanup_base ($PAR{cleanup_base}) isn't writable!") unless (-w $PAR{cleanup_base});
 
 $PAR{tempdir_index} = $PAR{cleanup_base}."/swarm_tempdir.idx"; # index for swarms
+touch($PAR{tempdir_index}) || dieWithError("Can't touch $PAR{tempdir_index}!");
 $PAR{delete_index} = $PAR{cleanup_base}."/swarm_cleanup.idx"; # index of deleted swarm directories
-
-getOptions();
+touch($PAR{delete_index}) || dieWithError("Can't touch $PAR{delete_index}!");;
 
 eval {
 # Catch signals
@@ -170,6 +186,9 @@ sub run_cleanup
 # Walk through all known tempfiles
   foreach my $t (sort keys %{$PAR{swarms}}) {
 
+# Don't bother if the swarm is from another swarm_base
+    next if ($PAR{swarms}->{$t}{base} ne $PAR{swarm_base});
+
 # Don't bother if it is already deleted
     next if ($PAR{deleted}->{$t});
 
@@ -195,7 +214,9 @@ sub run_cleanup
           if ((-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t") && (-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$PAR{swarms}->{$t}{jobid}")) {
             if ($PAR{swarms}->{$t}{finish_time} < $PAR{delete_cutoff}) {
 # remove the files and tempdir
+              print "rm -rf $PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t\n" if ($OPT{verbose} > 2);
               system("rm -rf $PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t") unless ($OPT{debug});
+              print "rm -f $PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$PAR{swarms}->{$t}{jobid}\n" if ($OPT{verbose} > 2);
               system("rm -rf $PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$PAR{swarms}->{$t}{jobid}") unless ($OPT{debug});
               $PAR{tally}{inactive}{deleted}++;
               $PAR{tally}{inactive}{found}++;
@@ -226,6 +247,7 @@ sub run_cleanup
           $PAR{tally}{unknown}{deleted}++;
           $PAR{tally}{unknown}{found}++;
 # remove the files and tempdir
+          print "rm -rf $PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t\n" if ($OPT{verbose} > 2);
           system("rm -rf $PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t") unless ($OPT{debug});
           if (($OPT{debug}) || (!-d "$PAR{swarm_base}/$PAR{swarms}->{$t}{user}/$t")) {
             print DELETED "$PAR{swarms}->{$t}{create_time},0,".time().",$PAR{swarms}->{$t}{user},$t,0\n";
@@ -345,7 +367,7 @@ sub parse_swarm_index
 {
   consolidate($PAR{tempdir_base},$PAR{tempdir_index},3600) unless ($OPT{debug});
   if (open INDEXFILE, "<$PAR{tempdir_index}") {
-    print "reading $PAR{tempdir_index}\n" if ($OPT{verbose} > 2);
+    print_to_logfile("reading $PAR{tempdir_index}") if ($OPT{debug});
     while (<INDEXFILE>) {
       chomp(my $line = $_);
       LINE: while ($line=~/(\d{10}),([^,]+),([^,]+),(\d+),([12])/g) { # Hiccups in the write performance of /spin1
@@ -370,7 +392,7 @@ sub parse_swarm_logs
   push @files,$PAR{swarm_log};
   LOG: foreach my $f (@files) {
     if (open LOGFILE, "<$f") {
-      print "reading $f\n" if ($OPT{verbose} > 2);
+      print_to_logfile("reading $f") if ($OPT{debug});
       LINE: while (<LOGFILE>) {
         my $line = $_;
 
@@ -419,7 +441,7 @@ sub parse_sbatch_logs
   push @files,$PAR{sbatch_log};
   LOG: foreach my $f (@files) {
     if (open LOGFILE, "<$f") {
-      print "reading $f\n" if ($OPT{verbose} > 2);
+      print_to_logfile("reading $f") if ($OPT{debug});
       LINE: while (<LOGFILE>) {
         my $line = $_;
 
