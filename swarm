@@ -1025,6 +1025,10 @@ sub validatePartition
     dieWithError("Partition '$part' is only valid for multinode jobs") if (($part eq 'ibddr') && !$PAR->{multinode});
     dieWithError("Partition '$part' is only valid for multinode jobs") if (($part eq 'ibfdr') && !$PAR->{multinode});
     dieWithError("Partition '$part' is only valid for multinode jobs") if (($part eq 'ibqdr') && !$PAR->{multinode});
+
+# Restrictions with phipii
+    dieWithError("Partition '$part' is not allowed on this host") if (($part ne 'phipii') && (-f "/PHIPII"));
+    dieWithError("Partition '$part' is not allowed on this host") if (($part eq 'phipii') && (!-f "/PHIPII"));
   }
 }
 #==============================================================================
