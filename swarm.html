@@ -132,7 +132,8 @@ Basic options:
 			    option --threads-per-core=1
   --usecsh		    use tcsh as the shell instead of bash
   --err-exit		    exit the subjob immediately on first non-zero exit
-			    status
+			    status. NOTE: this may fail if the exit status is generated
+                            within a subshell or a forked process.
   <a href="#module"><b>-m,--module</b></a> [str]	    provide a list of environment modules to load prior
 			    to execution (comma delimited)
   --no-comment		    don't ignore text following comment character #

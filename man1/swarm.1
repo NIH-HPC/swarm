@@ -120,7 +120,7 @@ is only useful for multi-threaded commands.
 
 .TP
 .B --err-exit
-include -e in shebang, exit job immediately on first non-zero exit status
+include -e in shebang, exit job immediately on first non-zero exit status.  NOTE: this may fail if the exit status is generated within a subshell or a forked process.
 
 .TP
 .B --module [ module1[,module2][,module3] ]

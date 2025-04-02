@@ -150,7 +150,7 @@ sub setDefaults
     { 'b'            => {d=>"bundle more than one command line per subjob and run sequentially (this automatically multiplies the time needed per subjob)",o=>['b','bundle'],t=>'i',e =>'[int]',G=>'Basic',D=>1},},
     { 'noht'         => {d=>"don't use hyperthreading, equivalent to slurm option --threads-per-core=1",G=>'Basic',D=>1},},
     { 'usecsh'       => {d=>"use tcsh as the shell instead of bash",G=>'Basic',D=>1},},
-    { 'err-exit'     => {d=>"exit the subjob immediately on first non-zero exit status", G=>'Basic',D=>1},},
+    { 'err-exit'     => {d=>"exit the subjob immediately on first non-zero exit status. NOTE: this may fail if the exit status is generated within a subshell or a forked process.", G=>'Basic',D=>1},},
     { 'module'       => {d=>"provide a list of environment modules to load prior to execution (comma delimited)",o=>['m','module'],t=>'s',e=>'[str]',G=>'Basic',D=>1},},
     { 'no-comment'   => {d=>"don't ignore text following comment character $PAR->{'comment-char'}",G=>'Basic',D=>1},},
     { 'comment-char' => {d=>"use something other than $PAR->{'comment-char'} as the comment character",o=>['comment-char'],t=>'s',e=>'[char]',G=>'Basic',D=>1},},
