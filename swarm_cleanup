@@ -137,7 +137,9 @@ eval {
     sendEmail(subject=>"swarm_cleanup.log",message=>$PAR{message},emailTo=>$OPT{emailTo},Bcc=>$OPT{Bcc},debug=>$OPT{debug},provenance=>1);
   }
   else {
-    print $PAR{message};
+    chomp(my $host = `/usr/bin/hostname`);
+    my $user = getpwuid($<);
+    print "running on $host as $user\n\n".$PAR{message};
   }
 
 #--------------------------------------------------------------------------------------------------
