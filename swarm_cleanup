@@ -50,6 +50,7 @@ use Statistics::Basic qw(:all);
 use HPCNIH::Staff::MySQL::Catalog;
 use Sys::Syslog;
 use File::Touch;
+use Sys::Hostname;
 
 use strict;
 
@@ -137,7 +138,7 @@ eval {
     sendEmail(subject=>"swarm_cleanup.log",message=>$PAR{message},emailTo=>$OPT{emailTo},Bcc=>$OPT{Bcc},debug=>$OPT{debug},provenance=>1);
   }
   else {
-    chomp(my $host = `/usr/bin/hostname`);
+    my $host = hostname();
     my $user = getpwuid($<);
     print "running on $host as $user\n\n".$PAR{message};
   }
