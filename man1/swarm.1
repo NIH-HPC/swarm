@@ -1,4 +1,4 @@
-.TH swarm "1" "Dec 2021" "Linux" "Biowulf Cluster Tools"
+.TH swarm "1" "Jun 2026" "Linux" "Biowulf Cluster Tools"
 
 .SH "NAME"
 swarm \- submit a swarm of commands to cluster
@@ -84,15 +84,8 @@ If a command is multi-threaded, then assigning the -t will set
 to allow the command the proper number of threads.
 
 .TP
-.B -p, --processes-per-subjob [int]
-By default swarms of single-threaded commands waste half of the cpus allocated.  This is because Slurm
-allocates per core, and each core has two cpus.  To push more commands onto cpus, at the risk of lower
-computational performance, -p can set the 
-number of commands run per subjob, with each process taking a single cpu.  -p requires -t = 1.
-
-.B $SWARM_PROC_ID:
-An environment variable SWARM_PROC_ID is set to either 0 (default) or 1 for jobs with -p.  This can be
-used to create unique paths or names of files.
+.B -p, --processes-per-subjob, --parallel [int]
+Run more than one process per subjob in parallel.
 
 .TP
 .B -b,--bundle [ int ]
@@ -137,6 +130,34 @@ use a different character other than '#' as a comment character
 .TP
 .B --merge-output
 combine STDOUT and STDERR into a single file per subjob (.o)
+
+.TP
+.B --prolog [ str ]
+Commands to execute once per subjob prior to swarmfile commands.  This can be either the commands themselves or an executable script.
+
+.TP
+.B --prolog-source [ str ]
+Commands to source once per subjob prior to swarmfile commands.  This can be either the commands themselves or an executable script.
+
+.TP
+.B --prolog-time [ str ]
+Amount of time to complete --prolog commands.  By default this is 10 minutes.  Format is the same as for --time.
+
+.TP
+.B --epilog [ str ]
+Commands to execute once per subjob after swarmfile commands.  This can be either the commands themselves or an executable script.
+
+.TP
+.B --epilog-time [ str ]
+Amount of time to complete --epilog commands.  By default this is 10 minutes.  Format is the same as for --time.
+
+.TP
+.B --oldpack
+do not condense packed output, keep old formatting
+
+.TP
+.B --joblog
+create joblog file (with -p)
 
 .TP
 .B --logdir
@@ -240,6 +261,16 @@ The following environment variables will affect how sbatch allocates resources:
       SBATCH_PARTITION       Same as --partition
       SBATCH_QOS             Same as --qos
       SBATCH_TIMELIMIT       Same as --time
+.fi
+
+The following environment variables are set within a swarm:
+
+.nf
+      SLURM_ARRAY_JOB_ID     Single slurm jobid for entire swarm
+      SLURM_JOB_ID           Unique jobid for each subjob in swarm
+      SWARM_ARRAY_TASK_ID    Local numeric id of swarm subjob
+      SWARM_PROC_ID          Processor slot on which command is run (-p only)
+      SWARM_COMM_ID          Command number from swarmfile
 .fi
 
 .SH "SWARMFILE DIRECTIVES"
@@ -389,6 +420,16 @@ included in the swarm command.  Modules are separated commas, no spaces allowed.
       $ swarm --module tophat/2.0.6,samtools/0.1.17 -g 4 -t 4 cmdfile
 .fi
 .PP
+Copy the contents of a directory to /lscratch at the beginning of each subjob, and utilize the copied
+contents within each command as an environment variable REFDIR.  The recursive copy is expected to be less
+than 30 minutes.  Commands are run 8 at a time in parallel, with 10 gb allocated per command, and each
+command is expected to run for 10 minutes each.  Bundle 100 commands per subjob.
+.PP
+.nf
+      $ swarm --prolog 'cp -Rp /data/$USER/src /lscratch/$SLURM_JOB_ID/.' --prolog-source 'export REFDIR=/lscratch/$SLURM_JOB_ID/src' --prolog-time 30 --gres=lscratch:500 -g 10 -p 8 -b 100 --time 10 cmdfile
+.fi
+.PP
+
 .SH "SBATCH OPTIONS"
 Swarm submits clusters of subjobs using Slurm
 via the
@@ -396,14 +437,14 @@ via the
 command; any valid sbatch command-line option is also valid for swarm when
 passed with the "--sbatch" option.
 .B NOTE:
-sbatch options --time, --cpus-per-task, --mem, --mem-per-cpu are not allowed with swarm
+sbatch options --time, --cpus-per-task, --mem, --mem-per-cpu are not allowed with swarm.
 For additional examples of --sbatch options for swarm, please see
 .I http://hpc.nih.gov/apps/swarm.html#sbatch.
 .PP
 Keep in mind that sbatch command-line options passed using the --sbatch option are applied
 .B per-subjob
-while swarm options are applied
-.B per-command
+while most swarm options are applied
+.B per-command.
 
 .SH "SEE ALSO"
 .BR jobload (1), sbatch (1), scontrol (1), squeue (1), noded (8)

@@ -28,6 +28,7 @@
 # ===========================================================================
 
 # This script is an adaptation of the swarm script for use with SLURM.
+
 use Getopt::Long qw(GetOptionsFromString :config no_ignore_case);
 Getopt::Long::Configure("bundling"); # allows option bundling
 use POSIX qw(strftime floor ceil);
@@ -44,6 +45,10 @@ use Sys::Hostname;
 use File::stat;
 use Sys::Syslog;
 #use Data::Dump qw/pp/;
+
+use utf8;                 # allow UTF-8 in source
+binmode STDOUT, ':utf8'; # ensure output is UTF-8
+use FindBin;
 
 use strict;
 
@@ -73,6 +78,9 @@ distributeCommands();
 adjustTime();
 report();
 writeCommandFiles() unless $OPT{'no-scripts'};
+writePrologFile() if $OPT{prolog};
+writePrologSourceFile() if $OPT{'prolog-source'};
+writeEpilogFile() if $OPT{epilog};
 writeBatchScript() unless $OPT{'no-scripts'};
 sleep(2) unless $OPT{debug}; # sleep 2 seconds to prevent weirdness
 submitSlurm();
@@ -85,7 +93,6 @@ sub setDefaults
   $PAR->{programname} = 'swarm';                                # Program name is swarm, duh
   $PAR->{version} = '25.3.1';                                   # Version
   $PAR->{swarm_base} = "/spin1/swarm";                          # The base directory where all command scripts live
-  $PAR->{b} = 1;                                                # Default bundle value of 1
   $PAR->{user} = (getpwuid($>))[0];                             # Who is running swarm?
   chomp($PAR->{host} = `/bin/hostname`);                        # On what host is swarm being run?
   $PAR->{pwd} = $ENV{'PWD'};                                    # what directory is this?
@@ -100,6 +107,13 @@ sub setDefaults
   $PAR->{default_partition} = "norm";
   $PAR->{maxspace} = 1024*1024*500;
   $PAR->{spaceused} = 0;
+  $PAR->{maxp} = 128;                                           # Maximum processes-per-subjob
+  $PAR->{'prolog-time-seconds'} = 600;                          # Default 10 minutes for prolog
+  $PAR->{'epilog-time-seconds'} = 600;                          # Default 10 minutes for epilog
+
+# Special introduction
+  $PAR->{run_threaded_swarm_commands} = 
+                  $FindBin::Bin."/run_threaded_swarm_commands"; # script to run swarm commands in threaded fashion
 
 # Special: phipii partition
   $PAR->{swarm_base} = "/phipii/swarm" if (-f "/PHIPII");       # The base directory for phipii partition
@@ -144,10 +158,10 @@ sub setDefaults
   $PAR->{options} = [
 # Basic
     { 'f'            => {d=>"DEPRECATED: name of file with list of command lines to execute, with a single command line per subjob",o=>['f','file'],t =>'s',e =>'[file]',G=>'Basic',D=>1},},
-    { 'g'            => {d=>"gb per process (can be fractions of GB, e.g. 3.5)",o=>['g','gb-per-process'],t=>'f',e=>'[float]',G=>'Basic',D=>1}, },
-    { 't'            => {d=>"threads per process (integer).  This option is only valid for multi-threaded swarms (-p 1)",o=>['t','threads-per-process'],t =>'i',e=>'[int]',G=>'Basic',D=>1},},
-    { 'p'            => {d=>"processes per subjob (default = 1), this option is only valid for single-threaded swarms (-t 1)",o=>['p','processes-per-subjob'],t=>'i',e=>'[int]',G=>'Basic',D=>1},},
-    { 'b'            => {d=>"bundle more than one command line per subjob and run sequentially (this automatically multiplies the time needed per subjob)",o=>['b','bundle'],t=>'i',e =>'[int]',G=>'Basic',D=>1},},
+    { 'g'            => {d=>"gb per process (default = 1.5)",o=>['g','gb-per-process'],t=>'f',e=>'[float]',G=>'Basic',D=>1}, },
+    { 't'            => {d=>"threads per process (default = 1)",o=>['t','threads-per-process'],t =>'i',e=>'[int]',G=>'Basic',D=>1},},
+    { 'p'            => {d=>"processes per subjob (default = 1)",o=>['p','processes-per-subjob','parallel'],t=>'i',e=>'[int]',G=>'Basic',D=>1},},
+    { 'b'            => {d=>"bundle more than one command line per subjob (this automatically multiplies the time needed per subjob)",o=>['b','bundle'],t=>'i',e =>'[int]',G=>'Basic',D=>1},},
     { 'noht'         => {d=>"don't use hyperthreading, equivalent to slurm option --threads-per-core=1",G=>'Basic',D=>1},},
     { 'usecsh'       => {d=>"use tcsh as the shell instead of bash",G=>'Basic',D=>1},},
     { 'err-exit'     => {d=>"exit the subjob immediately on first non-zero exit status. NOTE: this may fail if the exit status is generated within a subshell or a forked process.", G=>'Basic',D=>1},},
@@ -163,14 +177,21 @@ sub setDefaults
     { 'time-per-subjob'  => {d=>"time per subjob, regardless of -b or -p",t=>'s',e=>'[str]',G=>'Basic',D=>1},},
 # Development
     { 'no-scripts'   => {d=>"don't create temporary swarm scripts (with --debug or --devel)",G=>'Development',D=>1},},
-    { 'no-run'       => {d=>"don't actually run",G=>'Development',D=>1},},
-    { 'debug'        => {d=>"don't actually run",G=>'Development',D=>1},},
-    { 'devel'        => {d=>"combine --debug and --no-scripts, and be very chatty",G=>'Development',D=>1},},
+    { 'no-run'       => {d=>"don't actually run",o=>['no-run','debug'],G=>'Development',D=>1},},
+    #{ 'debug'        => {d=>"don't actually run",G=>'Development',D=>1},},
+    { 'devel'        => {d=>"combine --no-run and --no-scripts, and be very chatty",G=>'Development',D=>1},},
     { 'verbose'      => {d=>"can range from 0 to 6, with 6 the most verbose",o =>['v','verbose'],t=>'i',e=>'[int]',G=>'Development',D=>1},},
     { 'silent'       => {d=>"don't give any feedback, just jobid",G=>'Development',D=>1},},
     { 'h'            => {d=>"print this help message",o=>['h','help'],G=>'Development',D=>1},},
     { 'version'      => {d=>"print version and exit",o=>['V','version'],G=>'Development',D=>1},},
 # Advanced
+    { 'prolog'       => {d=>"commands to execute once prior to swarmfile",t=>'s',e=>'[str]',G=>'Advanced',D=>1},},
+    { 'prolog-source' => {d=>"commands to source once prior to swarmfile",t=>'s',e=>'[str]',G=>'Advanced',D=>1},},
+    { 'epilog'       => {d=>"commands to run per subjob after swarmfile",t=>'s',e=>'[str]',G=>'Advanced',D=>1},},
+    { 'prolog-time'  => {d=>"time needed to run prolog (default 10 min)",t=>'s',e=>'[str]',G=>'Advanced',D=>1},},
+    { 'epilog-time'  => {d=>"time needed to run epilog (default 10 min)",t=>'s',e=>'[str]',G=>'Advanced',D=>1},},
+    { 'oldpack'      => {d=>"do not condense packed output",G=>'Advanced',D=>1},},
+    { 'joblog'       => {d=>"create joblog file (with -p)",G=>'Advanced',D=>1},},
 #    { 'evaluate'     => {d=>"only keep commands that evaluate as true (EXPERIMENTAL)",G=>'Advanced',D=>1},},
 # Hidden
     #{ 'logfile'      => {d=>"use alternate logfile",o=>['logfile'],G=>'Hidden',D=>1},},
@@ -243,10 +264,15 @@ sub printOptions
     }
   }
 
-  print "\n  The following environment variables are set within a swarm:\n\n";
-  print "  SWARM_PROC_ID          can be 0 or 1\n";
+  print "\n  The following environment variables are set within a swarm\n\n";
+  printf("  %-24s  %s\n",'SLURM_ARRAY_JOB_ID','single slurm jobid for entire swarm');
+  printf("  %-24s  %s\n",'SLURM_JOB_ID','unique jobid for each subjob in swarm');
+  printf("  %-24s  %s\n",'SWARM_ARRAY_TASK_ID','local numeric id of swarm subjob');
+  printf("  %-24s  %s\n",'SWARM_PROC_ID','processor slot on which command is run (-p only)');
+  printf("  %-24s  %s\n",'SWARM_COMM_ID','command number from swarmfile');
+
   print "\nFor more information, type \"man swarm\".\n";
-  print "\nLast modification date: 18 Mar 25 (David Hoover)\n";
+  print "\nLast modification date: NNNNN_DATESTAMP_NNNNN (David Hoover)\n";
 
   exit;
 }
@@ -255,55 +281,43 @@ sub distributeCommands
 # The commands have been parsed into an array, and the number of processes per node has been determined.  Now figure
 # out how to distribute the commands to the command scripts.
 {
-  $PAR->{commands} = scalar(@{$SWARM->{COMMANDS}});
+    $PAR->{commands} = scalar(@{$SWARM->{COMMANDS}});
 
-  foreach my $i (0 .. $#{$SWARM->{COMMANDS}}) {
-    my ($sj,$cpu);
-# No bundling, no packing
-    if ($PAR->{b} == 1) {
-      if (!$OPT{p}) {
-        $sj = $i % $PAR->{maxarraysize};
-        $cpu = 0;
-      }
-# No bundling, but yes packing
-      else {
-        $sj = (floor($i/2)) % $PAR->{maxarraysize};
-        $cpu = $i % 2;
-      }
-    }
-# Yes bundling, but no packing
-    else {
-      if (!$OPT{p}) {
-        $sj = (floor($i/$PAR->{b})) % $PAR->{maxarraysize};
-        $cpu = 0;
-      }
-# Yes bundling, and yes packing
-      else {
-        $sj = (floor($i/(2*$PAR->{b}))) % $PAR->{maxarraysize};
-        $cpu = $i % 2;
-      }
-    }
+# The new unified way -- the number of commands per subjob is the maximum of -b or -p
+    my $max_processes_per_subjob = ($OPT{p} > $OPT{b}) ? $OPT{p} : $OPT{b};
+
+    for my $i (0 .. $#{$SWARM->{COMMANDS}}) {
+        my ($sj,$c);
+
+# On what subjob should this command be run?
+        $sj = (floor($i/($max_processes_per_subjob))) % $PAR->{maxarraysize};
+
+# In what pack should the command be run?
+        $c = $i % $OPT{b};
+
 # Add the command number to the list
-    push @{${$SWARM->{CMDLISTS}}[$sj][$cpu]},$i;
-  }
+        push @{${$SWARM->{CMDLISTS}}[$sj][$c]},$i;
+    }
+#    print "----\n";
 
-# Update bundle factor
-  my $max=0;
-  foreach my $sj (0 .. $#{$SWARM->{CMDLISTS}}) {
-    my $num_cmds_in_subjob=0;
-    $num_cmds_in_subjob += scalar(@{${$SWARM->{CMDLISTS}}[$sj][0]});
-    $num_cmds_in_subjob += scalar(@{${$SWARM->{CMDLISTS}}[$sj][1]}) if (defined ${$SWARM->{CMDLISTS}}[$sj][1]);
-    $max = $num_cmds_in_subjob if ($num_cmds_in_subjob > $max);
-  }
-  my $b_old = $OPT{b};
-  $OPT{b} = $max;
-  $PAR->{b} = $max;
-  $PAR->{b} /= $OPT{p} if ($OPT{p});
-  my $b_new = $PAR->{b}; 
+# Update bundle value
+    my $max=0;
+    for my $sj (0 .. $#{$SWARM->{CMDLISTS}}) {
+        my $num_cmds_in_subjob=0;
+        for my $c (0 .. $#{${$SWARM->{CMDLISTS}}[$sj]}) {
+#            print "sj = $sj, c = $c\n";
+            #if (@{${$SWARM->{CMDLISTS}}[$sj][$c]}) {
+            if (${$SWARM->{CMDLISTS}}[$sj][$c]) {
+                $num_cmds_in_subjob += scalar(@{${$SWARM->{CMDLISTS}}[$sj][$c]});
+            }
+        }
+        $max = $num_cmds_in_subjob if ($num_cmds_in_subjob > $max);
+    }
 
-  print "\nBundle factor was changed from $b_old to $b_new" if (($b_old != $b_new) && ($OPT{verbose} > 0));
+    print "\nBundle value was changed from $OPT{b} to $max\n" if (($OPT{b} != $max) && ($OPT{verbose} > 0));
+    $OPT{b}=$max;
 
-  $PAR->{subjobs} = scalar(@{$SWARM->{CMDLISTS}});
+    $PAR->{subjobs} = scalar(@{$SWARM->{CMDLISTS}});
 }
 #==============================================================================
 sub report
@@ -314,26 +328,18 @@ sub report
   my $len1 = length($#{$SWARM->{CMDLISTS}});
   my $len2 = length($#{$SWARM->{COMMANDS}});
 
-# Report what modules will be loaded
-  print "Loading modules $OPT{module}\n" if (($OPT{verbose} > 2) && ($OPT{module}));
+# Report if prolog will be used
+  print "Sourcing prolog-source $OPT{'prolog-source'}\n\n" if (($OPT{verbose} > 2) && ($OPT{'prolog-source'}));
+  print "Running prolog $OPT{prolog}\n\n" if (($OPT{verbose} > 2) && ($OPT{prolog}));
 
 # Report what modules will be loaded
+  print "Loading modules $OPT{module}\n\n" if (($OPT{verbose} > 2) && ($OPT{module}));
+
+# Report what comment character will be loaded
   print "Using comment character $OPT{'comment-char'}\n" if (($OPT{verbose} > 2) && ($OPT{'comment-char'}));
 
-# update cpus-per-task and mem for single-threaded swarms
-  if (defined $OPT{p}) {
-    $SLURMOPT2{"cpus-per-task"} = $OPT{p};
-    $SLURMOPT2{"mem"} = $SLURMOPT2{"mem"}*$OPT{p};
-  }
-
 # Calculate total number of cpus allocated
-  $PAR->{cpus} = $PAR->{subjobs};
-  if (defined $OPT{p}) {
-    $PAR->{cpus} *= $OPT{p};
-  }
-  elsif ($OPT{t}) {
-    $PAR->{cpus} *= $OPT{t};
-  }
+  $PAR->{cpus} = $PAR->{subjobs}*$OPT{p}*$OPT{t};
 
 # Graphical representation of the swarm
   my $top = "(0tqq (B";
@@ -345,13 +351,15 @@ sub report
   print "-"x60,"\n"."SWARM\n" if ($OPT{verbose} > 3);
   foreach my $sj (0 .. $#{$SWARM->{CMDLISTS}}) {
 
-# How many commands will be run in this subjob?
+# Create a tree diagram of the swarm
     my $num_cmds_in_subjob=0;
-    $num_cmds_in_subjob += scalar(@{${$SWARM->{CMDLISTS}}[$sj][0]});
-    $num_cmds_in_subjob += scalar(@{${$SWARM->{CMDLISTS}}[$sj][1]}) if (defined ${$SWARM->{CMDLISTS}}[$sj][1]);
+    for my $cpu (0 .. $#{${$SWARM->{CMDLISTS}}[$sj]}) {
+      $num_cmds_in_subjob += scalar(@{${$SWARM->{CMDLISTS}}[$sj][$cpu]});
+    }
     if ($OPT{verbose} > 3) {
-      printf ("%ssubjob %${len1}d: %${len2}d command%s (%d cpu%s, %.2f gb)\n",
-        $top,
+      my $pre = "├──";
+      $pre = "└──" if ($sj == $#{$SWARM->{CMDLISTS}});
+      printf ("$pre subjob %${len1}d: %${len2}d command%s (%d cpu%s, %.2f gb)\n",
         $sj,
         $num_cmds_in_subjob,
         write_s_if_needed($num_cmds_in_subjob),
@@ -360,21 +368,42 @@ sub report
         ($SLURMOPT2{"mem"}/1024),
       );
     }
+# Show the branches of the tree
     if ($OPT{verbose} > 4) {
-      foreach my $cpu (0 .. $#{${$SWARM->{CMDLISTS}}[$sj]}) {     
-        if ($OPT{verbose} > 5) {
-          my @tmp;
-          foreach my $cmd (@{${$SWARM->{CMDLISTS}}[$sj][$cpu]}) { push @tmp,${$SWARM->{COMMANDS}}[$cmd]; }
-          print $pre . (join ';',@tmp)."\n";
-        }
-        else {
-          print $pre . (join ';',@{${$SWARM->{CMDLISTS}}[$sj][$cpu]})."\n";
+      my @tmp;
+      for my $cpu (0 .. $#{${$SWARM->{CMDLISTS}}[$sj]}) {     
+        for my $cmd (@{${$SWARM->{CMDLISTS}}[$sj][$cpu]}) { 
+
+# Write the actual commands
+          if ($OPT{verbose} > 5) {
+            push @tmp,${$SWARM->{COMMANDS}}[$cmd];
+
+# Write only the cmd id
+          } else {
+            push @tmp,$cmd;
+          }
         }
         $outputfiles++;
       }
+# Write it out as a nice tree structure
+      my @chunks;
+      while (@tmp) {
+        my @chunk = splice(@tmp, 0, $OPT{p});
+        push @chunks,(join(' & ', @chunk));
+      }
+      for my $c (0 .. $#chunks) {
+        my $pre1 = "│  "; 
+        $pre1 = "   " if ($sj == $#{$SWARM->{CMDLISTS}});
+        my $pre2 = "├──";
+        $pre2 = "└──" if ($c == $#chunks);
+        print "$pre1 $pre2 $chunks[$c]\n"; 
+      }
     }
+# Keep track of how many outputfiles there will be
+    $outputfiles++;
   }
 
+# Write a sentence describing the swarm
   if ($OPT{verbose} > 3) {
     print "-"x60,"\n";
     printf "%${len1}d subjob%s, %${len2}d commands, %d output file%s\n",$PAR->{subjobs},write_s_if_needed($PAR->{subjobs}),$PAR->{commands},$outputfiles,write_s_if_needed($outputfiles);
@@ -382,11 +411,9 @@ sub report
   if ($OPT{verbose} > 0) {
     print "$PAR->{commands} commands run in $PAR->{subjobs} subjob".write_s_if_needed($PAR->{subjobs}).", ";
     print "each command requiring $OPT{g} gb and $OPT{t} thread".write_s_if_needed($OPT{t});
-    if ($OPT{p}) {
-      print ", packing $OPT{p} processes simultaneously per subjob";
-    }
-    if ($PAR->{b} > 1) {
-      print ", running $PAR->{b} processes serially per subjob";
+    print ", running $OPT{b} commands per subjob";
+    if ($OPT{p} > 1) {
+      print ", packing $OPT{p} processes simultaneously";
     }
     if (not defined $OPT{t}) {
 # allocating by core, not by cpu
@@ -404,6 +431,9 @@ sub report
     }
     print "\n";
   }
+
+# Report if epilog will be used
+  print "\nRunning epilog $OPT{epilog}\n" if (($OPT{verbose} > 2) && ($OPT{epilog}));
 
   print "\n" if ($OPT{devel});
 }
@@ -428,35 +458,118 @@ sub insertLmodInit
 sub writeCommandFiles
 {
 # tcsh module
-  my $module_extra;
-  if (($OPT{module}) && ($OPT{usecsh})) {
-    $module_extra = "module load $OPT{module} ; ";
-  }
+    my $module_extra;
+    if (($OPT{module}) && ($OPT{usecsh})) {
+        $module_extra = "module load $OPT{module} ; ";
+    }
 
-  mkdir $PAR->{tempdir};
-  chmod 02750,$PAR->{tempdir};
-  append_to_tempdir_index(); # Record tempdir creation in the index
-  my $len = length($#{$SWARM->{CMDLISTS}});
+    mkdir $PAR->{tempdir};
+    chmod 02750,$PAR->{tempdir};
+    append_to_tempdir_index(); # Record tempdir creation in the index
+    my $len = length($#{$SWARM->{CMDLISTS}});
+
+# Uniquely identify each command -- note that we begin with 1, not 0
+    my $SWARM_COMM_ID = 1;
+
 # Walk through each subjob
-  foreach my $sj (0 .. $#{$SWARM->{CMDLISTS}}) {
-    my %fileContents;
-    ###my $suffix = sprintf "%0${len}d",$sj;
-    ###my $commandFileName = $PAR->{tempdir}."/cmd.$suffix";
-    my $commandFileName = $PAR->{tempdir}."/cmd.$sj";
+    foreach my $sj (0 .. $#{$SWARM->{CMDLISTS}}) {
+        my %fileContents;
+        my $commandFileName = $PAR->{tempdir}."/cmd.$sj";
+
 # Walk through each commandline
-    foreach my $cpu (0 .. $#{${$SWARM->{CMDLISTS}}[$sj]}) {
-      foreach my $comm (@{${$SWARM->{CMDLISTS}}[$sj][$cpu]}) {
+        foreach my $cpu (0 .. $#{${$SWARM->{CMDLISTS}}[$sj]}) {
+            foreach my $comm (@{${$SWARM->{CMDLISTS}}[$sj][$cpu]}) {
+
 # Change command filename if packing
-        ###$commandFileName = $PAR->{tempdir}."/cmd.$suffix"."_".($cpu) if $OPT{p};
-        $commandFileName = $PAR->{tempdir}."/cmd.$sj"."_".($cpu) if $OPT{p};
-        $fileContents{$commandFileName} .= "( $module_extra " . ${$SWARM->{COMMANDS}}[$comm]." )\n";
-      }
+                $fileContents{$commandFileName} .= "( export SWARM_COMM_ID=$SWARM_COMM_ID;$module_extra " . ${$SWARM->{COMMANDS}}[$comm]." )\n";
+                $SWARM_COMM_ID++;
+            }
+        }
+
+# Now print the contents
+        printToFile($commandFileName,$fileContents{$commandFileName},0640);
     }
-# Print the contents
-    foreach my $file (sort keys %fileContents) {
-      printToFile($file,$fileContents{$file},0640);
+}
+#==============================================================================
+sub writePrologFile
+# Create a prolog file if needed
+{
+    return unless $OPT{prolog};
+    open OUTFILE, ">$PAR->{prolog_file}";
+    if (-f $OPT{prolog}) {
+
+# Make sure the prolog input is valid
+        my $stat = stat($OPT{prolog});
+        $PAR->{spaceused} += $stat->size;
+        dieWithError("Too much space used\n") if ($PAR->{spaceused} > $PAR->{maxspace});
+        dieWithError("$OPT{prolog} is not a basic ASCII text file") unless (checkFileIsAscii($OPT{prolog}));
+
+# Write to swarm directory
+        open INPUTFILE, "<$OPT{prolog}" or die("Can't read $OPT{prolog}\n");
+        while (<INPUTFILE>) {
+            print OUTFILE $_;
+        }
+        close INPUTFILE;
     }
-  }
+    else {
+        print OUTFILE $OPT{prolog}."\n";
+    }
+    close OUTFILE;
+    chmod 0750,$PAR->{prolog_file};
+}
+#==============================================================================
+sub writePrologSourceFile
+# Create a prolog-source file if needed
+{
+    return unless $OPT{'prolog-source'};
+    open OUTFILE, ">$PAR->{prolog_source_file}";
+    if (-f $OPT{'prolog-source'}) {
+
+# Make sure the prolog input is valid
+        my $stat = stat($OPT{'prolog-source'});
+        $PAR->{spaceused} += $stat->size;
+        dieWithError("Too much space used\n") if ($PAR->{spaceused} > $PAR->{maxspace});
+        dieWithError("$OPT{'prolog-source'} is not a basic ASCII text file") unless (checkFileIsAscii($OPT{'prolog-source'}));
+
+# Write to swarm directory
+        open INPUTFILE, "<$OPT{'prolog-source'}" or die("Can't read $OPT{'prolog-source'}\n");
+        while (<INPUTFILE>) {
+            print OUTFILE $_;
+        }
+        close INPUTFILE;
+    }
+    else {
+        print OUTFILE $OPT{'prolog-source'}."\n";
+    }
+    close OUTFILE;
+    chmod 0750,$PAR->{prolog_source_file};
+}
+#==============================================================================
+sub writeEpilogFile
+# Create a epilog file if needed
+{
+    return unless $OPT{epilog};
+    open OUTFILE, ">$PAR->{epilog_file}";
+    if (-f $OPT{epilog}) {
+
+# Make sure the prolog input is valid
+        my $stat = stat($OPT{epilog});
+        $PAR->{spaceused} += $stat->size;
+        dieWithError("Too much space used\n") if ($PAR->{spaceused} > $PAR->{maxspace});
+        dieWithError("$OPT{epilog} is not a basic ASCII text file") unless (checkFileIsAscii($OPT{epilog}));
+
+# Write to swarm directory
+        open INPUTFILE, "<$OPT{epilog}" or die("Can't read $OPT{epilog}\n");
+        while (<INPUTFILE>) {
+            print OUTFILE $_;
+        }
+        close INPUTFILE;
+    }
+    else {
+        print OUTFILE $OPT{epilog}."\n";
+    }
+    close OUTFILE;
+    chmod 0750,$PAR->{epilog_file};
 }
 #==============================================================================
 sub printToFile
@@ -506,10 +619,10 @@ sub writeBatchScript
 {
   my $fileContents;
   my $len = length($#{$SWARM->{CMDLISTS}});
-  my $len3 = length($OPT{p}) if $OPT{p};
+  my $len3 = length($OPT{p});
   $fileContents .= "#!/bin/bash\n";
 
-# The swarm.batch file loads the modules, and the command scripts will inherit the environment.  Thie
+# The swarm.batch file loads the modules, and the command scripts will inherit the environment.  This
 # can be screwed up if the user fiddles with the environment within the commands.
   $fileContents .= insertLmodInit();
 
@@ -523,7 +636,7 @@ sub writeBatchScript
   $fileContents .= "d=$PAR->{tempdir}\n";
 
 # Write the command executed block at the top of the output
-  my $ce_top = "---- COMMAND EXECUTED: ---------------------------------------------------------";
+  my $ce_top = "---- COMMANDS EXECUTED: --------------------------------------------------------";
   my $ce_bot = "--------------------------------------------------------------------------------";
 
   (my $stupid_logdir = $OPT{logdir})=~s/"/\\"/g;
@@ -533,43 +646,73 @@ sub writeBatchScript
   $stupid_job_name=~s/`/\\`/g;
   $stupid_job_name=~s/\$/\\\$/g;
 
-# Run the commands in series on a single node
-  if ($OPT{p}) {
-    foreach my $i (0 .. $OPT{p}-1) {
-      ###my $tag = sprintf "%0${len3}d",$i;
-      ###$fileContents .= "[[ -s \${d}/cmd.\${z}_$tag ]] && ( /bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${z}_$tag && /bin/echo '$ce_bot' && $PAR->{shell} \${d}/cmd.\${z}_$tag ";
-      $fileContents .= "[[ -s \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i ]] && ( /bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i && /bin/echo '$ce_bot' && SWARM_PROC_ID=$i $PAR->{shell} \${d}/cmd.\${SLURM_ARRAY_TASK_ID}_$i ) ";
-# Determine output/error redirects
-      if ($OPT{'merge-output'}) {
-        $fileContents .= "1> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.o\" 2> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.o\" ";
-      }
-      else {
-        if ($OPT{noout}) {
-          $fileContents .= "1> /dev/null ";
-        }
-        else {
-          $fileContents .= "1> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.o\" ";
-        }
-        if ($OPT{noerr}) {
-          $fileContents .= "2> /dev/null ";
-        }
-        else {
-          $fileContents .= "2> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}_$i.e\" ";
-        }
-      }
-      $fileContents .= " &\n";
-    }
-    $fileContents .= "wait\n";
-    $fileContents .= "exitcode=0\n";
+# Shove the prolog-source and prolog at the top
+  if ($OPT{'prolog-source'}) {
+      $fileContents .= "/bin/echo '$ce_top' > \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.prolog_source\"\n";
+      $fileContents .= "/bin/cat $PAR->{prolog_source_file} >> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.prolog_source\" 2>&1\n";
+      $fileContents .= "/bin/echo '$ce_bot' >> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.prolog_source\"\n";
+      $fileContents .= "source $PAR->{prolog_source_file} >> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.prolog_source\" 2>&1\n";
   }
-  else {
-    ###$fileContents .= "/bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${z} && /bin/echo '$ce_bot' && $PAR->{shell} \${d}/cmd.\${z}\n";
-    $fileContents .= "/bin/echo '$ce_top' && /bin/cat \${d}/cmd.\${SLURM_ARRAY_TASK_ID} && /bin/echo '$ce_bot' && SWARM_PROC_ID=0 $PAR->{shell} \${d}/cmd.\${SLURM_ARRAY_TASK_ID}\n";
-# Capture final exit code
-    $fileContents .= "exitcode=\$?\n";
+  if ($OPT{prolog}) {
+      $fileContents .= "/bin/echo '$ce_top' > \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.prolog\"\n";
+      $fileContents .= "/bin/cat $PAR->{prolog_file} >> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.prolog\" 2>&1\n";
+      $fileContents .= "/bin/echo '$ce_bot' >> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.prolog\"\n";
+      $fileContents .= "$PAR->{prolog_file} >> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.prolog\" 2>&1\n";
   }
 
-  $fileContents .= "exit \$exitcode\n"; # Exit with the final exit code from the given command
+# Make sure the cmd file corresponding to the array task id exists
+  $fileContents .= "[[ -s \${d}/cmd.\${SLURM_ARRAY_TASK_ID} ]] && \\\n";
+
+# Print out a top banner in the output showing the commands to be run in the subjob
+  $fileContents .= "/bin/echo '$ce_top' && \\\n/bin/cat \${d}/cmd.\${SLURM_ARRAY_TASK_ID} && \\\n/bin/echo '$ce_bot' && \\\n"; 
+
+# If run in packed mode, run the commands in parallel on a single node
+  if ($OPT{p} > 1) {
+
+# Running in pack mode requires the output mechanism is outsourced to the run_threaded_swarm_commands script
+#
+# Four possibilities for handling output:
+#
+#   1) DEFAULT              generate .o and .e files for each subjob
+#   2) $OPT{noout}          throw away .o files
+#   3) $OPT{noerr}          throw away .e files
+#   4) OPT{'merge-output'}  combine .o and .e files into .o 
+
+    $PAR->{run_threaded_swarm_commands} .= " --noout"        if ($OPT{noout});
+    $PAR->{run_threaded_swarm_commands} .= " --noerr"        if ($OPT{noerr});
+    $PAR->{run_threaded_swarm_commands} .= " --merge-output" if ($OPT{'merge-output'});
+    $PAR->{run_threaded_swarm_commands} .= " --usecsh"       if ($OPT{usecsh});
+    $PAR->{run_threaded_swarm_commands} .= " --oldpack"      if ($OPT{oldpack});
+    $PAR->{run_threaded_swarm_commands} .= " --joblog"       if ($OPT{joblog});
+
+# Run the packed commands in a subshell
+    $fileContents .= "( ";
+
+# The commands are run within a threading wrapper
+    $fileContents .= "$PAR->{run_threaded_swarm_commands} -c \${d}/cmd.\${SLURM_ARRAY_TASK_ID} -t ".$OPT{p}*$OPT{t}." -o \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}\"";
+
+# Finish the subshell
+    $fileContents .= ")\n";
+  }
+
+# Normal ordinary swarm
+  else {
+    $fileContents .= "( $PAR->{shell} \${d}/cmd.\${SLURM_ARRAY_TASK_ID} )\n";
+  }
+
+# Capture final exit code from the commands run
+  $fileContents .= "exitcode=\$?\n";
+
+# Shove the epilog at the bottom
+  if ($OPT{epilog}) {
+      $fileContents .= "/bin/echo '$ce_top' > \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.epilog\"\n";
+      $fileContents .= "/bin/cat $PAR->{epilog_file} >> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.epilog\" 2>&1\n";
+      $fileContents .= "/bin/echo '$ce_bot' >> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.epilog\"\n";
+      $fileContents .= "$PAR->{epilog_file} >> \"${stupid_logdir}/${stupid_job_name}_\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.epilog\" 2>&1\n";
+  }
+
+# Exit with the final exit code from the given command
+  $fileContents .= "exit \$exitcode\n";
 
 # Print the batch file
   printToFile($PAR->{batchfile},$fileContents,0640);
@@ -590,9 +733,26 @@ sub submitSlurm
   $PAR->{sbatch_options} .= " --job-name=\"".$stupid_job_name."\"" unless ($SLURMOPT2{'job-name'});
 
 # output and error handled in the batch script
-  if ($OPT{p}) {
-    $PAR->{sbatch_options} .= " --output=/dev/null";
-    $PAR->{sbatch_options} .= " --error=/dev/null";
+  if ($OPT{p} > 1) {
+    #$PAR->{sbatch_options} .= " --output=/dev/null";
+    #$PAR->{sbatch_options} .= " --error=/dev/null";
+    if ($OPT{'merge-output'}) {
+      $PAR->{sbatch_options} .= " --output=\"".$stupid_logdir."/".$stupid_job_name."_\%A_\%a_p.o\"";
+    }
+    else {
+      if ($OPT{noout}) {
+        $PAR->{sbatch_options} .= " --output=/dev/null";
+      }
+      else {
+        $PAR->{sbatch_options} .= " --output=\"".$stupid_logdir."/".$stupid_job_name."_\%A_\%a_p.o\"";
+      }
+      if ($OPT{noerr}) {
+        $PAR->{sbatch_options} .= " --error=/dev/null";
+      }
+      else {
+        $PAR->{sbatch_options} .= " --error=\"".$stupid_logdir."/".$stupid_job_name."_\%A_\%a_p.e\"";
+      }
+    }
   }
   else {
     if ($OPT{'merge-output'}) {
@@ -708,6 +868,15 @@ sub parseCommands
 # Make sure that the swarmfile actually has commands in it!
   if ((not defined $SWARM->{COMMANDS}) || (ref($SWARM->{COMMANDS}) != /ARRAY/) || (@{$SWARM->{COMMANDS}} < 1)) {
     dieWithError("No commands in swarmfile $PAR->{Commandfile}");
+  }
+
+# Don't be stupid
+  if (scalar(@{$SWARM->{COMMANDS}}) < $OPT{p}) {
+    warn("Processes per subjob (-p) changed from $OPT{p} to ".scalar(@{$SWARM->{COMMANDS}})."\n");
+    $OPT{p} = scalar(@{$SWARM->{COMMANDS}});
+    $OPT{p}++ if (($OPT{p}%2)!=0); # -p must always be even, we only allocate cores
+    $SLURMOPT2{"cpus-per-task"} = $OPT{t}*$OPT{p};
+    $SLURMOPT2{"mem"} = ceil($OPT{g}*1024*$OPT{p});
   }
 }
 #==============================================================================
@@ -868,35 +1037,36 @@ sub setOptions
   $PAR->{tempdir} = "$PAR->{basedir}/$PAR->{tempname}";
   $PAR->{batchfile} = $PAR->{tempdir}."/swarm.batch";
 
+# Initialize prolog and epilog
+  $PAR->{prolog_file} = $PAR->{tempdir}."/prolog";
+  $PAR->{prolog_source_file} = $PAR->{tempdir}."/prolog_source";
+  $PAR->{epilog_file} = $PAR->{tempdir}."/epilog";
+
 # Be chatty
   print "basedir = $PAR->{basedir}\n" if ($OPT{verbose} > 4);
   print "script dir = $PAR->{tempdir}\n" if ($OPT{verbose} > 4);
 
 # avoid stupidness
   $OPT{b}=1 if ((not defined $OPT{b}) || ($OPT{b} <= 1));
-  $PAR->{b} = $OPT{b};
+  $OPT{p}=1 if (not defined $OPT{p});
+  dieWithError("-p must be <= $PAR->{maxp}") if ($OPT{p} > $PAR->{maxp});
+
+# Keep OPT{p} even
+  if (($OPT{p} > 1) && (($OPT{p}%2) != 0)) {
+    $OPT{p}++;
+    print "\nPacking value must be even or 1, increasing -p to $OPT{p}\n";
+  }
 
 # set cpus-per-task or ntasks-per-node
   if ($OPT{t}) {
 # Don't be stupid
     dieWithError("-t must be a number") if !($OPT{t}=~/^\d+$/);
     dieWithError("-t must be a number >=1") if ($OPT{t} < 1);
-    $SLURMOPT2{"cpus-per-task"} = $OPT{t};
   }
   else {
     $OPT{t} = 1;
-    $SLURMOPT2{"cpus-per-task"} = 1;
   }
-
-# pack only allowed for single threaded swarms 
-  if ($OPT{t} && $OPT{p}) {
-    if (($OPT{t} > 1) && ($OPT{p} > 1)) {
-      dieWithError("-t is for multi-threaded or multi-node commands, -p is for single-threaded commands.  Use one or the other!");
-    }
-  }
-  undef $OPT{p} if ($OPT{p} <= 1);
-# Don't allow p to be more than 2
-  dieWithError("-p can't be more than 2.") if ($OPT{p} > 2);
+  $SLURMOPT2{"cpus-per-task"} = $OPT{t}*$OPT{p};
 
 # Don't allow hyperthreading, which implies no packing
   $SLURMOPT2{"threads-per-core"} = 1 if ($OPT{noht});
@@ -915,6 +1085,7 @@ sub setOptions
   }
 
   $SLURMOPT2{"mem"} = ceil($OPT{g}*1024); 
+  $SLURMOPT2{"mem"} *= $OPT{p} if (defined $OPT{p});
 
 # After getopts, argv should be -1 for this script.
   dieWithError("excess commandline arguments (@ARGV). See $PAR->{programname} --help") if ($#ARGV > -1 || $#ARGV < -1);
@@ -964,6 +1135,18 @@ sub setOptions
   }
   elsif (defined $OPT{"time-per-subjob"}) {
     $SLURMOPT2{"time"} = $OPT{"time-per-subjob"};
+  }
+
+# Validate prolog-time
+  if (defined $OPT{'prolog-time'}) {
+    $PAR->{'prolog-time-seconds'} = clock_to_seconds($OPT{'prolog-time'});
+    dieWithError("--prolog-time ".$OPT{'prolog-time'}." is invalid") if (!$PAR->{'prolog-time-seconds'} || ($PAR->{'prolog-time-seconds'} !~/^\d+$/));
+  }
+
+# Validate epilog-time
+  if (defined $OPT{'epilog-time'}) {
+    $PAR->{'epilog-time-seconds'} = clock_to_seconds($OPT{'epilog-time'});
+    dieWithError("--epilog-time ".$OPT{'epilog-time'}." is invalid") if (!$PAR->{'epilog-time-seconds'} || ($PAR->{'epilog-time-seconds'} !~/^\d+$/));
   }
 
 # Validate time
@@ -1059,7 +1242,7 @@ sub adjustTime
     ($part_found) || dieWithError("undefined time limit for $SLURMOPT2{partition} partition!");
   }
 
-# Find requested_time from user
+# Find requested_time from user, and if not given get it from slurm
   if (defined $SLURMOPT2{"time"}) {
     $PAR->{requested_time} = clock_to_seconds($SLURMOPT2{"time"});
   }
@@ -1069,28 +1252,41 @@ sub adjustTime
 
 # Do we need to adjust the time?  With folding, we now have to determine this on a per-subjob basis
   my $max_adjusted_time = 0;
-  foreach my $sj (0 .. $#{$SWARM->{CMDLISTS}}) {
-    my $max_cmds_in_subjob = scalar(@{${$SWARM->{CMDLISTS}}[$sj][0]});
-    if (defined ${$SWARM->{CMDLISTS}}[$sj][1]) {
-      my $z = scalar(@{${$SWARM->{CMDLISTS}}[$sj][1]});
-      if ($z && ($z > $max_cmds_in_subjob)) {
-        $max_cmds_in_subjob = $z;
+
+  if ($OPT{"time-per-subjob"}) {
+    $max_adjusted_time = $PAR->{requested_time};
+  }
+  else {
+
+    my $max_chunks = 0;
+    for my $sj (0 .. $#{$SWARM->{CMDLISTS}}) {
+      my @tmp;
+      for my $cpu (0 .. $#{${$SWARM->{CMDLISTS}}[$sj]}) {
+        for my $cmd (@{${$SWARM->{CMDLISTS}}[$sj][$cpu]}) {
+          push @tmp,$cmd;
+        }
       }
+      my $count=0;
+      while (@tmp) {
+        my @chunk = splice(@tmp, 0, $OPT{p});
+        $count++;
+      }
+      $max_chunks = ($count > $max_chunks) ? $count : $max_chunks;
+      $max_adjusted_time = $max_chunks*$PAR->{requested_time};
     }
-    my $adjusted_time = undef;
-    if ($OPT{"time-per-subjob"}) {
-      $adjusted_time = $PAR->{requested_time};
-      $max_adjusted_time = $adjusted_time;
-    }
-    else {
-      $adjusted_time = $PAR->{requested_time} * $max_cmds_in_subjob;
-      $max_adjusted_time = $adjusted_time if ($max_adjusted_time < $adjusted_time);
-    }
-    push @{$SWARM->{SUBJOB_TIME}},$adjusted_time;
+
+#print "Number of commands per subjob = $max\n";
+#print "Requested time = $PAR->{requested_time}\n";
+#print "Adjusted time = $max_adjusted_time\n";
+    #$max_adjusted_time = ($adjusted_time > $max_adjusted_time) ? $adjusted_time : $max_adjusted_time;
   }
 
 # Die if the max_adjusted_time is too great
-  dieWithError("Total time for bundled commands is greater than partition walltime limit.\nTry lowering the time per command (--time=".seconds_to_clock($PAR->{requested_time})."), lowering the bundle factor\n(if not autobundled), picking another partition, or splitting up the swarmfile.") if ($max_adjusted_time > $PAR->{max_time});
+  dieWithError("Total time for bundled commands is greater than partition walltime limit.\nTry lowering the time per command (--time=".seconds_to_clock($PAR->{requested_time})."), lowering the bundle value\n(if not autobundled), picking another partition, or splitting up the swarmfile.") if ($max_adjusted_time > $PAR->{max_time});
+
+# Add prolog-time-seconds and epilog-time-seconds if needed
+  $max_adjusted_time += $PAR->{'prolog-time-seconds'} if ($OPT{prolog});
+  $max_adjusted_time += $PAR->{'epilog-time-seconds'} if ($OPT{epilog});
 
 # Set time to the maximum amount
   $SLURMOPT2{"time"} = seconds_to_clock($max_adjusted_time);
@@ -1164,9 +1360,7 @@ sub catch_sig
 #==============================================================================
 sub append_to_tempdir_index
 {
-  my $p = 1;
-  $p = 2 if ($OPT{p} == 2);
-  my $fileContents = time().",$PAR->{user},$PAR->{tempname},$PAR->{subjobs},$p\n";
+  my $fileContents = time().",$PAR->{user},$PAR->{tempname},$PAR->{subjobs},$OPT{p}\n";
   printToFile("$PAR->{tempdir_base}/$PAR->{tempname}",$fileContents,0640); # top secret
 }
 #==============================================================================
@@ -1279,4 +1473,16 @@ sub privilegedUser
   return;
 }
 #==============================================================================
+sub checkFileIsAscii
+{
+    my $file = shift;
 
+    return unless (-f $file);
+    my $output = qx{/usr/bin/file -b "$file"};
+
+    chomp $output;
+
+    return 1 if ($output =~ /^ASCII text\b/);
+    dieWithError("$file is not a basic ASCII text file");
+}
+#==============================================================================

@@ -5,7 +5,9 @@ swarm:
 	@echo installing swarm
 	install -p -m 0755 -o root -g root swarm /usr/local/bin
 	sed -i "s/NNNNN_DATESTAMP_NNNNN/$(shell git log -1 --format=%cd swarm)/" /usr/local/bin/swarm
-	ls -l /usr/local/bin/swarm
+	install -p -m 0755 -o root -g root run_threaded_swarm_commands /usr/local/bin
+	sed -i "s/NNNNN_DATESTAMP_NNNNN/$(shell git log -1 --format=%cd swarm)/" /usr/local/bin/run_threaded_swarm_commands
+	ls -l /usr/local/bin/{swarm,run_threaded_swarm_commands}
 
 swarm_cleanup:
 	@echo installing swarm_cleanup

@@ -1,0 +1,317 @@
+#!/usr/bin/perl
+#
+# This script takes three arguments:
+#
+#   cmd_file      = file with a list of commands to run, one per line
+#   threads       = number of threads to use (default 2)
+#   output_prefix = string to use for stdout, stderr and joblog file
+#                   (default output_{epoch})
+#
+# The stdout and stderr of each command is appended to a single .o or .e file
+# per worker slot.  A final joblog is created that summarizes the command number
+# (line in cmd_file), start and end times, number of seconds the command took,
+# and exit code of the command.  The joblog file is tab-delimited.
+
+use strict;
+use warnings;
+use threads;
+use Thread::Queue;
+use POSIX        qw(strftime);
+use Fcntl        qw(:flock);
+
+my %OPT;
+getOptions();
+
+# ---------------------------------------------------------------------------
+# Read commands (skip blank lines)
+# ---------------------------------------------------------------------------
+open my $cmd_fh, '<', $OPT{cmd_file}
+    or die "Error: Cannot open '$OPT{cmd_file}': $!\n";
+
+my @commands;
+while (<$cmd_fh>) {
+    chomp;
+    push @commands, $_ if /\S/;
+}
+close $cmd_fh;
+
+exit 0 unless @commands;    # nothing to do
+
+# ---------------------------------------------------------------------------
+# Build work queue — each item is an arrayref: [ job_num, command_string ]
+# job_num mirrors GNU parallel's {#}: 1-based, sequential across all jobs.
+# ---------------------------------------------------------------------------
+my $queue = Thread::Queue->new();
+for my $i (0 .. $#commands) {
+    #$queue->enqueue([ $i + 1, $commands[$i] ]);
+    $queue->enqueue([ $i, $commands[$i] ]);
+}
+$queue->end();              # signals workers to exit when queue is drained
+
+my $joblog_file = "$OPT{output_prefix}.joblog";
+my $uniqid = 'n/a';
+if ((defined $ENV{SLURM_ARRAY_JOB_ID}) && (defined $ENV{SLURM_ARRAY_TASK_ID})) {
+    $uniqid = "$ENV{SLURM_ARRAY_JOB_ID}_$ENV{SLURM_ARRAY_TASK_ID}";
+}
+
+# ---------------------------------------------------------------------------
+# Worker subroutine
+# Each thread receives a slot number (1..threads), mirroring GNU parallel's {%}
+# ---------------------------------------------------------------------------
+my $worker = sub {
+    my ($slot) = @_;
+
+    my $proc_num = $slot-1;
+    my $out_file = "$OPT{output_prefix}_${proc_num}.o";
+    my $err_file = "$OPT{output_prefix}_${proc_num}.e";
+
+    while (defined( my $item = $queue->dequeue() )) {
+        my ($job_num, $cmd) = @$item;
+        my ($o_fh,$e_fh);
+
+        # ---- Write header to .o ----
+        unless ($OPT{noout}) {
+            open $o_fh, '>>', $out_file
+                or die "Thread $slot: Cannot open '$out_file': $!\n";
+            print $o_fh "---- COMMAND EXECUTED: ",
+                        "-" x 57, "\n";
+            print $o_fh "$cmd\n";
+            print $o_fh "-" x 80, "\n";
+            print $o_fh "===== CMD START =====\n" unless $OPT{oldpack};
+            close $o_fh;
+        }
+
+        # ---- Write header to .e ----
+        unless ($OPT{noerr}) {
+            open $e_fh, '>>', $err_file
+                or die "Thread $proc_num: Cannot open '$err_file': $!\n";
+            print $e_fh "===== CMD START =====\n" unless $OPT{oldpack};
+            close $e_fh;
+        }
+
+        if (!$OPT{noout} && !$OPT{noerr}) {
+            if (!$OPT{'merge-output'}) {
+                # default
+                $cmd .= ">> $out_file 2>> $err_file"; 
+            }
+            else {
+                # merge .o and .e into .o
+                $cmd .= ">> $out_file 2>> $out_file"; 
+            }
+        }
+        elsif (!$OPT{noout} && $OPT{noerr}) {
+            # throw away .e
+            $cmd .= ">> $out_file 2>> /dev/null"; 
+        }
+        elsif ($OPT{noout} && !$OPT{noerr}) {
+            # throw away .o
+            $cmd .= ">> /dev/null 2>> $err_file"; 
+        }
+        else {
+            # throw away both .o and .e
+            $cmd .= ">> /dev/null 2>> /dev/null"; 
+        }
+
+        # ---- Run command, appending stdout/.o and stderr/.e ----
+        my $start_epoch = time();
+        my $start_date  = _iso8601($start_epoch);
+
+        # Run via shell so pipelines, redirects, etc. in the command all work.
+        my $shell = "/bin/bash";
+        $shell = "/bin/csh" if ($OPT{usecsh});
+        system($shell, '-c', "export SWARM_PROC_ID=$proc_num; $cmd");
+ 
+        # Extract unique command id
+        my $SWARM_COMM_ID=$job_num;
+        if ($cmd =~ /SWARM_COMM_ID=(\d+)/) {
+            $SWARM_COMM_ID=$1;
+        }
+
+        # Decode exit status the same way bash $? works
+        my $ec;
+        if ($? == -1) {
+            $ec = 127;          # command not found / failed to execute
+        } elsif ($? & 0x7f) {
+            $ec = 128 + ($? & 0x7f);   # killed by signal
+        } else {
+            $ec = $? >> 8;
+        }
+
+        my $end_epoch = time();
+        my $end_date  = _iso8601($end_epoch);
+        my $elapsed   = $end_epoch - $start_epoch;
+
+        # ---- Write footer to .o ----
+        unless ($OPT{noout}) {
+            open $o_fh, '>>', $out_file
+                or die "Thread $proc_num: Cannot open '$out_file': $!\n";
+            print $o_fh "EXIT CODE: $ec\n" unless $OPT{oldpack};
+            print $o_fh "===== CMD END =======\n" unless $OPT{oldpack};
+            close $o_fh;
+        }
+
+        # ---- Write footer to .e ----
+        unless ($OPT{noerr}) {
+            open $e_fh, '>>', $err_file
+                or die "Thread $proc_num: Cannot open '$err_file': $!\n";
+            print $e_fh "===== CMD END =======\n" unless $OPT{oldpack};
+            close $e_fh;
+        }
+
+        # ---- Append to shared joblog (flock for thread safety) ----
+        if ($OPT{joblog}) {
+            open my $jl_fh, '>>', $joblog_file
+                or die "Thread $proc_num: Cannot open '$joblog_file': $!\n";
+            flock($jl_fh, LOCK_EX)
+                or die "Thread $proc_num: Cannot lock '$joblog_file': $!\n";
+            print $jl_fh join("\t",$uniqid,$SWARM_COMM_ID,$start_date,$end_date,$elapsed,$ec),"\n";
+            flock($jl_fh, LOCK_UN);
+            close $jl_fh;
+        }
+    }
+};
+
+# ---------------------------------------------------------------------------
+# Spawn worker threads
+# ---------------------------------------------------------------------------
+my @thr;
+for my $slot (1 .. $OPT{threads}) {
+    push @thr, threads->create($worker, $slot);
+}
+
+# Wait for all threads to finish
+for my $t (@thr) {
+    $t->join();
+    if (my $err = $t->error()) {
+        warn "Thread error: $err\n";
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Condense output
+# ---------------------------------------------------------------------------
+unless ($OPT{oldpack}) {
+    _condense_output("$OPT{output_prefix}","o","$OPT{output_prefix}.o");
+    _condense_output("$OPT{output_prefix}","e","$OPT{output_prefix}.e");
+}
+
+exit 0;
+
+#==================================================================================================
+# Condense the output into single .o and .e files
+sub _condense_output {
+    my ($OP,$s,$FF) = @_;
+    #my @input_files = glob("${OP}_*.$s");
+#    return unless (-f "${OP}_p.$s");
+#    my @tmp = glob("${OP}_*.$s");
+#    return unless @tmp;
+#    my @input_files = sort { ($a =~ /\S+_(\d+)\.$s/)[0] <=> ($b =~ /\S+_(\d+)\.$s/)[0] } @tmp;
+
+    my @input_files = sort {
+        my ($an) = $a =~ /${OP}_(\d+)\.$s/;
+        my ($bn) = $b =~ /${OP}_(\d+)\.$s/;
+
+        defined $an && defined $bn ? $an <=> $bn :
+        defined $an                  ? -1 :
+        defined $bn                  ? 1  :
+                                   $a cmp $b;
+    } glob("${OP}_*.$s");
+    return unless @input_files;
+
+    open(my $out_fh, '>', $FF) or die "Cannot open $FF: $!";
+    foreach my $file (@input_files) {
+        open(my $in_fh, '<', $file) or die "Cannot open $file: $!";
+        while (my $line = <$in_fh>) { print $out_fh $line; }
+        close($in_fh) or die "Error closing $file: $!";
+        unlink $file or warn "Could not delete $file: $!";
+    }
+    close($out_fh);
+}
+#==================================================================================================
+# Format an epoch as ISO-8601 with seconds (like date -Iseconds)
+# e.g.  2026-05-05T14:30:00-0500
+sub _iso8601 {
+    my ($epoch) = @_;
+    return strftime('%Y-%m-%dT%H:%M:%S', localtime($epoch));
+}
+#==================================================================================================
+sub getOptions
+{
+    use Getopt::Long qw(:config no_ignore_case);
+    Getopt::Long::Configure("bundling"); # allows option bundling
+    GetOptions(
+        'help' => \$OPT{help},
+        'h' => \$OPT{help},
+        'c=s' => \$OPT{cmd_file},
+        'cmd_file=s' => \$OPT{cmd_file},
+        't=i' => \$OPT{threads},
+        'threads=i' => \$OPT{threads},
+        'o=s' => \$OPT{output_prefix},
+        'output_prefix=s' => \$OPT{output_prefix},
+        'usecsh' => \$OPT{usecsh},
+        'noout' => \$OPT{noout},
+        'noerr' => \$OPT{noerr},
+        'merge-output' => \$OPT{'merge-output'},
+        'joblog' => \$OPT{joblog},
+        'oldpack' => \$OPT{oldpack},
+    ) || printOptions();
+
+    printOptions() if $OPT{help};
+  
+    $OPT{threads}       //= 2;
+    $OPT{output_prefix} //= 'output_' . time();
+    $OPT{noerr}=1 if $OPT{'merge-output'};
+  
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+    unless (defined $OPT{cmd_file}) {
+        die "Error: No command file given.\n";
+    }
+    unless (-f $OPT{cmd_file}) {
+        die "Error: File '$OPT{cmd_file}' not found.\n";
+    }
+    unless (-r $OPT{cmd_file}) {
+        die "Error: File '$OPT{cmd_file}' not readable.\n";
+    }
+    unless ($OPT{threads} =~ /^[0-9]+$/ && $OPT{threads} >= 1) {
+        die "Error: Thread count must be a positive integer and greater than 1.\n";
+    }
+
+}
+#==================================================================================================
+sub printOptions
+{
+    my ($msg) = shift;
+    warn "\n$msg\n" if $msg;
+
+    print STDERR <<EOF;
+
+Usage: $0 -c <file> -t <int> -o <str> [ options ]
+
+Required options:
+
+  -c, --cmd_file <file>      file containing commands
+  -t, --threads <int>        number of threads
+  -o, --output_prefix <str>  prefix for output
+
+Other options:
+
+  --usecsh                   /bin/csh rather than /bin/bash
+  --noout                    don't print STDOUT
+  --noerr                    don't print STDERR
+  --merge-output             redirect STDERR to STDOUT
+  --oldpack                  format output in old manner
+  --joblog                   print a joblog file
+
+  -h, --help                 show this menu
+
+Description:
+
+  Run a set of commands in parallel
+
+Last modification date: NNNNN_DATESTAMP_NNNNN (David Hoover)
+
+EOF
+}
+#==================================================================================================

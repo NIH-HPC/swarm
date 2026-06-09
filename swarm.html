@@ -24,10 +24,11 @@
       <div class="tocItem" style="margin-left:20px"><a href="#lscratch">Using local scratch</a></div>
       <div class="tocItem" style="margin-left:20px"><a href="#bundling">-b, --bundle</a></div>
       <div class="tocItem" style="margin-left:20px"><A href="#gandt">-g and -t (memory and threads)</a></div>
-      <div class="tocItem" style="margin-left:20px"><a href="#p">-p, --processes-per-subjob</a></div>
+      <div class="tocItem" style="margin-left:20px"><a href="#p">-p, --processes-per-subjob, --parallel</a></div>
       <div class="tocItem" style="margin-left:20px"><A href="#time">--time</a></div>
       <div class="tocItem" style="margin-left:20px"><a href="#dependency">--dependency</a></div>
       <div class="tocItem" style="margin-left:20px"><a href="#module">--module</a></div>
+      <div class="tocItem" style="margin-left:20px"><a href="#prolog_epilog">--prolog and --epilog</a></div>
       <div class="tocItem" style="margin-left:20px"><a href="#sbatch">--sbatch</a></div>
       <div class="tocItem" style="margin-left:20px"><a href="#devel">--devel, --verbose</a></div>
 
@@ -54,8 +55,7 @@ Command lines in the swarmfile should appear just as they would be entered on a 
 
 Swarm encapsulates each command line in a single temporary command script, then submits all command scripts to the Biowulf
 cluster as a <a href="http://slurm.schedmd.com/job_array.html">Slurm job array</a>.
-By default, swarm runs one command per core on a node, making optimum use of a node.
-Thus, a node with 16 cores will run 16 commands <b>in parallel</b>.</p>
+By default, swarm runs one command per core on a node.  Thus, a node with 16 cores can run 16 commands <b>in parallel</b> with 16 subjobs.</p>
 
 <p>For example, create a file that looks something like this (<b>NOTE:</b> lines that begin with a <b>#</b>
 character are interpreted as comments and are not executed):</p>
@@ -118,13 +118,11 @@ Usage: swarm [swarm options] [sbatch options] swarmfile
 Basic options:
 
   <a href="#gandt"><b>-g,--gb-per-process</b></a> [float]						       
-			    gb per process (can be fractions of GB, e.g. 3.5)
+			    gb per process (default = 1.5)
   <a href="#gandt"><b>-t,--threads-per-process</b></a> [int] 				       
-			    threads per process (integer).  This option is only valid for
-			    multi-threaded swarms (-p 1)
-  <a href="#p"><b>-p,--processes-per-subjob</b></a> [int]					       
-			    processes per subjob (default = 1), this option is
-			    only valid for single-threaded swarms (-t 1)
+			    threads per process (default = 1)
+  <a href="#p"><b>-p,--processes-per-subjob,--parallel</b></a> [int]					       
+			    processes per subjob (default = 1)
   <a href="#bundling"><b>-b,--bundle</b></a> [int]         bundle more than one command line per subjob and
 			    run sequentially (this automatically multiplies the
 			    time needed per subjob)
@@ -152,14 +150,23 @@ Development options:
 
   --no-scripts		    don't create temporary swarm scripts (with --debug
 			    or --devel)
-  --no-run		    don't actually run
-  --debug		    don't actually run
+  --no-run,--debug	    don't actually run
   <a href="#devel"><b>--devel</b></a>		    combine --debug and --no-scripts, and be very
 			    chatty
   <a href="#devel"><b>-v,--verbose</b></a> [int]	    can range from 0 to 6, with 6 the most verbose
   --silent		    don't give any feedback, just jobid
   -h,--help		    print this help message
   -V,--version		    print version and exit
+
+Advanced options:
+
+  <a href="#prolog_epilog"><b>--prolog</b></a> [str]	    command(s) to run per subjob, before swarmfile commands
+  <a href="#prolog_epilog">--prolog-source</b></a> [str]	    source prolog file, rather than execute
+  <a href="#prolog_epilog"><b>--prolog-time</b></a> [str]	    time needed to run prolog (default 10 min)
+  <a href="#prolog_epilog"><b>--epilog</b></a> [str]	    command(s) to run per subjob, after swarmfile commands
+  <a href="#prolog_epilog"><b>--epilog-time</b></a> [str]	    time needed to run epilog (default 10 min)
+  --oldpack		    do not condense packed output
+  --joblog		    create joblog file (with -p)
 
 sbatch options:
 
@@ -189,7 +196,11 @@ Environment variables:
 
   The following environment variables are set within a swarm:
 
-  SWARM_PROC_ID          can be 0 or 1
+  SLURM_ARRAY_JOB_ID        single slurm jobid for entire swarm
+  SLURM_JOB_ID              unique jobid for each subjob in swarm
+  SWARM_ARRAY_TASK_ID       local numeric id of swarm subjob
+  SWARM_PROC_ID             processor slot on which command is run (-p only)
+  SWARM_COMM_ID             command number from swarmfile
 
 For more information, type "man swarm".</pre>
 
@@ -244,11 +255,11 @@ See <a href="#gandt">below</a> for examples on how to allocate threads and memor
 </p>
 
 <p>
-More than one swarmfile line can be run per subjob using the <b>-p</b> option.  This is only valid for single-threaded
-swarms (i.e. <b>-t 1</b>).  Under these circumstances, all cpus are used.  See <a href="#p">below</a>
-for more information on <b>-p</b>.
+More than one swarmfile line can be run per subjob in parallel using the <b>-p</b> option. See <a href="#p">below</a> for more information on <b>-p</b>.
 </p>
 
+<p>If you are unsure of what to expect with a combination of swarm options, <a href="#devel">swarm can be run in development mode</a> by including
+the option <b>--devel</b>.  This will display a consise explanation of what swarm will do when submitted.</p>
 
 
 <!-- ======================================================================================================== -->
@@ -362,7 +373,7 @@ echo ${KMER} | jellyfish query /lscratch/$SLURM_JOB_ID/39sHMC_Tumor_genomic_0 > 
 <h3>Modules</h3>
 
 <p><a href="modules.html">Environment modules</a> can be loaded for an entire swarm using the <b>--module</b>
-option.  The </p> 
+option.  For example:</p> 
 
 <pre class="term">swarm --module python,tophat,ucsc,samtools,vcftools -g 4 -t 8 file.swarm</pre>
 
@@ -612,67 +623,101 @@ ERROR: -g 400 requires --partition largemem</pre>
 <!-- p -->
 <!-- ------------------------------------------------------------------------------------- -->
 
-<p><a name="p"></a><b>Using -p option to "pack" commands</b></p>
+<p><a name="p"></a><b>Using -p option to "pack" or "parallelize" commands</b></p>
 <p>By default, swarm allocates a single command line per subjob.  If the command is single-threaded, then swarm wastes half the
-cpus allocated, because the slurm batch system allocates no less than a single core (or two cpus) per subjob.  This effect
-can be seen using the <b>jobload</b> command for a 4-command swarm:</p>
+cpus allocated, because the slurm batch system allocates no less than a single core (or two cpus) per subjob.  It is also sometimes more efficient
+to run multiple commands in parallel on the same node with a single allocation of /lscratch.</p>
 
-<pre class="term"><b>[biowulf]$</b> swarm file.swarm
-219433
-<b>[biowulf]$</b>$ jobload -u user
-         JOBID         TIME   NODES   CPUS  THREADS   LOAD             MEMORY
-                                     Alloc  Running                Used/Alloc
-      219433_3         0:37  cn0070      2        1    50%      1.0 GB/1.5 GB
-      219433_2         0:37  cn0070      2        1    50%      1.0 GB/1.5 GB
-      219433_1         0:37  cn0069      2        1    50%      1.0 GB/1.5 GB
-      219433_0         0:37  cn0069      2        1    50%      1.0 GB/1.5 GB
+<p>In order to use all the cpus allocated to a swarm, the option <b>-p</b> will set the number of commands run per subjob.  The value of <b>-p</b>
+can be any even number, and corresponds to the number of cpus allocated per subjob.  For example, running 64 commands
+in the swarmfile using <b>-p 16</b> allocates 16 cpus per subjob, one subjob per node.  Each subjob runs up to 16 processes simultaneously:</p>
 
-USER SUMMARY
-     Jobs: 2
-    Nodes: 2
-     CPUs: 4
- Load Avg: 50%</pre>
+<pre class="term"><b>[biowulf]$</b> swarm -p 16 --time 60 work_64.swarm
+1001
+...
+<b>[biowulf]</b>$ sjobs -u user
 
-<p>In order to use all the cpus allocated to a single-threaded swarm, the option <b>-p</b> will set the number
-of commands run per subjob.  Including <b>-p 2</b>, half as many subjobs are created, each using twice as many cpus and twice as much memory:</p>
-<pre class="term"><b>[biowulf]$</b> swarm -p 2 file.swarm
-219434
-<b>[biowulf]$</b>$ jobload -u user
-         JOBID         TIME   NODES   CPUS  THREADS   LOAD             MEMORY
-                                     Alloc  Running                Used/Alloc
-      219434_1         0:24  cn0069      2        2   100%      2.0 GB/3.0 GB
-      219434_0         0:24  cn0069      2        2   100%      2.0 GB/3.0 GB
+User      JobId       JobName     Part         St  Runtime     Walltime     Nodes  CPUs   Memory  Dependency  Nodelist
+========================================================================================================================
+user      1001_0      swarm       norm         R        20:42        60:00      1     16   24 GB              cn0048
+user      1001_1      swarm       norm         R        20:42        60:00      1     16   24 GB              cn0054
+user      1001_2      swarm       norm         R        20:42        60:00      1     16   24 GB              cn4278
+user      1001_3      swarm       norm         R        20:42        60:00      1     16   24 GB              cn4303
+========================================================================================================================
+cpus queued  = 0
+cpus running = 48 / 64
+mem  queued  = 0.0 B
+mem  running = 56.6 GB / 97.5 GB
+jobs queued  = 0
+jobs running = 4
+</pre>
 
-USER SUMMARY
-     Jobs: 2
-    Nodes: 2
-     CPUs: 4
- Load Avg: 100%</pre>
+<p>While the subjobs and processes are running, each subjob/node gets outputs its own STDOUT and STDERR to .o and .e files (in this case _0, _1, _2, ... _15).  Additionally, there is a global .o and .e file labeled
+with "_p".</p>
 
-<p>In this case, we are "packing" 2 commands per subjob.</p>
+<pre class="term"><b>[biowulf]</b>$ ls swarm_*
+swarm_1001_0_0.e    swarm_1001_0_5.o    swarm_1001_1_15.e   swarm_1001_2_0.o    swarm_1001_2_6.e    swarm_1001_3_15.o
+swarm_1001_0_0.o    swarm_1001_0_6.e    swarm_1001_1_15.o   swarm_1001_2_10.e   swarm_1001_2_6.o    swarm_1001_3_1.e
+swarm_1001_0_10.e   swarm_1001_0_6.o    swarm_1001_1_1.e    swarm_1001_2_10.o   swarm_1001_2_7.e    swarm_1001_3_1.o
+swarm_1001_0_10.o   swarm_1001_0_7.e    swarm_1001_1_1.o    swarm_1001_2_11.e   swarm_1001_2_7.o    swarm_1001_3_2.e
+swarm_1001_0_11.e   swarm_1001_0_7.o    swarm_1001_1_2.e    swarm_1001_2_11.o   swarm_1001_2_8.e    swarm_1001_3_2.o
+swarm_1001_0_11.o   swarm_1001_0_8.e    swarm_1001_1_2.o    swarm_1001_2_12.e   swarm_1001_2_8.o    swarm_1001_3_3.e
+swarm_1001_0_12.e   swarm_1001_0_8.o    swarm_1001_1_3.e    swarm_1001_2_12.o   swarm_1001_2_9.e    swarm_1001_3_3.o
+swarm_1001_0_12.o   swarm_1001_0_9.e    swarm_1001_1_3.o    swarm_1001_2_13.e   swarm_1001_2_9.o    swarm_1001_3_4.e
+swarm_1001_0_13.e   swarm_1001_0_9.o    swarm_1001_1_4.e    swarm_1001_2_13.o   swarm_1001_2_p.e    swarm_1001_3_4.o
+swarm_1001_0_13.o   swarm_1001_0_p.e    swarm_1001_1_4.o    swarm_1001_2_14.e   swarm_1001_2_p.o    swarm_1001_3_5.e
+swarm_1001_0_14.e   swarm_1001_0_p.o    swarm_1001_1_5.e    swarm_1001_2_14.o   swarm_1001_3_0.e    swarm_1001_3_5.o
+swarm_1001_0_14.o   swarm_1001_1_0.e    swarm_1001_1_5.o    swarm_1001_2_15.e   swarm_1001_3_0.o    swarm_1001_3_6.e
+swarm_1001_0_15.e   swarm_1001_1_0.o    swarm_1001_1_6.e    swarm_1001_2_15.o   swarm_1001_3_10.e   swarm_1001_3_6.o
+swarm_1001_0_15.o   swarm_1001_1_10.e   swarm_1001_1_6.o    swarm_1001_2_1.e    swarm_1001_3_10.o   swarm_1001_3_7.e
+swarm_1001_0_1.e    swarm_1001_1_10.o   swarm_1001_1_7.e    swarm_1001_2_1.o    swarm_1001_3_11.e   swarm_1001_3_7.o
+swarm_1001_0_1.o    swarm_1001_1_11.e   swarm_1001_1_7.o    swarm_1001_2_2.e    swarm_1001_3_11.o   swarm_1001_3_8.e
+swarm_1001_0_2.e    swarm_1001_1_11.o   swarm_1001_1_8.e    swarm_1001_2_2.o    swarm_1001_3_12.e   swarm_1001_3_8.o
+swarm_1001_0_2.o    swarm_1001_1_12.e   swarm_1001_1_8.o    swarm_1001_2_3.e    swarm_1001_3_12.o   swarm_1001_3_9.e
+swarm_1001_0_3.e    swarm_1001_1_12.o   swarm_1001_1_9.e    swarm_1001_2_3.o    swarm_1001_3_13.e   swarm_1001_3_9.o
+swarm_1001_0_3.o    swarm_1001_1_13.e   swarm_1001_1_9.o    swarm_1001_2_4.e    swarm_1001_3_13.o   swarm_1001_3_p.e
+swarm_1001_0_4.e    swarm_1001_1_13.o   swarm_1001_1_p.e    swarm_1001_2_4.o    swarm_1001_3_14.e   swarm_1001_3_p.o
+swarm_1001_0_4.o    swarm_1001_1_14.e   swarm_1001_1_p.o    swarm_1001_2_5.e    swarm_1001_3_14.o
+swarm_1001_0_5.e    swarm_1001_1_14.o   swarm_1001_2_0.e    swarm_1001_2_5.o    swarm_1001_3_15.e
+</pre>
 
-<p class="alert"><b>NOTE:</b> The cpus on the biowulf cluster are <i>hypercores</i>, and some programs run more inefficiently
-when packed onto hypercores.  Please test your application to see if it actually benefits from running two commands per core rather than one.</p>
-<p>Keep in mind:</p>
-<ul>
-<li><b>-p</b> is only available to single-threaded swarms (i.e. <b>-t 1</b>).</li>
-<li>The default file output format is different using <b>-p</b>.  The file names end with an extra suffix indicating the cpu from the subjob:</li>
-</ul>
+<p>Normally when the subjobs complete, the .o and .e files are consolidated into single files per subjob and individual output
+is segmented in each subjob output:</p>
+<pre class="term"><b>[biowulf]</b>$ ls swarm_*
+swarm_1001_0.e      swarm_1001_1.e      swarm_1001_2.e      swarm_1001_3.e
+swarm_1001_0.o      swarm_1001_1.o      swarm_1001_2.o      swarm_1001_3.o
+</pre>
 
-<pre class="term">
-<b>[biowulf]$</b>$ swarm -p 2 ../file.swarm
-14 commands run in 7 subjobs, each command requiring 1.5 gb and 1 thread, packing 2 processes per subjob
-221574
-<b>[biowulf]$</b>$ ls
-swarm_221574_0_0.e  swarm_221574_1_1.e  swarm_221574_3_0.e  swarm_221574_4_1.e  swarm_221574_6_0.e
-swarm_221574_0_0.o  swarm_221574_1_1.o  swarm_221574_3_0.o  swarm_221574_4_1.o  swarm_221574_6_0.o
-swarm_221574_0_1.e  swarm_221574_2_0.e  swarm_221574_3_1.e  swarm_221574_5_0.e  swarm_221574_6_1.e
-swarm_221574_0_1.o  swarm_221574_2_0.o  swarm_221574_3_1.o  swarm_221574_5_0.o  swarm_221574_6_1.o
-swarm_221574_1_0.e  swarm_221574_2_1.e  swarm_221574_4_0.e  swarm_221574_5_1.e
-swarm_221574_1_0.o  swarm_221574_2_1.o  swarm_221574_4_0.o  swarm_221574_5_1.o</pre>
+<p>However, if the subjob ends incompletely, either due to cancellation or timeout, the "_p.e" files will contain essential information:</p>
+<pre class="term"><b>[biowulf]</b>$ cat trial5/swarm_20654244_0_p.e
+slurmstepd: error: *** JOB 20654244 ON cn0048 CANCELLED AT 2026-05-27T12:02:18 DUE TO TIME LIMIT ***
+</pre>
+
+<p>If <b>--joblog</b> is included, extra files are created for each subjob:</p>
+<pre class="term"><b>[biowulf]</b>$ swarm -p 16 --time 60 --joblog -f work_64.swarm
+...
+swarm_20654244_0.joblog      swarm_20654244_1.joblog      swarm_20654244_2.joblog      swarm_20654244_3.joblog</pre>
+
+<p>The contents of the <b>joblog</b> files consists of six columns: unique_jobid, command number, start time, end time, elapsed time (in seconds), and exit code of the command.</p>
+
+<pre class="term"><b>[biowulf]</b>$ cat *.joblog | sort -nk2
+1001_0      1       2026-05-28T15:30:01     2026-05-28T15:32:44     163     0
+1001_0      2       2026-05-28T15:30:01     2026-05-28T15:32:47     166     0
+1001_0      3       2026-05-28T15:30:01     2026-05-28T15:33:00     179     0
+...
+1001_1      24      2026-05-28T15:30:01     2026-05-28T15:32:04     123     0
+1001_1      25      2026-05-28T15:30:01     2026-05-28T15:32:03     122     0
+1001_1      26      2026-05-28T15:30:01     2026-05-28T15:32:04     123     0
+1001_1      27      2026-05-28T15:30:01     2026-05-28T15:32:03     122     0
+...
+1001_2      38      2026-05-28T15:30:01     2026-05-28T15:32:08     127     0
+1001_2      39      2026-05-28T15:30:01     2026-05-28T15:32:03     122     0
+1001_2      40      2026-05-28T15:30:01     2026-05-28T15:32:08     127     0
+...
+</pre>
 
 <p>In the case where each swarm subjob must create or use a unique directory or file, an environment variable <b><tt>SWARM_PROC_ID</tt></b> is
-available to discriminate the 0 and 1 processes running with -p 2.</p>
+available to discriminate the processes running with <b>-p</b>.</p>
 
 <p>For example, in order to create a unique directory in allocated /lscratch for each subjob, this bash code example can be used:</p>
 
@@ -839,7 +884,8 @@ user       10003    last.sh    norm   PD          0:00   1       1   2.0GB/cpu  
 SchedMD for a discussion on how Slurm handles exit codes</a>.</P>
 
 <p class="alert">NOTE: Setting <b>-p</b> causes multiple commands to run per subjob. Because of this, the exit status of the
-subjob can come from any of the multiple processes in the subjob. </p>
+subjob can come from any of the multiple processes in the subjob. Include <b>--joblog</b> when running with <b>-p</b> to output
+a file that lists the exit code along with the itemized processes.</p>
 
 
 <center><hr width="500" /></center>
@@ -925,6 +971,52 @@ version of Python.</p>
 <a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
 
 <!-- ------------------------------------------------------------------------------------- -->
+<!-- prolog_epilog -->
+<!-- ------------------------------------------------------------------------------------- -->
+
+<p><a name="prolog_epilog"></a><b>Using --prolog and --epilog options</b></p>
+<p>There are occasions where a set of commands should be run once per subjob or per node, either
+before or after the input swarmfile commands are run.  This can be facilitated using <b>--prolog</b>
+and <b>--epilog</b>.</p>
+
+<p>For example, copying a very large file to local scratch prior to running a set of commands, all 
+of which use that file as a reference.  This is advantageous, as it distributes the I/O load to
+the nodes and improves I/O performance.</p>
+
+<p>If work is performed and files are written to /lscratch during the job, the <b>--epilog</b> option can be used to move those files after all commands are finished.</p>
+
+<p><b>--prolog-source</b></p>
+
+<p>If a set of commands requires being run in the current shell prior to running commands, for example setting environment variables or initiating a specific conda environment, <b>--prolog-source</b> should be used.
+Note that both <b>--prolog</b> and <b>--prolog-source</b> can be used together.</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm --gres=lscratch:100 \
+--prolog /data/$USER/path/to/prolog_script.sh \
+--prolog-source 'export SRCDIR=/lscratch/$SLURM_JOB_ID/input_stuff ; export TMPDIR=/lscratch/$SLURM_JOB_ID/tmpdir' \
+--epilog 'cp -r /lscratch/$SLURM_JOB_ID/output /data/$USER' \
+file.swarm</pre>
+
+<p><b>--prolog-time, --epilog-time</b></p>
+
+<p>Running prolog or epilog commands can take a substantial amount of time.  For example, copying several hundred gb of data to /lscratch can take 30-60 minutes.  By default, swarm allocates an additional 10 minutes of time to complete the prolog or epilog commands.  <b>--prolog-time</b> and <b>--epilog-time</b> can be used to increase (or decrease) the amount of time necessary for these steps.
+
+<p> For example, copying a large amount of data to /lscratch:</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm --gres=lscratch:1000 \
+--prolog /data/$USER/path/to/complicated_and_lengthy_prolog_script.sh \
+--prolog-time 2:00:00 \
+file.swarm</pre>
+
+<p>or merely setting an environment variable:</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm --prolog-source 'export TMPDIR=/lscratch/$SLURM_JOB_ID' --prolog-time 1 file.swarm</pre>
+
+<p>In the above example, the integer following <b>--time</b> is interpreted as <b>one minute</b>.  This is the smallest amount of time that can be used by swarm.</p>
+
+<center><hr width="500" /></center>
+<a href="/apps/swarm.html" style="font-size:12px; float: right;">back to top</a></p>
+
+<!-- ------------------------------------------------------------------------------------- -->
 <!-- lscratch -->
 <!-- ------------------------------------------------------------------------------------- -->
 
@@ -945,20 +1037,22 @@ corresponding to the jobid, e.g.:</p>
 
 <p>/lscratch/$SLURM_JOB_ID is a <b>temporary work directory</b>.  Each swarm subjob should do most if not all of its work in this temporary work directory.  This means that any input data should be copied the /lscratch before running any commands, and the output should be copied back to the original location after completion.</p>
 
-<p>Here is a generic example of how to use /lscratch in a swarm:</p>
+<p>Here is a generic example of how to use /lscratch in a swarm using <b>--prolog-source</b>:</p>
 
 <pre class="term"><b>[biowulf]$</b> cat file.swarm 
-TWD=/lscratch/$SLURM_JOB_ID; cp input1 $TWD; cmd -i $TWD/input1 -o $TWD/output1; cp $TWD/output1 .
-TWD=/lscratch/$SLURM_JOB_ID; cp input2 $TWD; cmd -i $TWD/input2 -o $TWD/output2; cp $TWD/output2 .
-TWD=/lscratch/$SLURM_JOB_ID; cp input3 $TWD; cmd -i $TWD/input3 -o $TWD/output3; cp $TWD/output3 .
-TWD=/lscratch/$SLURM_JOB_ID; cp input4 $TWD; cmd -i $TWD/input4 -o $TWD/output4; cp $TWD/output4 .</pre>
+cp input1 $TWD; cmd -i $TWD/input1 -o $TWD/output1; cp $TWD/output1 .
+cp input2 $TWD; cmd -i $TWD/input2 -o $TWD/output2; cp $TWD/output2 .
+cp input3 $TWD; cmd -i $TWD/input3 -o $TWD/output3; cp $TWD/output3 .
+cp input4 $TWD; cmd -i $TWD/input4 -o $TWD/output4; cp $TWD/output4 .
+
+<b>[biowulf]$</b> swarm --gres=lscratch:200 --prolog-source 'export TWD=/lscratch/$SLURM_JOB_ID' file.swarm</pre>
 
 <p>Local scratch space is allocated <b>per subjob</b>.  By default, that means each command or command list (single line in
 swarmfile) is allocated its own independent local scratch space.  <b>HOWEVER</b>, there are two situations where some
 thought must be given to local scratch space:</p>
 
 <ul>
-  <li><b>bundled swarms</b> - <a href="#bundling">Bundled swarms</a> serialize multiple commands into a single subjob.  Since local scratch space is
+  <li><b>bundled swarms (-b)</b>: <a href="#bundling">Bundled swarms</a> serialize multiple commands into a single subjob.  Since local scratch space is
 allocated per subjob, this means that each command in the job inherits the same local scratch space.  This means that each
 command should be written to deal with any "leftover" files from the previous commands.  A simple solution might be to
 clean out the local scratch space at the end of each command.  For example:<br>
@@ -966,9 +1060,8 @@ clean out the local scratch space at the end of each command.  For example:<br>
     <pre class="term">cd /lscratch/$SLURM_JOB_ID ; command1 arg1 arg2 ; rm -rf /lscratch/$SLURM_JOB_ID/*</pre>
   </li>
 
-  <li><b>-p 2</b> - If the <tt><b><a href="#p">-p 2</a></b></tt> option is given to swarm, then allocated local scratch space is shared
-between 2 commands in a single job.  In this case, make sure to allocate <b>twice</b> as much local scratch space as
-normal.</li>
+  <li><b>packed swarm (-p)</b>: If a <a href="#p">packed swarm</a> using the <b>-p</b> option is given to swarm, then allocated local scratch space is shared
+between multiple commands in a single subjob.  In this case, make sure to allocate enough local scratch space to accomodate the number of parallel processes designated by <b>-p</b>.</li>
 </ul>
 
 <center><hr width="500" /></center>
@@ -979,17 +1072,32 @@ normal.</li>
 <!-- ------------------------------------------------------------------------------------- -->
 
 <p><a name="environment"></a><b>Setting environment variables</b></p>
+
+<h4>scope: entire swarm prior to submission</h4>
+
+<p>By default, a swarm will inherit the current environment and propagate it to the slurm job.  This means any environment variables set at the time of swarm submission will be available during the swarm.</p>
+
+<pre class="term"><b>[biowulf]$</b> GLOBAL_VAR=5 swarm file.swarm</pre>
+
 <P>If an entire swarm requires one or more environment variables to be set, the sbatch option <b>--export</b>
 can be used to set the variables prior to running.  In this example, we need to set the BOWTIE_INDEXES environment variable
 to the correct path for all subjobs in the swarm:</P>
 
 <pre class="term"><b>[biowulf]$</b> swarm --sbatch "--export=BOWTIE_INDEXES=/fdb/igenomes/Mus_musculus/UCSC/mm9/Sequence/BowtieIndex/" file.swarm</pre>
 
-<p class="alert"><b>NOTE:</b> Environment variables set with the <b>--sbatch "--export="</b> option are defined
+<p class="alert"><b>NOTE:</b> Environment variables inherited from the current shell or set with the <b>--sbatch "--export="</b> option are defined
 <b>PRIOR</b> to the job being submitted.  This prevents setting environment variables using Slurm-generated environment
 variables, such as $SLURM_JOB_ID or $SLURM_MEM_PER_NODE.</p>
 
-<p>However, if each command line in the swarm requires a unique set of environment variables, this must be done in the swarmfile.  For example, setting TMPDIR to a unique subdirectory of /lscratch/$SLURM_JOB_ID:</p>
+<h4>scope: per swarm subjob</h4>
+
+<p>If environment variables need to be set after the job is submitted, <a href="#prolog_epilog"><b>--prolog-source</b> can be used to set environment variables</a> on a per subjob basis.</p>
+
+<pre class="term"><b>[biowulf]$</b> swarm --prolog-source 'export TMPDIR=/lscratch/$SLURM_JOB_ID; export THISNODE=$(hostname)' --gres=lscratch:10 file.swarm</pre>
+
+<h4>scope: per command</h4>
+
+<p>If each command line in the swarm requires a <b><em>unique set of environment variables</em> (per command)</b>, this must be done in the swarmfile.  For example, setting TMPDIR to a unique subdirectory of /lscratch/$SLURM_JOB_ID:</p>
 
 <pre class="term"><b>[biowulf]$</b> cat file.swarm 
 export TMPDIR=/lscratch/$SLURM_JOB_ID/xyz1; mkdir $TMPDIR; cmdxyz -x 1 -y 1 -z 1
@@ -1146,7 +1254,7 @@ Once the swarm jobs are complete, you could if desired combine all the sequences
 <div class="heading"><a name="monitor"></a>Monitoring a swarm</div>
 <a href="/apps/swarm.html" style="font-size:12px">back to top</a><br />
 
-<p>Monitoring a swarm is handled the same way<a href="http://hpc.nih.gov/docs/userguide.html#monitor">as any
+<p>Monitoring a swarm is handled the same way <a href="http://hpc.nih.gov/docs/userguide.html#monitor">as any
 other batch job on the cluster</a>, using
 <b>sjobs</b>,
 <b>dashboard_cli jobs</b>,
