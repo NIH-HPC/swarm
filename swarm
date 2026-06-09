@@ -91,7 +91,7 @@ writeLog() unless $OPT{'no-log'};
 sub setDefaults
 {
   $PAR->{programname} = 'swarm';                                # Program name is swarm, duh
-  $PAR->{version} = '25.3.1';                                   # Version
+  $PAR->{version} = '26.6.1';                                   # Version
   $PAR->{swarm_base} = "/spin1/swarm";                          # The base directory where all command scripts live
   $PAR->{user} = (getpwuid($>))[0];                             # Who is running swarm?
   chomp($PAR->{host} = `/bin/hostname`);                        # On what host is swarm being run?
