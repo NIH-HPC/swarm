@@ -29,6 +29,16 @@
 
 # This script is an adaptation of the swarm script for use with SLURM.
 
+BEGIN {
+  require lib;
+  $out=`which sbatch`;
+  if ($out=~/slurmdev/) {
+    lib->import('/usr/local/slurmdev/lib64/perl5');
+  } else {
+    lib->import('/usr/local/slurm/lib64/perl5');
+  }
+}
+
 use Getopt::Long qw(GetOptionsFromString :config no_ignore_case);
 Getopt::Long::Configure("bundling"); # allows option bundling
 use POSIX qw(strftime floor ceil);
@@ -37,14 +47,12 @@ use File::Basename qw/basename/;
 use File::Spec;
 require File::Spec::Unix;
 use File::Path qw(make_path);
-use lib "/usr/local/slurm/lib64/perl5";
 use Slurm;
 use FileHandle;
 use Text::Wrap;
 use Sys::Hostname;
 use File::stat;
 use Sys::Syslog;
-#use Data::Dump qw/pp/;
 
 use utf8;                 # allow UTF-8 in source
 binmode STDOUT, ':utf8'; # ensure output is UTF-8
