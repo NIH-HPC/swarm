@@ -165,7 +165,7 @@ sub setDefaults
 
   $PAR->{options} = [
 # Basic
-    { 'f'            => {d=>"DEPRECATED: name of file with list of command lines to execute, with a single command line per subjob",o=>['f','file'],t =>'s',e =>'[file]',G=>'Basic',D=>1},},
+    { 'f'            => {d=>"DEPRECATED: name of file with list of command lines to execute, with a single command line per subjob",o=>['f','file'],t =>'s',e =>'[file]',G=>'Hidden',D=>1},},
     { 'g'            => {d=>"gb per process (default = 1.5)",o=>['g','gb-per-process'],t=>'f',e=>'[float]',G=>'Basic',D=>1}, },
     { 't'            => {d=>"threads per process (default = 1)",o=>['t','threads-per-process'],t =>'i',e=>'[int]',G=>'Basic',D=>1},},
     { 'p'            => {d=>"processes per subjob (default = 1)",o=>['p','processes-per-subjob','parallel'],t=>'i',e=>'[int]',G=>'Basic',D=>1},},
@@ -225,7 +225,10 @@ sub printOptions
   my $pG;
   foreach my $x (@{$PAR->{options}}) {
     my ($k) = (keys %{$x});
+
+# Don't show hidden options to regular users, and only if --verbose is given for priviliged users
     next if ((defined $x->{$k}{G}) && ($x->{$k}{G} eq 'Hidden') && (!$PAR->{privilegedUser}));
+    next if ((defined $x->{$k}{G}) && ($x->{$k}{G} eq 'Hidden') && ($PAR->{privilegedUser}) && ($OPT{verbose} < 1));
     my ($f,$a);
     my @option_strings = (defined $x->{$k}{o}) ? @{$x->{$k}{o}} : ($k);
     my @n;
