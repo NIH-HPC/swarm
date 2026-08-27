@@ -53,6 +53,7 @@ use Text::Wrap;
 use Sys::Hostname;
 use File::stat;
 use Sys::Syslog;
+use filetest 'access'; # for testing if a file is readable by both ACLs and bits
 
 use utf8;                 # allow UTF-8 in source
 binmode STDOUT, ':utf8'; # ensure output is UTF-8
