@@ -114,7 +114,7 @@ sub setDefaults
   $PAR->{largemem_threshold} = 750;                             # Jobs requiring this many GB or less can't run on largemem
   $PAR->{helpwidth} = 80;                                       # Maximum width of the help page as printed with --help or -h
   $PAR->{default_partition} = "norm";
-  $PAR->{maxspace} = 1024*1024*2000;                            # Maximum amount of diskspace available per swarm (~2GB)
+  $PAR->{maxspace} = 1024*1024*1024;                            # Maximum amount of diskspace available per swarm (1GB)
   $PAR->{spaceused} = 0;
   $PAR->{maxp} = 128;                                           # Maximum processes-per-subjob
   $PAR->{'prolog-time-seconds'} = 600;                          # Default 10 minutes for prolog
